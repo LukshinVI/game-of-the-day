@@ -1,4 +1,9 @@
 function sendGameOfTheDay() {
+    if (!isDeliveryWindow()) {
+        console.log('Сейчас не окно отправки.');
+        return;
+    }
+
     const props = PropertiesService.getScriptProperties();
     const token = props.getProperty('VK_TOKEN');
     const peerId = props.getProperty('VK_PEER_ID');
@@ -101,4 +106,14 @@ function findTodayGameRow(sheet) {
     }
 
     return todayRows[0];
+}
+
+function isDeliveryWindow() {
+    const now = new Date();
+
+    const hour = Number(
+        Utilities.formatDate(now, 'Europe/Moscow', 'H')
+    );
+
+    return hour >= 9 && hour < 10;
 }
