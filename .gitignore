@@ -7,3 +7,11 @@
 
 # Logs
 *.log
+# Node.js
+node_modules/
+
+# Node.js
+node_modules/
+
+# Wrangler local state
+.wrangler/
