@@ -3,6 +3,7 @@ import { analyzeFeedback } from '../src/agents/feedbackAgent.js';
 
 export async function runFeedbackEvals(env, caseId = null) {
     const results = [];
+
     const selectedCases = caseId
         ? feedbackCases.filter((testCase) => testCase.id === caseId)
         : feedbackCases;
@@ -15,17 +16,41 @@ export async function runFeedbackEvals(env, caseId = null) {
         try {
             const actual = await analyzeFeedback(env, testCase.input);
 
+            const positiveObservations = actual.observations.filter(
+                (observation) => observation.reaction === 'POSITIVE'
+            );
+
+            const negativeObservations = actual.observations.filter(
+                (observation) => observation.reaction === 'NEGATIVE'
+            );
+
+            const unresolvedObservations = actual.observations.filter(
+                (observation) => observation.target === null
+            );
+
+            const targetChecks = checkTargets(
+                actual.observations,
+                testCase.expected.targetChecks ?? []
+            );
+
             const checks = {
                 decision:
                     actual.decision === testCase.expected.decision,
 
-                liked:
-                    (actual.liked_mechanics.length > 0) ===
-                    testCase.expected.liked,
+                positive:
+                    positiveObservations.length ===
+                    testCase.expected.observations.positive,
 
-                disliked:
-                    (actual.disliked_mechanics.length > 0) ===
-                    testCase.expected.disliked
+                negative:
+                    negativeObservations.length ===
+                    testCase.expected.observations.negative,
+
+                unresolved:
+                    unresolvedObservations.length ===
+                    testCase.expected.observations.unresolved,
+
+                targets:
+                    targetChecks.passed
             };
 
             const passed = Object.values(checks).every(Boolean);
@@ -35,6 +60,7 @@ export async function runFeedbackEvals(env, caseId = null) {
                 description: testCase.description,
                 passed,
                 checks,
+                targetChecks: targetChecks.details,
                 expected: testCase.expected,
                 actual
             });
@@ -50,4 +76,42 @@ export async function runFeedbackEvals(env, caseId = null) {
     }
 
     return results;
+}
+
+function checkTargets(observations, expectedChecks) {
+    if (expectedChecks.length === 0) {
+        return {
+            passed: true,
+            details: []
+        };
+    }
+
+    const details = expectedChecks.map((expected) => {
+        const expectedFragment = expected.contains.toLowerCase();
+
+        const matched = observations.some((observation) => {
+            if (observation.reaction !== expected.reaction) {
+                return false;
+            }
+
+            if (typeof observation.target !== 'string') {
+                return false;
+            }
+
+            return observation.target
+                .toLowerCase()
+                .includes(expectedFragment);
+        });
+
+        return {
+            reaction: expected.reaction,
+            contains: expected.contains,
+            matched
+        };
+    });
+
+    return {
+        passed: details.every((check) => check.matched),
+        details
+    };
 }
