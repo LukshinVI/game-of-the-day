@@ -6,7 +6,7 @@
 
 ## 1. Текущая архитектура
 
-MVP v1 работает end-to-end. Входящий транспорт обратной связи также работает. Feedback Agent v1 находится в разработке.
+MVP v1 работает end-to-end. Входящий транспорт обратной связи работает. Feedback Agent v1.2 принят как baseline; production persistence/linking ОС остаются следующим этапом.
 
 ```mermaid
 flowchart TD
@@ -17,7 +17,7 @@ flowchart TD
     U -->|обратная связь| D
     D -->|Callback API / message_new| W[Cloudflare Worker]
     W --> V{Validation + routing}
-    V -->|TEST / PROD| F[Feedback Agent v1<br/>в разработке]
+    V -->|TEST / PROD| F[Feedback Agent v1.2]
     F --> AI[Cloudflare Workers AI<br/>Llama 3.1 8B Fast baseline]
     F -. следующий этап .-> B
 ```
@@ -32,7 +32,7 @@ flowchart TD
 | VK | Канал доставки игры и получения ОС | Работает |
 | Cloudflare Worker | Callback ingress, validation, TEST/PROD routing | Работает |
 | Workers AI binding | Runtime для бесплатной LLM | Работает |
-| Feedback Agent | Семантический анализ ОС и structured output | In Progress |
+| Feedback Agent | Семантический анализ ОС в `observations[]` + deterministic decision | Baseline принят |
 
 ## 2. Основные потоки
 
@@ -82,16 +82,17 @@ sequenceDiagram
     W->>W: secret + group + peer validation
     W->>W: TEST / PROD routing
     W->>F: feedback + game context
-    F->>M: semantic analysis
-    M-->>F: structured decision
-    F-->>W: validated result
+    F->>M: semantic extraction
+    M-->>F: observations[]
+    F->>F: validate + resolveDecision()
+    F-->>W: validated observations + decision
 ```
 
-Связывание ОС с игрой, сохранение результата и clarification workflow — следующие задачи backlog.
+Связывание ОС с игрой, сохранение raw feedback и результата анализа, а также clarification workflow — следующие задачи backlog.
 
 ## 3. Граница deterministic / AI
 
-Принцип проекта: **LLM используется только там, где требуется семантическое или неоднозначное решение.**
+Принцип проекта: **LLM используется только там, где требуется семантическое понимание текста. Системные решения и state остаются deterministic.**
 
 ### Deterministic code
 
@@ -103,23 +104,24 @@ sequenceDiagram
 - retry/idempotency;
 - quota/fallback policy;
 - сохранение данных;
+- `resolveDecision()` по validated observations;
 - строгие safety guardrails, которые можно выразить правилами;
 - выполнение внешних действий.
 
 ### AI / LLM
 
 - понимание свободного текста ОС;
-- выделение понравившихся/не понравившихся механик;
-- обнаружение неоднозначности;
-- формулирование clarification question;
-- семантическое сравнение механик;
+- извлечение положительной/отрицательной реакции ребёнка;
+- извлечение конкретного target только когда связь подтверждается текстом;
+- сохранение `target=null`, когда реакция есть, но target определить нельзя;
+- семантическое сравнение/нормализация механик на последующих этапах;
 - дальнейшая персонализация выбора игр.
 
-LLM не является памятью системы. Приложение хранит state и передаёт модели минимально необходимый context.
+LLM не принимает product decision, не является памятью системы и не должен использовать metadata игры как доказательство preference. Приложение хранит state и передаёт модели минимально необходимый context.
 
-## 4. Feedback Agent v1
+## 4. Feedback Agent v1.2
 
-Первый специализированный AI-agent проекта.
+Первый специализированный AI-agent проекта. Его задача — не сразу выводить предпочтение, а извлекать наблюдаемые реакции из `feedback.text`.
 
 Пример входа:
 
@@ -133,23 +135,50 @@ LLM не является памятью системы. Приложение х
   },
   "feedback": {
     "text": "Башня ему быстро надоела, зато очень понравилось складывать стаканчики друг в друга"
-  },
-  "known_preferences": []
+  }
 }
 ```
 
-Ожидаемый тип выхода:
+LLM output:
 
 ```json
 {
-  "decision": "PREFERENCE_DETECTED",
-  "liked_mechanics": ["вкладывание предметов друг в друга"],
-  "disliked_mechanics": ["строительство башни"],
-  "clarification_question": null
+  "observations": [
+    {
+      "reaction": "NEGATIVE",
+      "target": "строить башню"
+    },
+    {
+      "reaction": "POSITIVE",
+      "target": "складывать стаканчики друг в друга"
+    }
+  ]
 }
 ```
 
-Для неоднозначной ОС агент должен вернуть `NEED_CLARIFICATION`, не создавая неподтверждённое negative preference.
+Application layer детерминированно вычисляет decision:
+
+```text
+observations = []
+→ NO_PREFERENCE
+
+есть observation с target = null
+→ NEED_CLARIFICATION
+
+все observations имеют concrete target
+→ PREFERENCE_DETECTED
+```
+
+Ключевые правила baseline:
+
+- сам факт выполнения действия не является POSITIVE;
+- внешняя явно указанная причина переключения внимания не является NEGATIVE к предыдущему действию;
+- metadata игры используется только как context, а не как evidence;
+- `target` не нормализуется в доменную механику на этом этапе;
+- связанные сигналы одной реакции не должны искусственно дробиться;
+- неоднозначная реакция сохраняется через `target=null`, а не угадывается.
+
+Eval baseline v1.2 принят: 11/12 кейсов PASS. Оставшийся `target-switch` не считается блокирующим дефектом Feedback Agent: он выявляет отдельную задачу cross-game/activity linking, когда одна ОС может ссылаться на другую или предыдущую активность. Это должно решаться в feedback linking / clarification workflow.
 
 ## 5. Целевая мультиагентная архитектура
 
@@ -244,7 +273,7 @@ stateDiagram-v2
 stateDiagram-v2
     [*] --> FEEDBACK_RECEIVED
     FEEDBACK_RECEIVED --> PROCESSED: confident semantic result
-    FEEDBACK_RECEIVED --> WAITING_CLARIFICATION: ambiguous
+    FEEDBACK_RECEIVED --> WAITING_CLARIFICATION: unresolved target / linking ambiguity
     WAITING_CLARIFICATION --> PROCESSED: late clarification received
     WAITING_CLARIFICATION --> WAITING_CLARIFICATION: no response
 ```
@@ -307,7 +336,7 @@ MVP delivery
     ↓
 Feedback ingress
     ↓
-Feedback Agent
+Feedback Agent v1.2
     ↓
 Feedback persistence + linking
     ↓
