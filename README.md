@@ -2,21 +2,63 @@
 
 Персональный сервис, который ежедневно подбирает безопасную развивающую игру для ребёнка с учётом возраста, истории игр и обратной связи пользователя.
 
-Проект одновременно используется как практический учебный стенд для разработки AI/agent-систем: от детерминированной автоматизации и webhook-архитектуры до Harness, специализированных AI-агентов, model routing, structured output и eval.
+Проект одновременно используется как практический учебный стенд для разработки AI/agent-систем: от детерминированной автоматизации и webhook-архитектуры до специализированных AI-агентов, structured output, eval, provenance validation, Harness и model routing.
 
 ## Статус проекта
 
-**MVP v1 работает end-to-end:**
+### Работает в production
 
-`подбор игры → Google Sheets → Google Apps Script → VK`
+**MVP delivery:**
 
-Также готов входящий транспорт обратной связи:
+```text
+Daily automation
+→ Google Sheets
+→ Google Apps Script
+→ VK
+```
 
-`VK Callback → Cloudflare Worker → validation/routing`
+**Production feedback loop:**
 
-Cloudflare Workers AI подключён, первый inference успешно выполнен. Текущая разработка — **Feedback Agent v1**: семантический анализ обратной связи и structured output.
+```text
+VK message_new
+→ Cloudflare Worker
+→ validation + TEST/PROD routing
+→ Apps Script Feedback API: save_raw
+→ Google Sheets K/L
+→ Feedback Agent
+→ Apps Script Feedback API: save_analysis
+→ Google Sheets M/N
+```
 
-- [Архитектура проекта](docs/architecture.md) — текущая и целевая архитектура, Mermaid-диаграммы, границы deterministic/AI, Harness, Agents и Model Router.
+04.09.2026 production E2E подтверждён на реальном сообщении обратной связи.
+
+Raw feedback сохраняется **до AI inference**, поэтому ошибка или недоступность модели не приводит к потере пользовательской ОС.
+
+### Текущая разработка
+
+Текущий P0 — **Feedback Agent v1.3: evidence-bound target / provenance validation**.
+
+Production run выявил, что v1.2 мог вернуть target из metadata игры, даже если этого target не было в `feedback.text`. Поэтому свободный `target` заменяется на `target_text`, который должен быть доказуемым фрагментом исходного текста и проверяется детерминированно приложением.
+
+```text
+feedback.text
+→ LLM semantic extraction
+→ target_text | null
+→ deterministic provenance validation
+→ resolveDecision()
+→ optional later normalization to domain mechanic
+```
+
+После стабилизации v1.3 следующий маршрут:
+
+```text
+#14 Request feedback UX
+→ #7 Clarification workflow
+→ #8 Personalization
+→ #10 Harness extraction
+```
+
+- [Архитектура проекта](docs/architecture.md) — source of truth по текущей и целевой архитектуре.
 - [GitHub Issues](../../issues) — backlog, приоритеты, текущие и выполненные задачи.
 
 ## Правила продукта
@@ -36,13 +78,18 @@ Cloudflare Workers AI подключён, первый inference успешно 
 ## Архитектура — кратко
 
 ```mermaid
-flowchart LR
+flowchart TD
     A[Daily automation] --> S[(Google Sheets)]
-    S --> G[Apps Script]
+    S --> G[Apps Script delivery]
     G -->|VK API| V[VK]
     V -->|feedback| W[Cloudflare Worker]
-    W --> F[Feedback Agent]
-    F --> AI[Workers AI]
+    W --> R{TEST / PROD routing}
+    R -->|PROD| API[Apps Script Feedback API]
+    API -->|save_raw| S
+    API --> F[Feedback Agent]
+    F --> AI[Cloudflare Workers AI]
+    F -->|validated analysis| API
+    API -->|save_analysis| S
 ```
 
 Целевое направление:
@@ -55,12 +102,73 @@ flowchart LR
     H --> SAFE[Safety Agent]
     FA --> MR[Model Router]
     SA --> MR
-    SAFE --> MR
+    SAFE --> RULES[Deterministic safety rules]
+    SAFE -. semantic checks .-> MR
     MR --> CF[Cloudflare Workers AI]
     MR --> GM[Gemini Free Tier]
+    MR --> O[Other free models]
 ```
 
-Подробные sequence/state diagrams и ответственность компонентов вынесены в [`docs/architecture.md`](docs/architecture.md).
+Подробные sequence/state diagrams, границы ответственности и текущее состояние компонентов находятся в [`docs/architecture.md`](docs/architecture.md).
+
+## Feedback Agent
+
+### v1.2
+
+Использовал контракт:
+
+```json
+{
+  "observations": [
+    {
+      "reaction": "POSITIVE | NEGATIVE",
+      "target": "string | null"
+    }
+  ]
+}
+```
+
+Eval baseline: **11/12 PASS**. Этого было достаточно для запуска production feedback loop, но production выявил недостаточную защиту от metadata-grounding.
+
+### v1.3
+
+Целевой контракт:
+
+```json
+{
+  "observations": [
+    {
+      "reaction": "POSITIVE | NEGATIVE",
+      "target_text": "exact substring from feedback.text | null"
+    }
+  ]
+}
+```
+
+Application layer проверяет provenance до принятия decision.
+
+```text
+observations = []
+→ NO_PREFERENCE
+
+есть target_text = null
+→ NEED_CLARIFICATION
+
+все target_text подтверждены исходным текстом
+→ PREFERENCE_DETECTED
+```
+
+Нормализация `target_text → mechanic` не входит в v1.3 и рассматривается как отдельный последующий этап.
+
+## Надёжность feedback flow
+
+- raw feedback сохраняется до AI;
+- AI failure не удаляет K/L;
+- повтор уже обработанного callback не вызывает повторный inference;
+- event/message ID используется для idempotency;
+- TEST peer не изменяет PROD journal;
+- Worker отвечает VK до завершения фоновой обработки;
+- strict product decision принимается deterministic application layer.
 
 Ключевой принцип:
 
@@ -70,9 +178,17 @@ flowchart LR
 
 ## Бесплатность AI
 
-Для проекта принято ограничение: **используем только бесплатные AI-решения / free-tier квоты**.
+Для проекта действует ограничение: **используем только бесплатные AI-решения / free-tier quotas**.
 
-Текущий runtime — Cloudflare Workers AI. В backlog есть eval Cloudflare Workers AI vs Gemini Free Tier и других бесплатных кандидатов по качеству, structured output, latency, расходу quota и эксплуатационной сложности.
+Текущий runtime — Cloudflare Workers AI. В backlog находится сравнение с Gemini Free Tier и другими бесплатными кандидатами по:
+
+- semantic accuracy;
+- provenance/grounding accuracy;
+- ambiguity handling;
+- structured output reliability;
+- latency;
+- расходу free quota;
+- operational complexity.
 
 ## Структура репозитория
 
@@ -84,17 +200,22 @@ game-of-the-day/
 │   └── sendGameOfTheDay.js
 ├── worker/
 │   ├── src/
+│   │   ├── index.js
+│   │   └── agents/
+│   │       └── feedbackAgent.js
+│   ├── evals/
+│   │   ├── feedbackCases.js
+│   │   ├── runFeedbackEvals.js
 │   │   └── index.js
 │   ├── package.json
 │   ├── package-lock.json
-│   └── wrangler.jsonc
-├── experiments/
-│   ├── analyzeFeedback.js
-│   ├── package.json
-│   └── package-lock.json
+│   ├── wrangler.jsonc
+│   └── wrangler.evals.jsonc
 ├── README.md
 └── .gitignore
 ```
+
+`experiments/` используется локально для отдельных исследований и намеренно не считается частью production-структуры репозитория.
 
 ## Security
 
@@ -103,17 +224,21 @@ game-of-the-day/
 - VK access token — Google Apps Script Script Properties;
 - VK Callback secret — Cloudflare secret;
 - TEST/PROD peer IDs — Cloudflare secrets;
+- Apps Script Feedback API защищён отдельным shared secret;
+- Feedback API URL хранится в runtime config/secret;
 - внешние AI API keys, если появятся, — только secret store провайдера/runtime.
 
 Worker не должен логировать peer ID, полный текст пользовательского сообщения или секреты.
 
 ## Engineering principles
 
-- deterministic code для строгих правил, state и guardrails;
-- LLM для семантических и неоднозначных решений;
+- deterministic code для строгих правил, state, provenance и guardrails;
+- LLM для семантических и неоднозначных задач;
 - structured AI output валидируется приложением;
+- metadata может быть context, но не evidence;
 - LLM не является памятью системы;
 - модели передаётся минимально необходимый context;
 - retry и idempotency проектируются явно;
+- raw user input сохраняется до AI processing;
 - AI-компоненты сравниваются на собственном eval-наборе;
 - основной продукт продолжает работать при деградации AI.
