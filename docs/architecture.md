@@ -6,7 +6,9 @@
 
 ## 1. Текущая архитектура
 
-MVP v1 работает end-to-end. Входящий транспорт обратной связи работает. Feedback Agent v1.2 принят как baseline; production persistence/linking ОС остаются следующим этапом.
+MVP delivery и production feedback persistence/linking работают end-to-end. 04.09.2026 реальная PROD ОС прошла цепочку VK → Worker → Apps Script → Google Sheets → Feedback Agent → Google Sheets.
+
+Production E2E одновременно выявил semantic grounding defect Feedback Agent v1.2: модель смогла вернуть target из metadata игры, хотя target отсутствовал в `feedback.text`. Поэтому transport/persistence #5 завершён, а Feedback Agent #6 переоткрыт для v1.3 evidence-bound contract.
 
 ```mermaid
 flowchart TD
@@ -16,10 +18,15 @@ flowchart TD
     D -->|игра| U[Пользователь]
     U -->|обратная связь| D
     D -->|Callback API / message_new| W[Cloudflare Worker]
-    W --> V{Validation + routing}
-    V -->|TEST / PROD| F[Feedback Agent v1.2]
+    W --> V{Validation + TEST/PROD routing}
+    V -->|TEST| T[Ingress only<br/>no PROD mutation]
+    V -->|PROD| RAW[Apps Script Feedback API<br/>save_raw + deterministic linking]
+    RAW --> B
+    RAW --> F[Feedback Agent]
     F --> AI[Cloudflare Workers AI<br/>Llama 3.1 8B Fast baseline]
-    F -. следующий этап .-> B
+    AI --> F
+    F --> RES[Apps Script Feedback API<br/>save_analysis]
+    RES --> B
 ```
 
 ### Ответственность компонентов
@@ -27,12 +34,13 @@ flowchart TD
 | Компонент | Ответственность | Статус |
 |---|---|---|
 | Daily ChatGPT automation | Поиск, проверка истории, выбор и запись одной игры | Работает |
-| Google Sheets | Журнал игр и текущее продуктовое состояние | Работает |
-| Google Apps Script | Поиск сегодняшней игры, delivery window, retry, отправка VK | Работает |
+| Google Sheets | Журнал игр, delivery state, raw ОС и результат анализа | Работает |
+| Google Apps Script delivery | Поиск сегодняшней игры, delivery window, retry, отправка VK | Работает |
+| Google Apps Script Feedback API | deterministic linking, idempotency, `save_raw`, `save_analysis` | Работает |
 | VK | Канал доставки игры и получения ОС | Работает |
-| Cloudflare Worker | Callback ingress, validation, TEST/PROD routing | Работает |
+| Cloudflare Worker | Callback ingress, validation, TEST/PROD routing, orchestration feedback flow | Работает |
 | Workers AI binding | Runtime для бесплатной LLM | Работает |
-| Feedback Agent | Семантический анализ ОС в `observations[]` + deterministic decision | Baseline принят |
+| Feedback Agent v1.2 | Семантический анализ ОС | Production defect; #6 reopened |
 
 ## 2. Основные потоки
 
@@ -67,13 +75,15 @@ sequenceDiagram
     end
 ```
 
-### 2.2 Получение обратной связи — текущий этап
+### 2.2 Production feedback flow — реализован
 
 ```mermaid
 sequenceDiagram
     participant U as User
     participant V as VK
     participant W as Cloudflare Worker
+    participant G as Apps Script Feedback API
+    participant S as Google Sheets
     participant F as Feedback Agent
     participant M as Workers AI
 
@@ -81,18 +91,41 @@ sequenceDiagram
     V->>W: message_new
     W->>W: secret + group + peer validation
     W->>W: TEST / PROD routing
-    W->>F: feedback + game context
-    F->>M: semantic extraction
-    M-->>F: observations[]
-    F->>F: validate + resolveDecision()
-    F-->>W: validated observations + decision
+
+    alt TEST peer
+        W-->>V: ok
+        Note over W: PROD Sheet не изменяется
+    else PROD peer
+        W-->>V: ok
+        W->>G: save_raw(eventId, text)
+        G->>G: idempotency + latest J=Да / K empty linking
+        G->>S: K=raw feedback, L=time
+        G-->>W: row + game context + duplicate/processed state
+        W->>F: game context + feedback.text
+        F->>M: semantic extraction
+        M-->>F: observations
+        F->>F: deterministic validation + resolveDecision
+        F-->>W: analysis
+        W->>G: save_analysis(row, analysis)
+        G->>S: M=analysis, N=Да
+    end
 ```
 
-Связывание ОС с игрой, сохранение raw feedback и результата анализа, а также clarification workflow — следующие задачи backlog.
+### Надёжность feedback flow
+
+- raw feedback сохраняется до AI inference;
+- AI failure не удаляет K/L;
+- если AI/validation падает, M/N остаются незавершёнными и ОС можно обработать повторно;
+- VK callback event/message id используется как idempotency key;
+- повтор уже полностью обработанного события не вызывает повторный AI inference;
+- TEST peer не мутирует PROD Sheet;
+- Worker отвечает VK до завершения фоновой обработки через `waitUntil()`.
+
+MVP linking выбирает самую свежую отправленную строку (`J = Да`) с пустой ОС (`K`). Ссылки на более старую игру остаются задачей cross-game linking / clarification (#7).
 
 ## 3. Граница deterministic / AI
 
-Принцип проекта: **LLM используется только там, где требуется семантическое понимание текста. Системные решения и state остаются deterministic.**
+Принцип проекта: **LLM используется только там, где требуется семантическое понимание текста. Системные решения, provenance validation и state остаются deterministic.**
 
 ### Deterministic code
 
@@ -103,7 +136,9 @@ sequenceDiagram
 - state machine;
 - retry/idempotency;
 - quota/fallback policy;
-- сохранение данных;
+- linking feedback к строке игры;
+- сохранение raw feedback и analysis;
+- проверка provenance AI-output относительно исходного текста;
 - `resolveDecision()` по validated observations;
 - строгие safety guardrails, которые можно выразить правилами;
 - выполнение внешних действий.
@@ -112,73 +147,93 @@ sequenceDiagram
 
 - понимание свободного текста ОС;
 - извлечение положительной/отрицательной реакции ребёнка;
-- извлечение конкретного target только когда связь подтверждается текстом;
-- сохранение `target=null`, когда реакция есть, но target определить нельзя;
-- семантическое сравнение/нормализация механик на последующих этапах;
+- указание textual evidence только когда оно присутствует в `feedback.text`;
+- сохранение unresolved target, когда реакция есть, но textual evidence недостаточно;
+- семантическое сравнение/нормализация подтверждённых targets на последующих этапах;
 - дальнейшая персонализация выбора игр.
 
-LLM не принимает product decision, не является памятью системы и не должен использовать metadata игры как доказательство preference. Приложение хранит state и передаёт модели минимально необходимый context.
+LLM не принимает product decision, не является памятью системы и не должен использовать metadata игры как evidence. Приложение хранит state, проверяет provenance и передаёт модели минимально необходимый context.
 
-## 4. Feedback Agent v1.2
+## 4. Feedback Agent: v1.2 → v1.3
 
-Первый специализированный AI-agent проекта. Его задача — не сразу выводить предпочтение, а извлекать наблюдаемые реакции из `feedback.text`.
+### v1.2 — baseline, выявивший production defect
 
-Пример входа:
-
-```json
-{
-  "game": {
-    "id": "006",
-    "title": "Башня из стаканчиков",
-    "skill": "координация",
-    "mechanic": "строительство башни"
-  },
-  "feedback": {
-    "text": "Башня ему быстро надоела, зато очень понравилось складывать стаканчики друг в друга"
-  }
-}
-```
-
-LLM output:
+Контракт:
 
 ```json
 {
   "observations": [
     {
-      "reaction": "NEGATIVE",
-      "target": "строить башню"
-    },
-    {
-      "reaction": "POSITIVE",
-      "target": "складывать стаканчики друг в друга"
+      "reaction": "POSITIVE | NEGATIVE",
+      "target": "string | null"
     }
   ]
 }
 ```
 
-Application layer детерминированно вычисляет decision:
+Eval baseline: 11/12 PASS. Он был достаточен для запуска production feedback loop, но не гарантировал provenance свободного `target`.
+
+04.09.2026 production feedback:
+
+```text
+Ребёнку понравилось, несколько раз сам повторял действие
+```
+
+привёл к target `Ладушки вместе`, взятому из game metadata. Это нарушает инвариант `metadata = context, not evidence`.
+
+### v1.3 — принятый следующий контракт
+
+LLM должен возвращать evidence-bound текст:
+
+```json
+{
+  "observations": [
+    {
+      "reaction": "POSITIVE | NEGATIVE",
+      "target_text": "exact substring from feedback.text | null"
+    }
+  ]
+}
+```
+
+Application layer обязан детерминированно проверить:
+
+```text
+target_text == null
+OR
+target_text является подстрокой исходного feedback.text
+```
+
+Если provenance check не проходит, AI-result считается invalid и не должен превращаться в preference.
+
+Decision после validation:
 
 ```text
 observations = []
 → NO_PREFERENCE
 
-есть observation с target = null
+есть observation с target_text = null
 → NEED_CLARIFICATION
 
-все observations имеют concrete target
+все observations имеют валидный evidence-bound target_text
 → PREFERENCE_DETECTED
 ```
 
-Ключевые правила baseline:
+Ключевое разделение ответственности:
 
-- сам факт выполнения действия не является POSITIVE;
-- внешняя явно указанная причина переключения внимания не является NEGATIVE к предыдущему действию;
-- metadata игры используется только как context, а не как evidence;
-- `target` не нормализуется в доменную механику на этом этапе;
-- связанные сигналы одной реакции не должны искусственно дробиться;
-- неоднозначная реакция сохраняется через `target=null`, а не угадывается.
+```text
+feedback.text
+    ↓
+LLM: semantic extraction + textual evidence
+    ↓
+Deterministic provenance validation
+    ↓
+resolveDecision()
+    ↓
+optional later stage: target_text → normalized domain mechanic
+```
 
-Eval baseline v1.2 принят: 11/12 кейсов PASS. Оставшийся `target-switch` не считается блокирующим дефектом Feedback Agent: он выявляет отдельную задачу cross-game/activity linking, когда одна ОС может ссылаться на другую или предыдущую активность. Это должно решаться в feedback linking / clarification workflow.
+Нормализация в механику не входит в v1.3. Это отдельная интеллектуальная задача после доказанного textual evidence.
 
 ## 5. Целевая мультиагентная архитектура
 
@@ -211,16 +266,9 @@ flowchart TD
 
 ### Harness
 
-Отвечает за:
+Отвечает за workflow, state machine, маршрутизацию между агентами, retries, quota management, fallback, graceful degradation и выполнение внешних действий.
 
-- выбор следующего шага workflow;
-- state machine;
-- маршрутизацию между агентами;
-- retries;
-- quota management;
-- fallback;
-- graceful degradation;
-- принятие решения о выполнении внешнего действия.
+Текущий Cloudflare Worker уже выполняет часть orchestration для feedback flow, но ещё не выделен в самостоятельный Harness abstraction.
 
 ### Agents
 
@@ -228,15 +276,7 @@ flowchart TD
 
 ### Model Router
 
-Отделяет agent contract от конкретной модели/провайдера.
-
-Целевая стратегия:
-
-1. выбрать бесплатную модель, достаточную для задачи;
-2. простые задачи выполнять лёгкой моделью;
-3. escalation на более сильную бесплатную модель только при необходимости;
-4. учитывать доступность и quota;
-5. при невозможности inference вернуть Harness штатный статус недоступности, а не ломать workflow.
+Отделяет agent contract от конкретной модели/провайдера. Модель выбирается по качеству на собственном eval-наборе, доступности, latency, free quota и operational complexity.
 
 ## 6. Graceful degradation
 
@@ -253,7 +293,7 @@ stateDiagram-v2
 
     AVAILABLE --> PROCESS: analyze feedback
     BUDGET_LOW --> PROCESS: policy allows call
-    UNAVAILABLE --> PENDING: persist feedback
+    UNAVAILABLE --> PENDING: raw feedback already persisted
     PENDING --> PROCESS: retry after recovery
 ```
 
@@ -262,8 +302,7 @@ stateDiagram-v2
 - доставка ежедневной игры продолжает работать;
 - входящая ОС не теряется;
 - ОС остаётся pending/unprocessed;
-- система может обработать её после восстановления модели;
-- пользовательский UX при `BUDGET_LOW`/`UNAVAILABLE` определяется отдельной policy.
+- система может обработать её после восстановления модели.
 
 ## 7. Clarification state
 
@@ -272,9 +311,9 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
     [*] --> FEEDBACK_RECEIVED
-    FEEDBACK_RECEIVED --> PROCESSED: confident semantic result
+    FEEDBACK_RECEIVED --> PROCESSED: validated concrete evidence
     FEEDBACK_RECEIVED --> WAITING_CLARIFICATION: unresolved target / linking ambiguity
-    WAITING_CLARIFICATION --> PROCESSED: late clarification received
+    WAITING_CLARIFICATION --> PROCESSED: clarification received
     WAITING_CLARIFICATION --> WAITING_CLARIFICATION: no response
 ```
 
@@ -282,69 +321,74 @@ stateDiagram-v2
 
 ## 8. Data / state
 
-На текущем этапе Google Sheets содержит журнал игр и feedback-поля:
+Google Sheets содержит журнал игр и feedback-поля:
 
-- ID;
-- дата;
-- возраст;
-- название;
-- навык;
-- механика;
-- источник;
-- ссылка;
-- текст для отправки;
-- отправлено;
-- обратная связь;
-- время ОС;
-- результат ОС;
-- ОС обработана.
+- A ID;
+- B дата;
+- C возраст;
+- D название;
+- E навык;
+- F механика;
+- G источник;
+- H ссылка;
+- I текст для отправки;
+- J отправлено;
+- K raw обратная связь;
+- L время ОС;
+- M результат анализа;
+- N ОС обработана.
 
-По мере появления Harness может потребоваться отдельное хранилище application state. Решение о миграции принимается по фактической сложности state, а не заранее.
+Apps Script Script Properties также используются для feedback event idempotency mapping. По мере появления Harness может потребоваться отдельное хранилище application state. Решение о миграции принимается по фактической сложности state.
 
 ## 9. AI cost policy
 
 Проект использует **только бесплатные AI-решения / free-tier quotas**.
 
-Текущий baseline: Cloudflare Workers AI. В backlog находится eval с Gemini Free Tier и другими бесплатными кандидатами.
+Текущий baseline provider: Cloudflare Workers AI. В backlog находится eval с Gemini Free Tier и другими бесплатными кандидатами.
 
-Модель выбирается по измеримым характеристикам на собственном eval-наборе:
+Модель выбирается по:
 
 - semantic accuracy;
+- provenance/grounding accuracy;
 - ambiguity/clarification accuracy;
 - structured output reliability;
 - latency;
-- расход free quota;
+- расходу free quota;
 - operational complexity.
 
 ## 10. Security boundaries
 
 - secrets не хранятся в Git;
 - VK access token хранится в Apps Script Script Properties;
+- Apps Script Feedback API защищён отдельным shared secret;
 - callback secret и peer routing values — Cloudflare secrets;
-- внешние AI keys, если появятся, — secret store runtime/provider;
+- внешний feedback API URL — Cloudflare secret/config;
 - Worker валидирует callback до бизнес-обработки;
 - неизвестные peer игнорируются;
+- TEST peer не имеет права мутировать PROD feedback state;
 - логи не должны содержать peer ID, полный feedback text или secrets;
 - LLM не получает идентификаторы пользователя, если они не нужны для semantic task.
 
 ## 11. Эволюция архитектуры
 
-Архитектура развивается инкрементально:
-
 ```text
-MVP delivery
+MVP delivery                         DONE
     ↓
-Feedback ingress
+Feedback ingress                    DONE
     ↓
-Feedback Agent v1.2
+Feedback Agent v1.2 baseline        DONE / superseded
     ↓
-Feedback persistence + linking
+Feedback persistence + linking      DONE (#5)
     ↓
-Clarification workflow
+Feedback Agent v1.3 provenance      CURRENT (#6)
     ↓
-Personalization
+Request feedback UX                 #14
     ↓
-Harness extraction
+Clarification workflow              #7
+    ↓
+Personalization                     #8
+    ↓
+Harness extraction                  #10
     ↓
 Additional specialized agents
     ↓
