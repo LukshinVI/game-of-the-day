@@ -1,6 +1,6 @@
 # Игра дня
 
-Персональный сервис, который ежедневно подбирает безопасную развивающую игру для ребёнка с учётом возраста, истории игр и обратной связи пользователя.
+Персональный сервис, который ежедневно подбирает безопасную развивающую игру для ребёнка с учётом возраста, истории игр, обратной связи пользователя и, в целевом продукте, выбранного направления развития и целей ребёнка.
 
 Проект одновременно используется как практический учебный стенд для разработки AI/agent-систем: от детерминированной автоматизации и webhook-архитектуры до специализированных AI-агентов, structured output, eval, provenance validation, Harness и model routing.
 
@@ -36,7 +36,7 @@ Raw feedback сохраняется **до AI inference**, поэтому оши
 
 ### Текущая разработка
 
-Текущий P0 — **Feedback Agent v1.3: evidence-bound target / provenance validation**.
+Текущий P0 — **Feedback Agent v1.3: evidence-bound target / provenance validation** (#6).
 
 Production run выявил, что v1.2 мог вернуть target из metadata игры, даже если этого target не было в `feedback.text`. Поэтому свободный `target` заменяется на `target_text`, который должен быть доказуемым фрагментом исходного текста и проверяется детерминированно приложением.
 
@@ -49,31 +49,115 @@ feedback.text
 → optional later normalization to domain mechanic
 ```
 
-После стабилизации v1.3 следующий маршрут:
+Текущий критичный маршрут:
 
 ```text
-#14 Request feedback UX
+#6 Feedback Agent v1.3 provenance
+→ #14 Request feedback UX
 → #7 Clarification workflow
 → #8 Personalization
-→ #10 Harness extraction
 ```
 
+Следующий продуктовый слой:
+
+```text
+#21 Telegram
+#22 selectable development focus / skills
+#23 child development track
+#24 goals & progress
+```
+
+#20 задаёт сквозное архитектурное ограничение: новые потоки должны быть tenant-, child- и channel-aware без преждевременной большой миграции.
+
+- [Product roadmap](docs/product-roadmap.md) — source of truth по продуктовой эволюции и связям инициатив.
 - [Архитектура проекта](docs/architecture.md) — source of truth по текущей и целевой архитектуре.
 - [GitHub Issues](../../issues) — backlog, приоритеты, текущие и выполненные задачи.
 
+## Продуктовое направление
+
+Эволюция продукта:
+
+```text
+ежедневная полезная игра
+→ продукт слушает пользователя
+→ персональный подбор
+→ трек развития ребёнка
+→ история целей и прогресса
+```
+
+Целевая ценность:
+
+> Родитель выбирает, что хочет развивать у ребёнка, получает подходящие безопасные занятия, отмечает фактический опыт и со временем видит историю занятий и собственные наблюдения о прогрессе.
+
+Продукт не является медицинским или диагностическим инструментом и не должен делать выводы о норме, задержке или диагнозах.
+
 ## Правила продукта
 
-Игра должна:
+Базовая игра должна:
 
 - соответствовать текущему возрасту ребёнка;
 - быть безопасной;
-- развивать один из целевых навыков: речь, координацию или мелкую моторику;
+- соответствовать выбранному направлению/навыку, когда такой пользовательский фокус задан;
 - занимать примерно 5–10 минут;
 - не повторять ранее использованную механику без явного запроса;
 - иметь проверяемый первичный источник;
 - не использовать мелкие опасные предметы, острые/хрупкие или токсичные материалы, горячие предметы/жидкости и сценарии с риском падения.
 
 При сомнении в безопасности игра отклоняется.
+
+Текущие категории `речь / координация / мелкая моторика` считаются стартовыми элементами каталога, а не финальным hard-coded ограничением продукта (#22).
+
+Целевая доменная иерархия:
+
+```text
+направление развития
+→ навык
+→ цель
+→ связанные игры / активности
+```
+
+Age и safety остаются hard constraints и имеют приоритет над пользовательским выбором.
+
+## Каналы
+
+VK — текущий production channel.
+
+Telegram (#21) — следующий полноценный канал доставки и feedback. Канал рассматривается как transport layer: история ребёнка, preferences, goals и progress должны быть общими и не зависеть от VK/Telegram peer.
+
+Целевая граница:
+
+```text
+channel connection (VK | Telegram | ...)
+→ recipient
+→ tenant/family
+→ child profile
+→ shared product state
+```
+
+## Child profile / product memory
+
+Целевая модель (#23):
+
+```text
+child profile
+  ├── age / birth date
+  ├── selected development focus
+  ├── goals
+  ├── game history
+  ├── played / not played
+  ├── ratings / feedback
+  ├── parent observations
+  └── achieved milestones / progress
+```
+
+Ключевые принципы:
+
+- `played / not played` хранится отдельно от оценки игры;
+- отсутствие feedback не считается негативной оценкой;
+- наблюдение родителя — observation, а не медицинский вывод;
+- child-specific state принадлежит `child_id`, а не каналу;
+- смена канала или направления развития не должна сбрасывать историю;
+- goal/progress должен быть объясним сохранёнными событиями и наблюдениями (#24).
 
 ## Архитектура — кратко
 
@@ -96,10 +180,11 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    E[Events] --> H[Harness]
+    E[Events / channels] --> H[Harness]
     H --> FA[Feedback Agent]
     H --> SA[Selection Agent]
     H --> SAFE[Safety Agent]
+    H <--> STATE[(Tenant / child product state)]
     FA --> MR[Model Router]
     SA --> MR
     SAFE --> RULES[Deterministic safety rules]
@@ -109,7 +194,7 @@ flowchart LR
     MR --> O[Other free models]
 ```
 
-Подробные sequence/state diagrams, границы ответственности и текущее состояние компонентов находятся в [`docs/architecture.md`](docs/architecture.md).
+Подробные sequence/state diagrams, границы ответственности и текущее состояние компонентов находятся в [`docs/architecture.md`](docs/architecture.md). Продуктовые зависимости и roadmap — в [`docs/product-roadmap.md`](docs/product-roadmap.md).
 
 ## Feedback Agent
 
@@ -195,7 +280,8 @@ observations = []
 ```text
 game-of-the-day/
 ├── docs/
-│   └── architecture.md
+│   ├── architecture.md
+│   └── product-roadmap.md
 ├── src/
 │   └── sendGameOfTheDay.js
 ├── worker/
@@ -226,6 +312,7 @@ game-of-the-day/
 - TEST/PROD peer IDs — Cloudflare secrets;
 - Apps Script Feedback API защищён отдельным shared secret;
 - Feedback API URL хранится в runtime config/secret;
+- будущие Telegram credentials — только secret store/runtime config;
 - внешние AI API keys, если появятся, — только secret store провайдера/runtime.
 
 Worker не должен логировать peer ID, полный текст пользовательского сообщения или секреты.
@@ -241,4 +328,6 @@ Worker не должен логировать peer ID, полный текст �
 - retry и idempotency проектируются явно;
 - raw user input сохраняется до AI processing;
 - AI-компоненты сравниваются на собственном eval-наборе;
-- основной продукт продолжает работать при деградации AI.
+- основной продукт продолжает работать при деградации AI;
+- product state отделён от delivery channel;
+- child-specific memory проектируется вокруг `child_id`, а не конкретного peer/channel.
