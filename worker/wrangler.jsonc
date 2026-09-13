@@ -2,7 +2,28 @@
   "name": "game-of-the-day-webhook",
   "main": "src/index.js",
   "compatibility_date": "2026-09-03",
+
   "ai": {
     "binding": "AI"
+  },
+
+  "queues": {
+    "producers": [
+      {
+        "queue": "game-of-the-day-feedback-prod",
+        "binding": "FEEDBACK_QUEUE"
+      }
+    ],
+
+    "consumers": [
+      {
+        "queue": "game-of-the-day-feedback-prod",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 2,
+        "retry_delay": 60,
+        "max_concurrency": 1
+      }
+    ]
   }
 }

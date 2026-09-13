@@ -3,7 +3,7 @@ import { analyzeFeedback } from './agents/feedbackAgent.js';
 const VK_GROUP_ID = 123456789;
 
 export default {
-    async fetch(request, env, ctx) {
+    async fetch(request, env) {
         if (request.method !== 'POST') {
             return new Response(
                 'webhook-ok',
@@ -14,7 +14,8 @@ export default {
         let event;
 
         try {
-            event = await request.json();
+            event =
+                await request.json();
         } catch {
             console.log(
                 'Rejected callback: invalid JSON'
@@ -26,11 +27,6 @@ export default {
             );
         }
 
-        /*
-         * VK использует confirmation
-         * при первоначальном подключении
-         * Callback URL.
-         */
         if (
             event.type ===
             'confirmation'
@@ -41,11 +37,6 @@ export default {
             );
         }
 
-        /*
-         * Принимаем события только
-         * от нашего сообщества
-         * и только с корректным secret.
-         */
         if (
             event.secret !==
                 env.VK_CALLBACK_SECRET ||
@@ -62,10 +53,6 @@ export default {
             );
         }
 
-        /*
-         * Сейчас нас интересуют
-         * только входящие сообщения.
-         */
         if (
             event.type !==
             'message_new'
@@ -136,11 +123,6 @@ export default {
             }
         );
 
-        /*
-         * Пустое сообщение
-         * не является обратной связью,
-         * пригодной для анализа.
-         */
         if (!feedbackText) {
             console.log(
                 'Ignored empty feedback'
@@ -152,13 +134,6 @@ export default {
             );
         }
 
-        /*
-         * TEST никогда не пишет
-         * данные в PROD Google Sheet.
-         *
-         * Пока тестовый peer используется
-         * только для проверки ingress.
-         */
         if (
             environment === 'TEST'
         ) {
@@ -172,79 +147,145 @@ export default {
             );
         }
 
-        /*
-         * Для PROD отвечаем VK сразу.
-         *
-         * Сохранение ОС и AI-анализ
-         * выполняются после ответа
-         * через waitUntil().
-         *
-         * Это уменьшает риск того,
-         * что VK сочтёт callback
-         * неуспешным из-за долгого AI.
-         */
-        ctx.waitUntil(
-            processProductionFeedback(
-                env,
+        const eventId =
+            buildFeedbackEventId(
                 event,
-                message,
-                feedbackText
-            )
-        );
+                message
+            );
+
+        if (!eventId) {
+            console.log(
+                'Feedback processing skipped:',
+                'event id is missing'
+            );
+
+            return new Response(
+                'ok',
+                { status: 200 }
+            );
+        }
+
+        try {
+            await env
+                .FEEDBACK_QUEUE
+                .send({
+                    eventId,
+                    feedbackText
+                });
+
+            console.log(
+                'Feedback queued:',
+                {
+                    eventId
+                }
+            );
+        } catch (error) {
+            console.log(
+                'Feedback queue publish failed:',
+                safeErrorMessage(error)
+            );
+
+            /*
+             * Queue не приняла сообщение.
+             *
+             * Не отвечаем VK успешным 200:
+             * иначе событие будет потеряно.
+             *
+             * При повторной доставке eventId
+             * останется тем же, а дальнейшая
+             * обработка идемпотентна.
+             */
+            return new Response(
+                'retry',
+                { status: 500 }
+            );
+        }
 
         return new Response(
             'ok',
             { status: 200 }
         );
+    },
+
+    async queue(
+        batch,
+        env
+    ) {
+        for (
+            const message
+            of batch.messages
+        ) {
+            const payload =
+                message.body;
+
+            console.log(
+                'Feedback queue delivery:',
+                {
+                    eventId:
+                        payload?.eventId
+                }
+            );
+
+            try {
+                await processQueuedFeedback(
+                    env,
+                    payload
+                );
+            } catch (error) {
+                console.log(
+                    'Feedback queue processing failed:',
+                    safeErrorMessage(error)
+                );
+
+                /*
+                 * Пробрасываем ошибку наружу.
+                 *
+                 * Cloudflare Queue сама
+                 * выполнит retry согласно
+                 * wrangler.jsonc.
+                 */
+                throw error;
+            }
+        }
     }
 };
 
-async function processProductionFeedback(
+async function processQueuedFeedback(
     env,
-    event,
-    message,
-    feedbackText
+    payload
 ) {
-    /*
-     * Сначала строим стабильный ID
-     * входящего VK-события.
-     *
-     * Приоритет:
-     * 1. callback event_id;
-     * 2. peer_id + message.id;
-     * 3. peer_id +
-     *    conversation_message_id.
-     *
-     * Без idempotency key RAW ОС
-     * не сохраняем: иначе повторная
-     * доставка VK может связаться
-     * уже с другой игрой.
-     */
     const eventId =
-        buildFeedbackEventId(
-            event,
-            message
-        );
+        typeof payload?.eventId ===
+            'string'
+            ? payload.eventId
+            : '';
 
-    if (!eventId) {
+    const feedbackText =
+        typeof payload?.feedbackText ===
+            'string'
+            ? payload.feedbackText.trim()
+            : '';
+
+    if (
+        !eventId ||
+        !feedbackText
+    ) {
         console.log(
-            'Feedback processing skipped:',
-            'event id is missing'
+            'Queued feedback rejected:',
+            'invalid payload'
         );
 
+        /*
+         * Некорректное сообщение
+         * повтором не исправится.
+         * Возвращаемся успешно,
+         * чтобы Queue его ack-нула.
+         */
         return;
     }
 
     let rawResult;
 
-    /*
-     * ВАЖНО:
-     *
-     * сначала сохраняем RAW ОС,
-     * и только потом вызываем AI.
-     *
-     * AI failure != feedback loss.
-     */
     try {
         rawResult =
             await callFeedbackApi(
@@ -256,37 +297,25 @@ async function processProductionFeedback(
                 }
             );
     } catch (error) {
-        console.log(
-            'Raw feedback save failed:',
+        throw new Error(
+            'RAW_SAVE_FAILED: ' +
             safeErrorMessage(error)
         );
-
-        return;
     }
 
     if (
         !rawResult ||
         rawResult.ok !== true
     ) {
-        console.log(
-            'Raw feedback rejected:',
-            rawResult?.error ??
+        throw new Error(
+            'RAW_SAVE_REJECTED: ' +
+            (
+                rawResult?.error ??
                 'UNKNOWN_ERROR'
+            )
         );
-
-        return;
     }
 
-    /*
-     * Если VK повторно прислал
-     * уже полностью обработанное событие,
-     * AI повторно не вызываем.
-     *
-     * Если RAW уже сохранён,
-     * но analysis раньше упал,
-     * processed=false и мы можем
-     * безопасно повторить AI.
-     */
     if (
         rawResult.duplicate === true &&
         rawResult.processed === true
@@ -294,7 +323,8 @@ async function processProductionFeedback(
         console.log(
             'Duplicate feedback already processed:',
             {
-                row: rawResult.row
+                row:
+                    rawResult.row
             }
         );
 
@@ -306,6 +336,15 @@ async function processProductionFeedback(
         typeof rawResult.game !==
             'object'
     ) {
+        /*
+         * Здесь retry бессмысленен:
+         * feedback не удалось связать
+         * с игрой.
+         *
+         * RAW уже либо сохранён,
+         * либо Apps Script вернул
+         * существующее событие.
+         */
         console.log(
             'Feedback processing stopped:',
             'game context is missing'
@@ -332,23 +371,24 @@ async function processProductionFeedback(
             );
     } catch (error) {
         /*
-         * RAW уже находится
-         * в K/L Google Sheet.
+         * В Queue это теперь
+         * полноценная retryable ошибка.
          *
-         * M/N остаются пустыми.
-         * Значит feedback можно
-         * обработать повторно позже.
+         * RAW уже сохранён.
+         * Повторная доставка снова
+         * получит ту же строку через
+         * eventId и попробует AI ещё раз.
          */
-        console.log(
-            'Feedback AI failed:',
+        throw new Error(
+            'FEEDBACK_AI_FAILED: ' +
             safeErrorMessage(error)
         );
-
-        return;
     }
 
+    let analysisResult;
+
     try {
-        const analysisResult =
+        analysisResult =
             await callFeedbackApi(
                 env,
                 {
@@ -361,37 +401,43 @@ async function processProductionFeedback(
                     analysis
                 }
             );
-
-        if (
-            !analysisResult ||
-            analysisResult.ok !== true
-        ) {
-            console.log(
-                'Feedback analysis save rejected:',
-                analysisResult
-                    ?.error ??
-                    'UNKNOWN_ERROR'
-            );
-
-            return;
-        }
-
-        console.log(
-            'Feedback processed:',
-            {
-                row:
-                    rawResult.row,
-
-                decision:
-                    analysis.decision
-            }
-        );
     } catch (error) {
-        console.log(
-            'Feedback analysis save failed:',
+        throw new Error(
+            'ANALYSIS_SAVE_FAILED: ' +
             safeErrorMessage(error)
         );
     }
+
+    if (
+        !analysisResult ||
+        analysisResult.ok !== true
+    ) {
+        throw new Error(
+            'ANALYSIS_SAVE_REJECTED: ' +
+            (
+                analysisResult?.error ??
+                'UNKNOWN_ERROR'
+            )
+        );
+    }
+
+    console.log(
+        'Feedback processed:',
+        {
+            row:
+                rawResult.row,
+
+            decision:
+                analysis.decision,
+
+            model:
+                analysis.meta?.model,
+
+            modelCalls:
+                analysis.meta
+                    ?.model_calls
+        }
+    );
 }
 
 function buildFeedbackEventId(
