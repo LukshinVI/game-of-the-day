@@ -1,357 +1,249 @@
-const FEEDBACK_SCHEMA = {
-    type: 'object',
-    properties: {
-        observations: {
-            type: 'array',
-            items: {
-                type: 'object',
-                properties: {
-                    reaction: {
-                        type: 'string',
-                        enum: ['POSITIVE', 'NEGATIVE']
-                    },
-                    target: {
-                        type: ['string', 'null']
-                    }
-                },
-                required: ['reaction', 'target'],
-                additionalProperties: false
+import {
+    detectSignals
+} from './feedback/detectSignals.js';
+
+import {
+    linkTargets
+} from './feedback/linkTargets.js';
+
+import {
+    resolveFeedbackPolicy
+} from './feedbackPolicy.js';
+
+const FEEDBACK_MODEL =
+    '@cf/meta/llama-3.1-8b-instruct-fast';
+
+export async function analyzeFeedback(
+    env,
+    input
+) {
+    const feedbackText =
+        input?.feedback?.text;
+
+    if (
+        typeof feedbackText !==
+            'string' ||
+        feedbackText.trim().length ===
+            0
+    ) {
+        throw new Error(
+            'FEEDBACK_TEXT_REQUIRED'
+        );
+    }
+
+    let modelCalls = 0;
+
+    /*
+     * Считаем именно фактические обращения
+     * к AI binding.
+     *
+     * Это важнее, чем считать логические
+     * стадии пайплайна:
+     *
+     * Stage 2 может быть вызван как модуль,
+     * но внутри решить, что target candidates
+     * отсутствуют, и вообще не обращаться
+     * к модели.
+     */
+    const countedEnv =
+        createCountedAiEnv(
+            env,
+            () => {
+                modelCalls += 1;
             }
-        }
-    },
-    required: ['observations'],
-    additionalProperties: false
-};
+        );
 
-export async function analyzeFeedback(env, input) {
-    const response = await env.AI.run(
-        '@cf/meta/llama-3.1-8b-instruct-fast',
-        {
-            messages: [
-                {
-                    role: 'system',
-                    content: `
-Ты Feedback Agent сервиса развивающих игр для ребёнка.
+    const detectedSignals =
+        await detectSignals(
+            countedEnv,
+            FEEDBACK_MODEL,
+            feedbackText
+        );
 
-Твоя задача — извлечь из обратной связи наблюдаемые реакции ребёнка.
+    let signals =
+        detectedSignals.map(
+            (signal, index) => ({
+                signal_id:
+                    `signal-${index + 1}`,
 
-Верни массив observations.
+                ...signal,
 
-Каждый элемент observations содержит:
-- reaction: POSITIVE или NEGATIVE;
-- target: конкретное действие или объект реакции, если он прямо следует
-  из текста обратной связи; иначе null.
+                target:
+                    defaultTargetForSignal(
+                        signal
+                    )
+            })
+        );
 
-Не пытайся самостоятельно принять решение продукта.
-Не возвращай decision.
-Не определяй, нужна ли пользователю дополнительная коммуникация.
-Не нормализуй target в механику игры.
+    const linkableSignals =
+        signals.filter(
+            shouldLinkTarget
+        );
 
-Правила:
-
-1. POSITIVE означает, что в обратной связи есть признак интереса
-или положительной реакции ребёнка.
-
-Примеры положительных сигналов:
-- просил повторить действие;
-- самостоятельно повторял действие;
-- продолжал действие;
-- возвращался к действию;
-- явно проявлял интерес или радость во время действия;
-- взрослый прямо сообщает, что ребёнку что-то понравилось
-  или заинтересовало его.
-
-Сам факт выполнения действия НЕ является POSITIVE.
-
-Например:
-- "пару раз толкнул мяч";
-- "положил кубик в коробку";
-- "один раз построил башню";
-- "строил башню".
-
-Такие действия сами по себе не доказывают интерес ребёнка.
-
-Для POSITIVE должен существовать дополнительный признак интереса:
-самостоятельное повторение, просьба повторить, продолжение действия,
-возвращение к нему, радость, интерес или прямая положительная оценка.
-
-Каждый POSITIVE должен быть основан на конкретном positive signal
-из feedback.text.
-
-Не создавай POSITIVE для другого действия, упомянутого рядом,
-если positive signal относится к другому target.
-
-2. NEGATIVE означает, что в обратной связи есть признак потери интереса
-или отрицательной реакции ребёнка.
-
-Примеры:
-- быстро перестал выполнять конкретное действие;
-- явно отказался продолжать конкретное действие;
-- переключился с конкретного действия на другое;
-- больше не возвращался к конкретному действию;
-- взрослый прямо сообщает, что ребёнку что-то не понравилось
-  или быстро надоело.
-
-Если сначала явно названо действие, а сразу после него описана потеря
-интереса без появления другой причины, отрицательная реакция может
-относиться к ранее названному действию.
-
-Например:
-
-"Пару раз толкнул мяч, потом отвернулся и больше к нему не возвращался"
-
-→ {
-  "observations": [
-    {
-      "reaction": "NEGATIVE",
-      "target": "толкнул мяч"
+    if (
+        linkableSignals.length > 0
+    ) {
+        signals =
+            await linkTargets(
+                countedEnv,
+                FEEDBACK_MODEL,
+                feedbackText,
+                signals,
+                linkableSignals
+            );
     }
-  ]
-}
 
-Не создавай POSITIVE только из-за того, что ребёнок сначала выполнил действие.
-
-3. Прекращение действия, переключение внимания или отсутствие продолжения
-не являются доказательством NEGATIVE, если сам текст явно указывает
-другую причину такого поведения.
-
-Сначала проверь причинную связь.
-
-Если feedback.text прямо сообщает, что ребёнок прекратил действие
-или переключился из-за внешнего события, нового объекта, человека,
-животного, звука или другого явно указанного отвлекающего фактора,
-не создавай NEGATIVE observation для предыдущего действия только
-на основании этого переключения.
-
-Например:
-
-"Толкнул мяч, потом отвернулся, потому что увидел кошку"
-
-Причина переключения явно указана: ребёнок увидел кошку.
-
-→ {
-  "observations": []
-}
-
-Но:
-
-"Пару раз толкнул мяч, потом отвернулся и больше к нему не возвращался"
-
-не содержит другой причины потери интереса.
-
-→ {
-  "observations": [
-    {
-      "reaction": "NEGATIVE",
-      "target": "толкнул мяч"
-    }
-  ]
-}
-
-Не предполагай отрицательную реакцию, если текст сам даёт
-альтернативное объяснение поведения.
-
-4. target должен описывать только то действие или объект реакции,
-который можно связать с реакцией на основании самого текста
-обратной связи.
-
-Данные об игре используй только как контекст для понимания текста.
-Не используй game.title, game.skill или game.mechanic как доказательство
-того, что реакция относится именно к ним.
-
-Если в тексте есть реакция, но невозможно определить её конкретный target,
-верни target=null.
-
-Не заменяй отсутствующий target словами вроде:
-- "игра";
-- названием навыка;
-- названием игры;
-- механикой из metadata.
-
-5. Связанные сигналы одной реакции не нужно дробить на отдельные observations.
-
-Если несколько фраз описывают одну и ту же реакцию на одно действие
-в одном контексте, верни одну observation.
-
-Например:
-
-"Очень понравилось строить башню, несколько раз просил повторить"
-
-→ {
-  "observations": [
-    {
-      "reaction": "POSITIVE",
-      "target": "строить башню"
-    }
-  ]
-}
-
-Фразы вроде:
-- "просил повторить";
-- "продолжал";
-- "вернулся к этому";
-- "делал снова";
-
-могут наследовать target из непосредственно связанного действия,
-если связь явно следует из текста.
-
-Не создавай отдельный observation с target=null,
-если его реакция очевидно относится к уже названному
-в том же контексте действию.
-
-6. Самостоятельное повторение действия является положительным сигналом,
-если из текста ясно, что ребёнок повторил действие по собственной инициативе.
-
-Например:
-
-"Открыл крышку один раз, потом сам снова открыл её несколько раз"
-
-→ {
-  "observations": [
-    {
-      "reaction": "POSITIVE",
-      "target": "открыл крышку"
-    }
-  ]
-}
-
-7. Если в обратной связи нет значимой положительной или отрицательной
-реакции ребёнка, верни пустой массив observations.
-
-Например:
-
-"Сыграли пять минут"
-
-→ {
-  "observations": []
-}
-
-"Положил кубик в коробку один раз"
-
-→ {
-  "observations": []
-}
-
-8. Если в одном сообщении действительно есть несколько независимых реакций
-на разные действия или объекты, верни отдельный observation для каждой реакции.
-
-Например:
-
-"Башню строил снова, а потом мяч быстро надоел"
-
-→ {
-  "observations": [
-    {
-      "reaction": "POSITIVE",
-      "target": "строил башню"
-    },
-    {
-      "reaction": "NEGATIVE",
-      "target": "мяч"
-    }
-  ]
-}
-
-9. Если реакция есть, но конкретный target определить нельзя,
-не пытайся угадать его по metadata игры.
-
-Например:
-
-"Сегодня вообще не пошло"
-
-→ {
-  "observations": [
-    {
-      "reaction": "NEGATIVE",
-      "target": null
-    }
-  ]
-}
-
-10. Не придумывай реакции или target, которых нет в feedback.text.
-
-Metadata игры нужна только для понимания контекста.
-Она не является доказательством того, что реакция относится
-к title, skill или mechanic текущей игры.
-                    `.trim()
-                },
-                {
-                    role: 'user',
-                    content: JSON.stringify(input)
-                }
-            ],
-
-            response_format: {
-                type: 'json_schema',
-                json_schema: FEEDBACK_SCHEMA
-            }
-        }
-    );
-
-    const result = response?.response;
-
-    try {
-        validateFeedbackResult(result);
-    } catch (error) {
-        error.feedbackResult = result;
-        throw error;
-    }
+    const policy =
+        resolveFeedbackPolicy(
+            signals
+        );
 
     return {
-        ...result,
-        decision: resolveDecision(result)
+        version:
+            'feedback-v2',
+
+        analysis_status:
+            'COMPLETE',
+
+        signals,
+
+        decision:
+            policy.decision,
+
+        clarification:
+            policy.clarification,
+
+        meta: {
+            model:
+                FEEDBACK_MODEL,
+
+            model_calls:
+                modelCalls
+        }
     };
 }
 
-function validateFeedbackResult(result) {
-    if (!result || typeof result !== 'object' || Array.isArray(result)) {
-        throw new Error('FEEDBACK_RESULT_INVALID');
+function createCountedAiEnv(
+    env,
+    onCall
+) {
+    if (
+        !env ||
+        !env.AI ||
+        typeof env.AI.run !==
+            'function'
+    ) {
+        throw new Error(
+            'AI_BINDING_REQUIRED'
+        );
     }
 
-    if (!Array.isArray(result.observations)) {
-        throw new Error('OBSERVATIONS_INVALID');
-    }
+    return {
+        ...env,
 
-    for (const observation of result.observations) {
-        if (
-            !observation ||
-            typeof observation !== 'object' ||
-            Array.isArray(observation)
-        ) {
-            throw new Error('OBSERVATION_INVALID');
-        }
+        AI: {
+            async run(
+                ...args
+            ) {
+                onCall();
 
-        if (
-            observation.reaction !== 'POSITIVE' &&
-            observation.reaction !== 'NEGATIVE'
-        ) {
-            throw new Error('REACTION_INVALID');
+                return env.AI.run(
+                    ...args
+                );
+            }
         }
-
-        if (
-            observation.target !== null &&
-            (
-                typeof observation.target !== 'string' ||
-                observation.target.trim() === ''
-            )
-        ) {
-            throw new Error('TARGET_INVALID');
-        }
-    }
+    };
 }
 
-function resolveDecision(result) {
-    if (result.observations.length === 0) {
-        return 'NO_PREFERENCE';
+function shouldLinkTarget(
+    signal
+) {
+    /*
+     * Target linking нужен только тогда,
+     * когда реакция уже семантически
+     * определена.
+     *
+     * AMBIGUOUS reaction сначала требует
+     * clarification. До ответа пользователя
+     * target-linking не даёт продуктовой
+     * ценности и только расходует inference.
+     */
+    if (
+        signal.reaction_status !==
+            'CLEAR'
+    ) {
+        return false;
     }
 
-    const needsClarification = result.observations.some(
-        (observation) => observation.target === null
-    );
-
-    if (needsClarification) {
-        return 'NEED_CLARIFICATION';
+    if (
+        ![
+            'CHILD',
+            'UNKNOWN'
+        ].includes(
+            signal.experiencer
+        )
+    ) {
+        return false;
     }
 
-    return 'PREFERENCE_DETECTED';
+    if (
+        ![
+            'EXPLICIT_EVALUATION',
+            'AFFECT',
+            'VOLUNTARY_ENGAGEMENT'
+        ].includes(
+            signal.evidence_type
+        )
+    ) {
+        return false;
+    }
+
+    return true;
+}
+
+function defaultTargetForSignal(
+    signal
+) {
+    if (
+        signal.reaction_status ===
+            'AMBIGUOUS'
+    ) {
+        return {
+            status:
+                'NOT_APPLICABLE',
+
+            target_text:
+                null,
+
+            candidate_target_texts:
+                []
+        };
+    }
+
+    if (
+        signal.reaction_status ===
+            'NONE'
+    ) {
+        return {
+            status:
+                'NOT_APPLICABLE',
+
+            target_text:
+                null,
+
+            candidate_target_texts:
+                []
+        };
+    }
+
+    return {
+        status:
+            'UNSPECIFIED',
+
+        target_text:
+            null,
+
+        candidate_target_texts:
+            []
+    };
 }

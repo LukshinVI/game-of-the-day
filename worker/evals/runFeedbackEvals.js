@@ -1,76 +1,91 @@
-import { feedbackCases } from './feedbackCases.js';
-import { analyzeFeedback } from '../src/agents/feedbackAgent.js';
+import {
+    feedbackCases
+} from './feedbackCases.js';
 
-export async function runFeedbackEvals(env, caseId = null) {
-    const results = [];
+import {
+    analyzeFeedback
+} from '../src/agents/feedbackAgent.js';
 
-    const selectedCases = caseId
-        ? feedbackCases.filter((testCase) => testCase.id === caseId)
-        : feedbackCases;
+import {
+    isGrounded
+} from '../src/agents/feedbackGrounding.js';
 
-    if (caseId && selectedCases.length === 0) {
-        throw new Error(`EVAL_CASE_NOT_FOUND: ${caseId}`);
+export async function runFeedbackEvals(
+    env,
+    caseId = null
+) {
+    const selectedCases =
+        caseId
+            ? feedbackCases.filter(
+                (testCase) =>
+                    testCase.id ===
+                    caseId
+            )
+            : feedbackCases;
+
+    if (
+        caseId &&
+        selectedCases.length === 0
+    ) {
+        throw new Error(
+            `EVAL_CASE_NOT_FOUND: ${caseId}`
+        );
     }
 
-    for (const testCase of selectedCases) {
+    const results = [];
+
+    for (
+        const testCase of
+        selectedCases
+    ) {
         try {
-            const actual = await analyzeFeedback(env, testCase.input);
+            const actual =
+                await analyzeFeedback(
+                    env,
+                    testCase.input
+                );
 
-            const positiveObservations = actual.observations.filter(
-                (observation) => observation.reaction === 'POSITIVE'
-            );
-
-            const negativeObservations = actual.observations.filter(
-                (observation) => observation.reaction === 'NEGATIVE'
-            );
-
-            const unresolvedObservations = actual.observations.filter(
-                (observation) => observation.target === null
-            );
-
-            const targetChecks = checkTargets(
-                actual.observations,
-                testCase.expected.targetChecks ?? []
-            );
-
-            const checks = {
-                decision:
-                    actual.decision === testCase.expected.decision,
-
-                positive:
-                    positiveObservations.length ===
-                    testCase.expected.observations.positive,
-
-                negative:
-                    negativeObservations.length ===
-                    testCase.expected.observations.negative,
-
-                unresolved:
-                    unresolvedObservations.length ===
-                    testCase.expected.observations.unresolved,
-
-                targets:
-                    targetChecks.passed
-            };
-
-            const passed = Object.values(checks).every(Boolean);
+            const checks =
+                evaluateCase(
+                    testCase,
+                    actual
+                );
 
             results.push({
-                id: testCase.id,
-                description: testCase.description,
-                passed,
+                id:
+                    testCase.id,
+
+                description:
+                    testCase.description,
+
+                passed:
+                    Object.values(
+                        checks
+                    ).every(Boolean),
+
                 checks,
-                targetChecks: targetChecks.details,
-                expected: testCase.expected,
+
+                expected:
+                    testCase.expected,
+
                 actual
             });
         } catch (error) {
             results.push({
-                id: testCase.id,
-                description: testCase.description,
+                id:
+                    testCase.id,
+
+                description:
+                    testCase.description,
+
                 passed: false,
-                error: error.message,
-                actual: error.feedbackResult ?? null
+
+                error:
+                    error.message,
+
+                actual:
+                    error.feedbackResult ??
+                    null
             });
         }
     }
@@ -78,40 +93,258 @@ export async function runFeedbackEvals(env, caseId = null) {
     return results;
 }
 
-function checkTargets(observations, expectedChecks) {
-    if (expectedChecks.length === 0) {
-        return {
-            passed: true,
-            details: []
-        };
-    }
+function evaluateCase(
+    testCase,
+    actual
+) {
+    const expected =
+        testCase.expected;
 
-    const details = expectedChecks.map((expected) => {
-        const expectedFragment = expected.contains.toLowerCase();
+    const positive =
+        actual.signals.filter(
+            (signal) =>
+                signal.reaction_status ===
+                    'CLEAR' &&
+                signal.polarity ===
+                    'POSITIVE'
+        );
 
-        const matched = observations.some((observation) => {
-            if (observation.reaction !== expected.reaction) {
-                return false;
-            }
+    const negative =
+        actual.signals.filter(
+            (signal) =>
+                signal.reaction_status ===
+                    'CLEAR' &&
+                signal.polarity ===
+                    'NEGATIVE'
+        );
 
-            if (typeof observation.target !== 'string') {
-                return false;
-            }
-
-            return observation.target
-                .toLowerCase()
-                .includes(expectedFragment);
-        });
-
-        return {
-            reaction: expected.reaction,
-            contains: expected.contains,
-            matched
-        };
-    });
+    const ambiguous =
+        actual.signals.filter(
+            (signal) =>
+                signal.reaction_status ===
+                    'AMBIGUOUS'
+        );
 
     return {
-        passed: details.every((check) => check.matched),
-        details
+        decision:
+            actual.decision ===
+            expected.decision,
+
+        positive:
+            positive.length ===
+            expected.positive,
+
+        negative:
+            negative.length ===
+            expected.negative,
+
+        ambiguous:
+            expected.ambiguous ===
+                0
+                ? ambiguous.length ===
+                    0
+                : ambiguous.length >=
+                    expected.ambiguous,
+
+        clarification:
+            actual.clarification
+                .required ===
+            expected.clarification,
+
+        clarificationType:
+            expected
+                .clarificationType ===
+                undefined ||
+            actual.clarification
+                .type ===
+                expected
+                    .clarificationType,
+
+        negativeReason:
+            expected
+                .negativeReason ===
+                undefined ||
+            negative.some(
+                (signal) =>
+                    signal
+                        .negative_reason ===
+                    expected
+                        .negativeReason
+            ),
+
+        evidenceType:
+            expected.evidenceType ===
+                undefined ||
+            actual.signals.some(
+                (signal) =>
+                    signal.evidence_type ===
+                    expected.evidenceType
+            ),
+
+        targetContains:
+            checkTargetContains(
+                actual.signals,
+                expected.targetContains
+            ),
+
+        targetStatus:
+            checkTargetStatus(
+                actual.signals,
+                expected.targetStatus
+            ),
+
+        forbiddenTargets:
+            checkForbiddenTargets(
+                actual.signals,
+                expected
+                    .forbiddenTargets ??
+                    []
+            ),
+
+        provenance:
+            checkProvenance(
+                actual.signals,
+                testCase.input
+                    .feedback.text
+            ),
+
+        maxModelCalls:
+            actual.meta.model_calls <= 2
     };
+}
+
+function checkTargetContains(
+    signals,
+    expected
+) {
+    if (!expected) {
+        return true;
+    }
+
+    const fragment =
+        expected.toLowerCase();
+
+    return signals.some(
+        (signal) =>
+            typeof signal.target
+                ?.target_text ===
+                'string' &&
+            signal.target
+                .target_text
+                .toLowerCase()
+                .includes(fragment)
+    );
+}
+
+function checkTargetStatus(
+    signals,
+    expected
+) {
+    if (!expected) {
+        return true;
+    }
+
+    return signals.some(
+        (signal) =>
+            signal.target?.status ===
+            expected
+    );
+}
+
+function checkForbiddenTargets(
+    signals,
+    forbidden
+) {
+    if (forbidden.length === 0) {
+        return true;
+    }
+
+    const targets =
+        signals.flatMap(
+            (signal) => [
+                signal.target
+                    ?.target_text,
+
+                ...(
+                    signal.target
+                        ?.candidate_target_texts ??
+                    []
+                )
+            ]
+        )
+            .filter(
+                (value) =>
+                    typeof value ===
+                    'string'
+            )
+            .map(
+                (value) =>
+                    value.toLowerCase()
+            );
+
+    return forbidden.every(
+        (item) =>
+            !targets.some(
+                (target) =>
+                    target.includes(
+                        item.toLowerCase()
+                    )
+            )
+    );
+}
+
+function checkProvenance(
+    signals,
+    feedbackText
+) {
+    for (
+        const signal of signals
+    ) {
+        if (
+            !isGrounded(
+                feedbackText,
+                signal.evidence_text
+            )
+        ) {
+            return false;
+        }
+
+        if (
+            !isGrounded(
+                feedbackText,
+                signal.reason_text
+            )
+        ) {
+            return false;
+        }
+
+        if (
+            !isGrounded(
+                feedbackText,
+                signal.target
+                    ?.target_text ??
+                    null
+            )
+        ) {
+            return false;
+        }
+
+        for (
+            const candidate of
+            signal.target
+                ?.candidate_target_texts ??
+                []
+        ) {
+            if (
+                !isGrounded(
+                    feedbackText,
+                    candidate
+                )
+            ) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
