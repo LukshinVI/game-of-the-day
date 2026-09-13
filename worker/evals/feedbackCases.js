@@ -1,315 +1,484 @@
 export const feedbackCases = [
     {
         id: 'explicit-like',
-        description: 'Явная положительная реакция на конкретное действие',
+
+        description:
+            'Явная положительная реакция',
+
         input: {
-            game: {
-                id: '101',
-                title: 'Башня из стаканчиков',
-                skill: 'координация',
-                mechanic: 'строительство башни'
-            },
             feedback: {
-                text: 'Очень понравилось строить башню, несколько раз просил повторить'
+                text:
+                    'Очень понравилось строить башню, несколько раз просил повторить'
             }
         },
+
         expected: {
-            decision: 'PREFERENCE_DETECTED',
-            observations: {
-                positive: 1,
-                negative: 0,
-                unresolved: 0
-            },
-            targetChecks: [
-                {
-                    reaction: 'POSITIVE',
-                    contains: 'башн'
-                }
-            ]
+            decision:
+                'OBSERVATION_RECORDED',
+
+            positive: 2,
+            negative: 0,
+            ambiguous: 0,
+
+            clarification:
+                false
         }
     },
 
     {
         id: 'explicit-dislike',
-        description: 'Явная отрицательная реакция на конкретное действие',
+
+        description:
+            'Явный dislike игры',
+
         input: {
-            game: {
-                id: '102',
-                title: 'Башня из стаканчиков',
-                skill: 'координация',
-                mechanic: 'строительство башни'
-            },
             feedback: {
-                text: 'Башня быстро надоела, больше строить не захотел'
+                text:
+                    'Башня быстро надоела, больше строить не захотел'
             }
         },
+
         expected: {
-            decision: 'PREFERENCE_DETECTED',
-            observations: {
-                positive: 0,
-                negative: 1,
-                unresolved: 0
-            }
+            decision:
+                'NEED_CLARIFICATION',
+
+            positive: 0,
+            negative: 1,
+            ambiguous: 0,
+
+            clarification:
+                true,
+
+            clarificationType:
+                'NEGATIVE_REASON',
+
+            negativeReason:
+                'GAME_DISLIKE'
         }
     },
 
     {
         id: 'mixed-feedback',
-        description: 'Есть положительная и отрицательная реакции на разные действия',
+
+        description:
+            'Положительная и отрицательная реакции',
+
         input: {
-            game: {
-                id: '103',
-                title: 'Башня из стаканчиков',
-                skill: 'координация',
-                mechanic: 'строительство башни'
-            },
             feedback: {
-                text: 'Башня ему быстро надоела, зато очень понравилось складывать стаканчики друг в друга'
+                text:
+                    'Башня ему быстро надоела, зато очень понравилось складывать стаканчики друг в друга'
             }
         },
+
         expected: {
-            decision: 'PREFERENCE_DETECTED',
-            observations: {
-                positive: 1,
-                negative: 1,
-                unresolved: 0
-            }
+            decision:
+                'NEED_CLARIFICATION',
+
+            positive: 1,
+
+            negative: 1,
+
+            ambiguous: 0,
+
+            clarification:
+                true,
+
+            clarificationType:
+                'NEGATIVE_REASON'
+
         }
     },
 
     {
         id: 'behavioral-like',
-        description: 'Положительная реакция выражена только поведением',
+
+        description:
+            'Добровольная вовлечённость',
+
         input: {
-            game: {
-                id: '104',
-                title: 'Весёлая игра',
-                skill: 'координация',
-                mechanic: 'манипуляции с предметами'
-            },
             feedback: {
-                text: 'Когда я стала прятать кубик под платок, начал сам его искать и просил повторить'
+                text:
+                    'Когда я стала прятать кубик под платок, начал сам его искать и просил повторить'
             }
         },
+
         expected: {
-            decision: 'PREFERENCE_DETECTED',
-            observations: {
-                positive: 1,
-                negative: 0,
-                unresolved: 0
-            }
+            decision:
+                'OBSERVATION_RECORDED',
+
+            positive: 1,
+            negative: 0,
+            ambiguous: 0,
+
+            clarification:
+                false,
+
+            evidenceType:
+                'VOLUNTARY_ENGAGEMENT'
         }
     },
 
     {
         id: 'behavioral-dislike',
-        description: 'Отрицательная реакция выражена только поведением',
+
+        description:
+            'Прекращение участия не равно NEGATIVE',
+
         input: {
-            game: {
-                id: '105',
-                title: 'Катим мяч',
-                skill: 'координация',
-                mechanic: 'перекатывание мяча'
-            },
             feedback: {
-                text: 'Пару раз толкнул мяч, потом отвернулся и больше к нему не возвращался'
+                text:
+                    'Пару раз толкнул мяч, потом отвернулся и больше к нему не возвращался'
             }
         },
+
         expected: {
-            decision: 'PREFERENCE_DETECTED',
-            observations: {
-                positive: 0,
-                negative: 1,
-                unresolved: 0
-            },
-            targetChecks: [
-                {
-                    reaction: 'NEGATIVE',
-                    contains: 'мяч'
-                }
-            ]
+            decision:
+                'NO_REACTION_EVIDENCE',
+
+            positive: 0,
+            negative: 0,
+            ambiguous: 0,
+
+            clarification:
+                false,
+
+            evidenceType:
+                'BEHAVIOR_ONLY'
         }
     },
 
     {
         id: 'no-preference',
-        description: 'Игра состоялась, но реакции-предпочтения нет',
+
+        description:
+            'Нет reaction evidence',
+
         input: {
-            game: {
-                id: '106',
-                title: 'Попади в коробку',
-                skill: 'мелкая моторика',
-                mechanic: 'складывание предметов в контейнер'
-            },
             feedback: {
-                text: 'Сыграли минут пять, всё получилось'
+                text:
+                    'Сыграли минут пять, всё получилось'
             }
         },
+
         expected: {
-            decision: 'NO_PREFERENCE',
-            observations: {
-                positive: 0,
-                negative: 0,
-                unresolved: 0
-            }
+            decision:
+                'NO_REACTION_EVIDENCE',
+
+            positive: 0,
+            negative: 0,
+            ambiguous: 0,
+
+            clarification:
+                false
         }
     },
 
     {
         id: 'needs-clarification',
-        description: 'Есть отрицательная реакция, но её target неизвестен',
+
+        description:
+            'Негатив есть, причина неизвестна',
+
         input: {
-            game: {
-                id: '107',
-                title: 'Катим мяч',
-                skill: 'координация',
-                mechanic: 'перекатывание мяча'
-            },
             feedback: {
-                text: 'Сегодня вообще не пошло'
+                text:
+                    'Сегодня вообще не пошло'
             }
         },
+
         expected: {
-            decision: 'NEED_CLARIFICATION',
-            observations: {
-                positive: 0,
-                negative: 1,
-                unresolved: 1
-            }
+            decision:
+                'NEED_CLARIFICATION',
+
+            positive: 0,
+            negative: 1,
+            ambiguous: 0,
+
+            clarification:
+                true,
+
+            clarificationType:
+                'NEGATIVE_REASON',
+
+            negativeReason:
+                'UNSPECIFIED'
         }
     },
 
     {
         id: 'new-mechanic',
-        description: 'Реакция относится к действию, которого нет в metadata игры',
+
+        description:
+            'Неудача действия не является негативом',
+
         input: {
-            game: {
-                id: '108',
-                title: 'Игра с коробкой',
-                skill: 'мелкая моторика',
-                mechanic: 'складывание предметов в коробку'
-            },
             feedback: {
-                text: 'В коробку почти ничего не складывал, зато постоянно открывал и закрывал крышку и смеялся, когда она хлопала'
+                text:
+                    'В коробку почти ничего не складывал, зато постоянно открывал и закрывал крышку и смеялся, когда она хлопала'
             }
         },
+
         expected: {
-            decision: 'PREFERENCE_DETECTED',
-            observations: {
-                positive: 1,
-                negative: 1,
-                unresolved: 0
-            }
+            decision:
+                'OBSERVATION_RECORDED',
+
+            positive: 1,
+            negative: 0,
+            ambiguous: 0,
+
+            clarification:
+                false,
+
+            evidenceType:
+                'AFFECT'
         }
     },
 
-    // Regression cases
-
     {
         id: 'neutral-single-action',
-        description: 'Сам факт выполнения действия не является положительной реакцией',
+
+        description:
+            'Факт действия — behavior only',
+
         input: {
-            game: {
-                id: '201',
-                title: 'Кубик в коробке',
-                skill: 'мелкая моторика',
-                mechanic: 'складывание предметов'
-            },
             feedback: {
-                text: 'Положил кубик в коробку один раз'
+                text:
+                    'Положил кубик в коробку один раз'
             }
         },
+
         expected: {
-            decision: 'NO_PREFERENCE',
-            observations: {
-                positive: 0,
-                negative: 0,
-                unresolved: 0
-            }
+            decision:
+                'NO_REACTION_EVIDENCE',
+
+            positive: 0,
+            negative: 0,
+            ambiguous: 0,
+
+            clarification:
+                false,
+
+            evidenceType:
+                'BEHAVIOR_ONLY'
         }
     },
 
     {
         id: 'external-distraction',
-        description: 'Внешнее отвлечение не должно превращаться в негатив к действию',
+
+        description:
+            'Внешнее отвлечение не равно dislike',
+
         input: {
-            game: {
-                id: '202',
-                title: 'Катим мяч',
-                skill: 'координация',
-                mechanic: 'перекатывание мяча'
-            },
             feedback: {
-                text: 'Толкнул мяч, потом отвернулся, потому что увидел кошку'
+                text:
+                    'Толкнул мяч, потом отвернулся, потому что увидел кошку'
             }
         },
+
         expected: {
-            decision: 'NO_PREFERENCE',
-            observations: {
-                positive: 0,
-                negative: 0,
-                unresolved: 0
-            }
+            decision:
+                'NO_REACTION_EVIDENCE',
+
+            positive: 0,
+            negative: 0,
+            ambiguous: 0,
+
+            clarification:
+                false
         }
     },
 
     {
         id: 'target-switch',
-        description: 'Новый target не должен наследоваться от предыдущего действия',
+
+        description:
+            'Положительная реакция относится к песенке',
+
         input: {
-            game: {
-                id: '203',
-                title: 'Башня из стаканчиков',
-                skill: 'координация',
-                mechanic: 'строительство башни'
-            },
             feedback: {
-                text: 'Строил башню, потом попросил повторить песенку'
+                text:
+                    'Строил башню, потом попросил повторить песенку'
             }
         },
+
         expected: {
-            decision: 'PREFERENCE_DETECTED',
-            observations: {
-                positive: 1,
-                negative: 0,
-                unresolved: 0
-            },
-            targetChecks: [
-                {
-                    reaction: 'POSITIVE',
-                    contains: 'песен'
-                }
-            ]
+            decision:
+                'OBSERVATION_RECORDED',
+
+            positive: 1,
+            negative: 0,
+            ambiguous: 0,
+
+            clarification:
+                false,
+
+            targetContains:
+                'песен'
         }
     },
 
     {
         id: 'self-repeat-positive',
-        description: 'Самостоятельное повторение действия является положительным сигналом',
+
+        description:
+            'Самостоятельное повторение',
+
         input: {
-            game: {
-                id: '204',
-                title: 'Коробка с крышкой',
-                skill: 'мелкая моторика',
-                mechanic: 'открывание крышки'
-            },
             feedback: {
-                text: 'Открыл крышку один раз, потом сам снова открыл её несколько раз'
+                text:
+                    'Открыл крышку один раз, потом сам снова открыл её несколько раз'
             }
         },
+
         expected: {
-            decision: 'PREFERENCE_DETECTED',
-            observations: {
-                positive: 1,
-                negative: 0,
-                unresolved: 0
+            decision:
+                'OBSERVATION_RECORDED',
+
+            positive: 1,
+            negative: 0,
+            ambiguous: 0,
+
+            clarification:
+                false,
+
+            evidenceType:
+                'VOLUNTARY_ENGAGEMENT',
+
+            targetContains:
+                'крыш'
+        }
+    },
+
+    {
+        id: 'production-generic-positive',
+
+        description:
+            'Generic feedback не получает target из metadata',
+
+        input: {
+            game: {
+                title:
+                    'Ладушки вместе',
+
+                mechanic:
+                    'хлопки'
             },
-            targetChecks: [
-                {
-                    reaction: 'POSITIVE',
-                    contains: 'крыш'
-                }
+
+            feedback: {
+                text:
+                    'Ребёнку понравилось, несколько раз сам повторял действие'
+            }
+        },
+
+        expected: {
+            decision:
+                'OBSERVATION_RECORDED',
+
+            positive: 2,
+            negative: 0,
+            ambiguous: 0,
+
+            clarification:
+                false,
+
+            targetStatus:
+                'UNSPECIFIED',
+
+            forbiddenTargets: [
+                'Ладушки',
+                'хлоп'
             ]
+        }
+    },
+
+    {
+        id: 'negative-difficulty',
+
+        description:
+            'Негатив вызван сложностью',
+
+        input: {
+            feedback: {
+                text:
+                    'Расстроился и заплакал, потому что башня всё время падала и не получалось её построить'
+            }
+        },
+
+        expected: {
+            decision:
+                'NEED_CLARIFICATION',
+
+            positive: 0,
+            negative: 1,
+            ambiguous: 0,
+
+            clarification:
+                true,
+
+            clarificationType:
+                'NEGATIVE_REASON',
+
+            negativeReason:
+                'DIFFICULTY'
+        }
+    },
+
+    {
+        id: 'negative-unspecified',
+
+        description:
+            'Негатив без причины требует ASK',
+
+        input: {
+            feedback: {
+                text:
+                    'Ему совсем не зашло сегодня'
+            }
+        },
+
+        expected: {
+            decision:
+                'NEED_CLARIFICATION',
+
+            positive: 0,
+            negative: 1,
+            ambiguous: 0,
+
+            clarification:
+                true,
+
+            clarificationType:
+                'NEGATIVE_REASON'
+        }
+    },
+
+    {
+        id: 'ambiguous-reaction',
+
+        description:
+            'Реальная неоднозначность реакции',
+
+        input: {
+            feedback: {
+                text:
+                    'Вроде заинтересовался, но я так и не поняла, понравилось ему или нет'
+            }
+        },
+
+        expected: {
+            decision:
+                'NEED_CLARIFICATION',
+
+            positive: 0,
+            negative: 0,
+            ambiguous: 1,
+
+            clarification:
+                true,
+
+            clarificationType:
+                'REACTION'
         }
     }
 ];
