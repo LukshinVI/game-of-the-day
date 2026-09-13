@@ -1,10 +1,8 @@
 # Product Roadmap — «Игра дня»
 
-Этот документ фиксирует продуктовое направление проекта и связи между крупными инициативами. Техническая архитектура остаётся в [`architecture.md`](architecture.md), а конкретная работа — в GitHub Issues.
+Этот документ фиксирует продуктовое направление и зависимости крупных инициатив. Техническая архитектура — в [`architecture.md`](architecture.md), конкретная работа — в GitHub Issues.
 
 ## Product vision
-
-Эволюция продукта:
 
 ```text
 ежедневная полезная игра
@@ -18,49 +16,53 @@
 
 > Родитель выбирает, что хочет развивать у ребёнка, получает подходящие безопасные занятия, отмечает фактический опыт и со временем видит историю занятий и собственные наблюдения о прогрессе.
 
-Продукт не является медицинским или диагностическим инструментом и не должен делать выводы о норме, задержке или диагнозах.
+Продукт не является медицинским или диагностическим инструментом.
 
 ## V1 — Game of the Day
 
-Статус: работает.
-
-Базовый цикл:
+Статус: **production-ready**.
 
 ```text
-возраст + правила безопасности + история игр
-→ выбор новой игры
-→ запись в журнал
-→ доставка в VK
+возраст + safety + история игр
+→ выбор игры
+→ Google Sheets
+→ Apps Script
+→ VK
 ```
 
-Основные задачи: #1, #2, #3.
+Ключевые задачи #1–#4 закрыты.
 
 ## V2 — Feedback loop
 
-Статус: частично production-ready.
+Статус: **semantic loop работает в production; UX ещё не завершён**.
 
-Цикл:
+Реализованный технический путь:
 
 ```text
-игра
-→ сыграли / не сыграли
-→ оценка / комментарий
-→ сохранение raw feedback
-→ анализ
-→ подтверждённая product memory
+VK feedback
+→ Worker validation
+→ Cloudflare Queue
+→ save_raw
+→ Feedback Agent v2 / Gemma
+→ save_analysis
 ```
 
-Ключевые задачи:
-- #5 — persistence/linking feedback: done;
-- #6 — evidence-bound Feedback Agent v1.3;
-- #14 — запрос feedback после игры;
-- #7 — clarification workflow.
+Закрыто:
+- #5 — persistence/linking;
+- #6 — Feedback Agent v2, provenance-safe semantic analysis;
+- #16 — feedback fields;
+- #17 — Workers AI binding.
 
-Принцип: `played / not played` — отдельный факт и не равен оценке игры.
+Осталось для полноценного продуктового feedback loop:
+- #14 — явно запрашивать feedback после игры;
+- #7 — multi-turn clarification;
+- #9 — reliability/quota/recovery hardening.
+
+Принцип: `played / not_played`, rating и свободное observation — разные факты.
 
 ## V3 — Personalization
 
-Цель: следующая игра выбирается не только по возрасту и истории, но и по подтверждённым предпочтениям и текущему фокусу развития.
+Цель: следующая игра выбирается по confirmed product memory, а не только по возрасту и истории.
 
 ```text
 age
@@ -68,32 +70,20 @@ age
 + history
 + confirmed feedback/preferences
 + selected development focus
++ later: active goal
 → next game
 ```
 
 Ключевые задачи:
-- #8 — personalization from feedback;
-- #22 — выбор направления/навыка пользователем;
-- #15 — замена уже подготовленной игры по свежей ОС, с отдельными guardrails.
+- #8 — personalization;
+- #22 — выбор направления/навыка;
+- #15 — замена уже подготовленной игры по свежей подтверждённой ОС.
 
-### Навык больше не hard-coded ограничение
-
-Текущие `речь / координация / мелкая моторика` должны стать элементами расширяемой модели, а не единственно допустимым набором.
-
-Доменная иерархия:
-
-```text
-направление развития
-→ навык
-→ цель
-→ связанные игры / активности
-```
-
-Age и safety остаются обязательными constraints и имеют приоритет над пользовательским выбором.
+Age и safety всегда имеют более высокий приоритет, чем preference пользователя или модели.
 
 ## V4 — Child Development Track
 
-Цель: хранить долгосрочную историю ребёнка независимо от канала доставки.
+Цель: channel-independent история ребёнка.
 
 ```text
 child profile
@@ -104,58 +94,70 @@ child profile
   ├── played / not played
   ├── ratings / feedback
   ├── parent observations
-  └── achieved milestones / progress
+  └── progress
 ```
 
 Ключевая задача: #23.
 
 Принципы:
-- child data принадлежит `child_id`, а не VK/Telegram peer;
+- данные принадлежат `child_id`, а не VK/Telegram peer;
 - смена канала не сбрасывает историю;
-- смена выбранного направления не удаляет прошлые данные;
-- observation родителя хранится как observation, не как медицинский вывод;
-- product memory и workflow state должны быть разделены.
+- parent observation не превращается в медицинский вывод;
+- workflow state и product memory разделены.
 
 ## V5 — Goals & Progress
 
-Цель: пользователь задаёт или выбирает конкретную цель и видит объяснимый прогресс по ней.
+Ключевая задача: #24.
 
 ```text
-skill / focus
+focus / skill
 → goal
 → activities
-→ played/not played + feedback + observations
-→ progress
+→ played/not played + observations
+→ explainable progress
 → achieved / paused / active
 ```
 
-Ключевая задача: #24.
+LLM не объявляет цель достигнутой без подтверждённых данных или явного deterministic rule.
 
-Прогресс должен объясняться сохранёнными событиями и наблюдениями. LLM не должен самостоятельно объявлять цель достигнутой без подтверждённых данных/правил.
-
-## Multi-channel product
+## Multi-channel
 
 VK — текущий production channel. Telegram — следующий полноценный канал (#21).
 
 Целевая модель:
 
 ```text
-channel connection (VK | Telegram | ...)
+channel connection
+→ tenant / family
 → recipient
-→ tenant/family
 → child profile
 → shared product state
 ```
 
-Transport не должен определять product logic. История, feedback, preferences, goals и progress должны быть общими для ребёнка независимо от канала.
+#20 задаёт архитектурное ограничение: transport не должен определять product logic.
 
-Связано с #20: multi-user / multi-channel production readiness.
+## Engineering / architecture track
 
-## Product roadmap dependencies
+После завершения #6 выявилась обратная проблема: semantic correctness достигнута ценой заметного усложнения структуры Worker.
+
+Поэтому перед следующей крупной product-фичей выполняется #26:
+
+```text
+#26 architecture simplification
+→ сохранить поведение и eval-контракты
+→ уменьшить over-fragmentation
+→ только после этого расширять product flow
+```
+
+#9 идёт как параллельный reliability track.
+
+Harness / Model Router (#10) не является обязательным следующим этапом. Он должен появляться только при доказанной повторяющейся orchestration/model-routing необходимости, а не ради «agentic architecture» как цели.
+
+## Актуальные зависимости
 
 ```mermaid
 flowchart TD
-    F6[#6 Feedback Agent v1.3] --> F14[#14 Request feedback UX]
+    A26[#26 Simplify architecture] --> F14[#14 Request feedback UX]
     F14 --> F7[#7 Clarification workflow]
     F7 --> F8[#8 Personalization]
 
@@ -163,31 +165,49 @@ flowchart TD
     F22 --> F23[#23 Child development track]
     F23 --> F24[#24 Goals & progress]
 
-    F20[#20 Tenant-aware architecture] -. constrains .-> F21[#21 Telegram]
-    F20 -. constrains .-> F23
-    F21 -. shared channel-independent state .-> F23
-    F22 -. focus dimension .-> F24
-```
+    R9[#9 Reliability / quota / recovery] -. cross-cutting .-> F14
+    R9 -. cross-cutting .-> F7
+    R9 -. cross-cutting .-> F8
 
-Это не означает жёсткую последовательность реализации каждой задачи. #20 — архитектурное ограничение, которое учитывается инкрементально; #21 может развиваться параллельно после стабилизации критичного feedback route.
+    F20[#20 Tenant/channel readiness] -. constrains .-> F21[#21 Telegram]
+    F20 -. constrains .-> F23
+    F21 -. shared product state .-> F23
+```
 
 ## Near-term priority
 
-Текущий P0 route остаётся:
+Текущий маршрут:
 
 ```text
-#6 Feedback Agent v1.3
-→ #14 feedback request UX
+NOW: #26 architecture simplification
+
+THEN:
+#14 feedback request UX
 → #7 clarification
 → #8 personalization
 ```
 
-После этого продуктовый следующий слой:
+Параллельно, без блокировки product route:
 
 ```text
-#22 selectable skills/focus
+#9 AI reliability / quota / recovery
+```
+
+Следующий product layer:
+
+```text
+#22 selectable focus
 → #23 child track
 → #24 goals/progress
 ```
 
-Telegram (#21) — P1 channel expansion и должен проектироваться совместно с #20 так, чтобы не создавать второй отдельный product state.
+Telegram (#21) — P1 channel expansion после стабилизации общего feedback/product state; он не должен создавать отдельный silo данных.
+
+## Что сознательно НЕ делаем сейчас
+
+- не мигрируем преждевременно на микросервисную архитектуру;
+- не вводим отдельную БД только ради будущего масштаба;
+- не строим Harness/Router до фактической необходимости;
+- не добавляем агентов ради количества агентов;
+- не расширяем #26 новыми product features;
+- не допускаем автоматического платного AI/infrastructure overage.
