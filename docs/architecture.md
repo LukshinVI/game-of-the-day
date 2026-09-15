@@ -1,12 +1,12 @@
 # Архитектура «Игра дня»
 
-Этот документ — source of truth по архитектуре проекта. README содержит обзор, GitHub Issues — конкретный backlog.
+Этот документ — source of truth по архитектуре проекта. README содержит обзор, GitHub Issues — backlog и execution state.
 
-> Блоки в разделе «Целевое направление» не считаются реализованными, пока соответствующая задача не закрыта.
+> Целевая архитектура не считается production, пока migration EPIC #27 и cutover #32 не закрыты.
 
 ## 1. Текущее production-состояние
 
-### 1.1 Delivery
+### Delivery
 
 ```text
 Daily automation
@@ -15,155 +15,184 @@ Daily automation
 → VK
 ```
 
-Работает end-to-end. Apps Script проверяет сегодняшнюю игру, отправляет её в окне доставки, повторяет попытку при необходимости и после успеха отмечает `J = Да`.
+Этот путь остаётся production до контролируемого cutover. Завтрашние/текущие отправки не переключаются на VPS автоматически до завершения migration tests.
 
-### 1.2 Feedback
+### Feedback
 
-С 13.09.2026 production feedback больше не выполняет долгий AI-анализ внутри HTTP `waitUntil()`. Для durable execution используется Cloudflare Queue.
+```text
+VK message_new
+→ Cloudflare Worker
+→ validation + TEST/PROD routing
+→ Cloudflare Queue
+→ Apps Script Feedback API: save_raw
+→ Google Sheets
+→ Feedback Agent v2
+→ Cloudflare Workers AI / Gemma
+→ Apps Script Feedback API: save_analysis
+→ Google Sheets
+```
+
+Cloudflare Queue остаётся durable boundary. Raw feedback сохраняется до AI. Принцип `AI failure != product failure` сохраняется.
+
+## 2. Уже подготовленный VPS-контур
+
+На VPS развёрнут `/srv/game-of-the-day` и создан SQLite `data/game-of-the-day.db`.
+
+Текущее состояние migration contour:
+
+- исторические игры/доставки/feedback импортированы из Google;
+- SQLite quick_check проходит;
+- delivery CLI существует (`status`, `send-last`);
+- VK credentials вынесены из Git в runtime config;
+- CLI пока не является production scheduler;
+- `send-last` не используется как production command;
+- обнаруженный риск stale `sending` должен быть закрыт в #28;
+- VPS Agent наблюдает host/runtime и SQLite health.
+
+SQLite уже является подготовленным новым storage contour, но **ещё не production source of truth**.
+
+## 3. Активная архитектурная миграция — #27
+
+Цель: полностью убрать Google Sheets и Google Apps Script из production runtime, сохранив Cloudflare.
+
+### Целевая production-схема
 
 ```mermaid
 flowchart TD
-    U[Пользователь] --> V[VK]
-    V -->|message_new| W[Cloudflare Worker]
-    W --> VAL{Validation + TEST/PROD routing}
-    VAL -->|TEST| T[Ingress only]
-    VAL -->|PROD| Q[Cloudflare Queue]
-    Q --> C[Queue consumer in same Worker]
-    C --> RAW[Apps Script Feedback API: save_raw]
-    RAW --> S[(Google Sheets)]
+    P[Game preparation / product workflow] --> DB[(VPS SQLite)]
+    DB --> D[VPS delivery service + systemd timer]
+    D --> VK[VK]
+    VK -->|message_new| W[Cloudflare Worker]
+    W --> V{Validation + TEST/PROD routing}
+    V --> Q[Cloudflare Queue]
+    Q --> RAW[VPS Feedback API: save_raw]
+    RAW --> DB
     RAW --> F[Feedback Agent v2]
-    F --> AI[Cloudflare Workers AI: Gemma 4 26B A4B]
+    F --> AI[Cloudflare Workers AI / Gemma]
     AI --> F
-    F --> RES[Apps Script Feedback API: save_analysis]
-    RES --> S
+    F --> RES[VPS Feedback API: save_analysis]
+    RES --> DB
 ```
 
-HTTP callback отвечает VK после успешной публикации сообщения в Queue. AI-инференс и сохранение анализа происходят уже в Queue consumer.
+Ответственность после cutover:
 
-### Ответственность компонентов
+| Компонент | Ответственность |
+|---|---|
+| VPS / SQLite | durable product state, games, delivery state, feedback, analysis |
+| VPS delivery service | выбор сегодняшней игры, delivery state machine, VK send |
+| systemd timer | scheduling/retry attempts |
+| VK | пользовательский delivery/feedback channel |
+| Cloudflare Worker | ingress, validation, routing, Queue producer/consumer |
+| Cloudflare Queue | durable feedback processing boundary |
+| Workers AI / Gemma | semantic feedback classification |
+| VPS Feedback API | authenticated persistence boundary для Cloudflare |
+| VPS Agent | infrastructure/runtime monitoring and diagnostics |
+| Google | legacy/rollback only после cutover, затем removal |
 
-| Компонент | Ответственность | Статус |
-|---|---|---|
-| Daily automation | Поиск, проверка истории, выбор и запись игры | Работает |
-| Google Sheets | Журнал игр, delivery state, raw ОС, analysis | Работает |
-| Apps Script delivery | Delivery window, retry, VK send, sent-state | Работает |
-| Apps Script Feedback API | idempotency, linking, `save_raw`, `save_analysis` | Работает |
-| VK | Канал доставки и feedback | Работает |
-| Cloudflare Worker | Ingress, validation, TEST/PROD routing, Queue producer/consumer | Работает |
-| Cloudflare Queue | Durable boundary для медленного feedback processing | Работает |
-| Workers AI | Бесплатный LLM runtime | Работает |
-| Feedback Agent v2 | Семантический анализ ОС с deterministic provenance/validation | Работает в PROD |
+## 4. Migration tasks и порядок
 
-## 2. Feedback Agent v2
-
-Текущая архитектура:
+Активный EPIC: #27.
 
 ```text
-feedback.text
-→ deterministic segmentation + provenance
-→ AI classification of existing segments
-→ deterministic schema/business validation
-→ deterministic policy
-→ guarded target linking where applicable
+#28 VPS delivery: send-today + recovery + idempotency
+        ↓
+#29 VPS delivery scheduler / systemd
+
+#30 VPS Feedback API
+        ↓
+#31 Cloudflare → VPS feedback persistence
+
+#28 + #29 + #30 + #31
+        ↓
+#32 production cutover / disable Google runtime
+        ↓
+stability period
+        ↓
+archive/remove legacy Google code
 ```
 
-Ключевые инварианты:
+#28 и #30 могут выполняться параллельно. #32 — единственная точка production cutover.
 
-- LLM не создаёт evidence spans;
-- evidence всегда восходит к исходному `feedback.text`;
-- metadata игры может быть context, но не evidence;
-- target linking работает только по разрешённому candidate space;
-- если target не доказан, результат остаётся `UNSPECIFIED`;
-- extraction layer не создаёт durable preference;
-- product decision и clarification policy принадлежат deterministic application code.
+## 5. Delivery invariants после миграции
 
-Production regression case `Ребёнку понравилось, несколько раз сам повторял действие` успешно обработан Gemma: первая часть классифицирована как explicit positive evaluation, вторая — как voluntary engagement, оба target остались `UNSPECIFIED`, decision — `OBSERVATION_RECORDED`.
+- выбирается только игра за текущую дату в Europe/Moscow;
+- пустой message не отправляется;
+- sent delivery повторно не отправляется;
+- side effect имеет стабильную idempotency identity;
+- состояния `pending / sending / sent / failed` явные;
+- stale `sending` recoverable;
+- retryable `failed` recoverable;
+- `sent_at` фиксируется только после подтверждённого success;
+- отсутствие сегодняшней игры — штатное состояние, а не corruption;
+- scheduler не должен создавать duplicate delivery.
 
-## 3. Надёжность feedback flow
-
-Ключевой принцип:
-
-> **AI failure != product failure**
-
-Текущий путь:
+## 6. Feedback invariants после миграции
 
 ```text
 VK callback
 → validate
-→ Queue.send({eventId, feedbackText})
-→ 200 OK
-→ Queue consumer
-→ save_raw
+→ Queue
+→ VPS save_raw
 → AI
-→ save_analysis
+→ VPS save_analysis
 ```
 
-Свойства:
+- raw feedback durable до AI;
+- callback/event id — idempotency identity;
+- duplicate event не создаёт второй feedback;
+- analysis связывается с тем же feedback record;
+- AI failure оставляет feedback received/unprocessed;
+- Queue retries остаются bounded;
+- TEST/PROD isolation сохраняется;
+- semantic contract Feedback Agent v2 не меняется в рамках storage migration.
 
-- callback event/message id используется как idempotency key;
-- `save_raw` выполняется до AI;
-- повтор полностью обработанного события не вызывает новый inference;
-- AI/save_analysis failure пробрасывается в Queue и получает bounded retry;
-- `max_batch_size = 1` изолирует один медленный inference;
-- `max_retries = 2`, `retry_delay = 60`, `max_concurrency = 1`;
-- TEST peer не мутирует PROD Sheet;
-- Queue и Workers AI используются только в бесплатном контуре.
-
-Оставшаяся reliability-работа ведётся в #9: quota states, recovery после исчерпания retries, pending reprocessing и UX деградации.
-
-## 4. Граница deterministic / AI
+## 7. Граница deterministic / AI
 
 ### Deterministic code
 
-- routing и security validation;
-- даты и delivery window;
-- idempotency и retry policy;
+- routing/security validation;
+- даты/delivery window;
+- idempotency/retry/recovery;
 - workflow state;
-- linking feedback к игре;
-- persistence;
+- persistence/linking;
 - segmentation/provenance;
 - schema/business validation;
 - policy/decision;
-- safety guardrails, которые можно выразить правилами;
 - внешние side effects.
 
 ### AI / LLM
 
 - semantic classification свободного feedback;
 - ambiguity/reaction interpretation;
-- semantic target resolution только внутри заранее разрешённого candidate space;
-- будущая персонализация и selection там, где правила недостаточны.
+- semantic target resolution внутри разрешённого candidate space;
+- будущая персонализация/selection только там, где rules недостаточны.
 
-LLM не является памятью, workflow engine или источником истины о state.
+LLM не является памятью, workflow engine или source of truth.
 
-## 5. Текущий data/state
+## 8. Feedback Agent v2
 
-Google Sheets остаётся MVP-хранилищем журнала и feedback:
+```text
+feedback.text
+→ deterministic segmentation + provenance
+→ AI classification of existing segments
+→ deterministic validation
+→ deterministic policy
+→ guarded target linking where applicable
+```
 
-- A ID;
-- B дата;
-- C возраст;
-- D название игры;
-- E навык;
-- F механика;
-- G источник;
-- H ссылка;
-- I текст для отправки;
-- J отправлено;
-- K raw feedback;
-- L время ОС;
-- M structured analysis;
-- N ОС обработана.
+Инварианты:
 
-Apps Script Script Properties используются для event-id → row idempotency mapping.
+- LLM не создаёт evidence spans;
+- metadata — context, не evidence;
+- неподтверждённый target остаётся `UNSPECIFIED`;
+- extraction не создаёт durable preference;
+- clarification/product decisions принадлежат application layer.
 
-Миграция на отдельную БД не требуется до появления реальной сложности state/multi-user. Новые контракты должны, однако, не зависеть от Google Sheets как от доменной модели.
+Production model: `@cf/google/gemma-4-26b-a4b-it`.
 
-## 6. Multi-user / multi-channel boundary
+## 9. Multi-user / multi-channel boundary
 
-#20 остаётся архитектурным ограничением, а не отдельной большой миграцией.
-
-Целевая context-модель:
+#20 остаётся cross-cutting constraint, но не блокирует #27.
 
 ```text
 context = {
@@ -176,86 +205,52 @@ context = {
 }
 ```
 
-Принципы:
+Channel — transport, не product identity. Новая SQLite/domain model не должна закреплять новые VK-only/single-user assumptions, но migration не должна разрастаться в преждевременный multi-tenant rewrite.
 
-- channel — transport, а не product identity;
-- child-specific memory принадлежит `child_id`;
-- VK и Telegram должны использовать один product state;
-- не добавлять новые global single-user assumptions;
-- текущий single-family MVP не переписывать заранее ради гипотетического масштаба.
+## 10. Текущий engineering route
 
-## 7. Целевое направление
+#26 architecture simplification приостановлен до завершения #27, потому что нельзя одновременно делать behavior-preserving refactor и менять storage/runtime boundary.
 
-Проект не должен становиться «мультиагентным» ради самой мультиагентности.
-
-Целевая логическая схема:
+Актуальный маршрут:
 
 ```text
-Events / channels
-→ application workflow
-→ specialized semantic components only where needed
-→ deterministic state / guardrails / side effects
-```
-
-Harness / Model Router (#10) вводятся только если после #26 и дальнейшего развития действительно появляется повторяющаяся orchestration/model-routing проблема. До этого текущий Worker + явные функции остаются предпочтительнее дополнительного framework/layer.
-
-Возможные будущие semantic-компоненты:
-
-- Feedback Agent;
-- Selection Agent;
-- Safety semantic check — только если deterministic rules недостаточны.
-
-## 8. Текущая инженерная задача: #26
-
-После #6 код Feedback Agent стал значительно сложнее относительно масштаба продукта. Поэтому ближайшая архитектурная задача — не добавление новых слоёв, а упрощение существующих.
-
-Цели #26:
-
-- inventory реального runtime path;
-- удалить dead code;
-- уменьшить over-fragmentation;
-- объединить маленькие модули без самостоятельной архитектурной ценности;
-- разделять большие файлы только там, где это улучшает понимание;
-- сократить file hopping по основному feedback flow;
-- сохранить deterministic/AI boundary и текущие eval-контракты;
-- не вводить новые framework/abstraction layers.
-
-Текущее дерево Worker содержит отдельные подпапки `detection/` и `segmentation/`, а также несколько последовательных target-* модулей. Это не автоматически ошибка: #26 должен проверить каждый уровень по фактической ответственности и импортам, а не сокращать число файлов ради метрики.
-
-## 9. Product workflow, который архитектура должна поддерживать
-
-Ближайший продуктовый маршрут после #26:
-
-```text
+#27 Google → VPS/SQLite migration
+  ├─ #28 delivery state machine
+  ├─ #29 scheduler
+  ├─ #30 Feedback API
+  ├─ #31 Cloudflare switch
+  └─ #32 cutover
+        ↓
+#26 architecture simplification
+        ↓
 #14 request feedback UX
 → #7 clarification workflow
 → #8 personalization
 ```
 
-#9 reliability продолжается как сквозная техническая работа и не должна снова разрастаться внутрь semantic задач.
+Параллельно: #9 AI quota/recovery/graceful degradation.
 
-Следующий слой:
+Следующий product layer: #22 selectable development focus → #23 child development track → #24 goals/progress. Telegram #21 остаётся отдельным пользовательским channel expansion.
 
-```text
-#22 selectable development focus
-→ #23 child development track
-→ #24 goals/progress
-```
+## 11. Zero-cost policy
 
-Telegram (#21) развивается совместно с ограничениями #20 и должен использовать тот же product state.
+Hard requirement: **0 ₽ без отдельного явного решения пользователя**.
 
-## 10. Zero-cost policy
+Cloudflare Workers, Queues и Workers AI используются только в бесплатном контуре. Migration на VPS не должна добавлять OpenAI API или иной автоматический платный provider. Исчерпание free quota приводит к controlled failure/pending state, а не paid overage.
 
-Для проекта действует hard requirement: **0 ₽ без отдельного явного решения пользователя**.
-
-Текущий production stack использует бесплатные квоты Cloudflare Workers, Queues и Workers AI. Исчерпание бесплатной квоты должно приводить к controlled failure/pending state, а не к автоматическому платному overage.
-
-## 11. Security boundaries
+## 12. Security boundaries
 
 - secrets не хранятся в Git;
-- VK token — Apps Script Script Properties;
-- callback/shared secrets — runtime secrets;
-- Worker валидирует callback до бизнес-обработки;
-- TEST и PROD изолированы;
-- peer IDs, secrets и полный текст feedback не должны попадать в обычные operational logs;
-- будущие channel credentials остаются в secret store, а product state хранит только стабильные identifiers/references.
+- VPS credentials/runtime secrets находятся вне repository;
+- Cloudflare callback/shared secrets — runtime secrets;
+- Worker валидирует callback до business processing;
+- VPS Feedback API обязан аутентифицировать Cloudflare requests;
+- TEST/PROD изолированы;
+- operational logs не содержат secrets/полный feedback без необходимости;
+- SQLite не публикуется наружу напрямую;
+- внешний доступ идёт через узкий API boundary;
+- VPS Agent имеет отдельную read-only diagnostic identity и не является application runtime identity.
+
+## 13. Rollback policy
+
+До #32 Google остаётся текущим production path. Во время cutover старый Google runtime не удаляется: triggers/endpoints отключаются, но код и данные сохраняются на период проверки. Physical removal/archive выполняется только после стабильной работы VPS contour.
