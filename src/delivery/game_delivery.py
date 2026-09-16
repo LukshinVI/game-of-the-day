@@ -204,31 +204,69 @@ def send_today():
 
 def print_status():
     with connect_db() as con:
-        totals = con.execute(
+        today = datetime.now(MOSCOW).date().isoformat()
+
+        today_rows = con.execute(
             """
-            SELECT status, COUNT(*) AS count
-            FROM deliveries
-            GROUP BY status
-            ORDER BY status
-            """
+            SELECT
+                g.legacy_id,
+                g.game_date,
+                g.title,
+                d.status,
+                d.attempts,
+                d.sent_at,
+                d.last_error
+            FROM games g
+            JOIN deliveries d ON d.game_id = g.id
+            WHERE d.channel = 'vk'
+              AND g.game_date = ?
+            ORDER BY g.id
+            """,
+            (today,)
         ).fetchall()
 
-        candidate = latest_sendable_pending(con)
+        historical_pending = con.execute(
+            """
+            SELECT
+                g.legacy_id,
+                g.game_date,
+                g.title
+            FROM games g
+            JOIN deliveries d ON d.game_id = g.id
+            WHERE d.channel = 'vk'
+              AND d.status = 'pending'
+              AND g.game_date < ?
+            ORDER BY g.game_date, g.id
+            """,
+            (today,)
+        ).fetchall()
 
-        print("=== DELIVERY STATUS ===")
-        for row in totals:
-            print(f"{row['status']}: {row['count']}")
+        print("=== TODAY'S DELIVERY ===")
+
+        if not today_rows:
+            print("No game for today.")
+        else:
+            for row in today_rows:
+                print(f"ID:       {row['legacy_id']}")
+                print(f"Date:     {row['game_date']}")
+                print(f"Title:    {row['title']}")
+                print(f"Status:   {row['status']}")
+                print(f"Attempts: {row['attempts']}")
+                print(f"Sent at:  {row['sent_at'] or '-'}")
+                if row["last_error"]:
+                    print(f"Error:    {row['last_error']}")
 
         print()
-        if candidate:
-            print("=== SEND-LAST CANDIDATE ===")
-            print(f"ID:       {candidate['legacy_id']}")
-            print(f"Date:     {candidate['game_date']}")
-            print(f"Title:    {candidate['title']}")
-            print(f"Status:   {candidate['status']}")
-            print(f"Attempts: {candidate['attempts']}")
-        else:
-            print("No sendable pending games.")
+        print("=== HISTORICAL UNCONFIRMED ===")
+        print(f"Count: {len(historical_pending)}")
+
+        for row in historical_pending:
+            print(
+                f"{row['legacy_id']} | "
+                f"{row['game_date']} | "
+                f"{row['title']}"
+            )
+
 
 
 def vk_send(message: str, random_id: int):
@@ -350,15 +388,12 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status")
-    sub.add_parser("send-last")
     sub.add_parser("send-today")
 
     args = parser.parse_args()
 
     if args.command == "status":
         print_status()
-    elif args.command == "send-last":
-        send_last()
     elif args.command == "send-today":
         send_today()
 
