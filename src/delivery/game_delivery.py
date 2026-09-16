@@ -55,6 +55,153 @@ def latest_sendable_pending(con):
     ).fetchone()
 
 
+def today_deliveries(con):
+    today = datetime.now(MOSCOW).date().isoformat()
+
+    return con.execute(
+        """
+        SELECT
+            g.id AS game_id,
+            g.legacy_id,
+            g.game_date,
+            g.title,
+            g.message_text,
+            d.id AS delivery_id,
+            d.status,
+            d.attempts,
+            d.idempotency_key
+        FROM games g
+        JOIN deliveries d ON d.game_id = g.id
+        WHERE d.channel = 'vk'
+          AND g.game_date = ?
+        ORDER BY g.id
+        """,
+        (today,)
+    ).fetchall()
+
+
+def send_today():
+    with connect_db() as con:
+        con.execute("BEGIN IMMEDIATE")
+        rows = today_deliveries(con)
+
+        if not rows:
+            con.rollback()
+            print("No game for today. Nothing sent.")
+            return
+
+        if len(rows) != 1:
+            con.rollback()
+            raise RuntimeError(
+                f"Expected exactly one delivery for today, found {len(rows)}"
+            )
+
+        game = rows[0]
+
+        if game["status"] == "sent":
+            con.rollback()
+            print("Today's game is already sent. Nothing sent.")
+            return
+
+        if game["status"] == "sending":
+            con.rollback()
+            raise RuntimeError(
+                "Today's delivery is stuck in 'sending'; manual recovery required"
+            )
+
+        if game["status"] == "failed":
+            con.rollback()
+            raise RuntimeError(
+                "Today's delivery is in 'failed'; explicit retry required"
+            )
+
+        if game["status"] != "pending":
+            con.rollback()
+            raise RuntimeError(
+                f"Unexpected delivery status: {game['status']}"
+            )
+
+        if not game["message_text"] or not game["message_text"].strip():
+            con.rollback()
+            raise RuntimeError("Today's game has empty message_text")
+
+        if not game["idempotency_key"]:
+            con.rollback()
+            raise RuntimeError("Today's delivery has no idempotency_key")
+
+        print("=== ABOUT TO SEND TODAY ===")
+        print(f"ID:    {game['legacy_id']}")
+        print(f"Date:  {game['game_date']}")
+        print(f"Title: {game['title']}")
+
+        random_id = deterministic_random_id(game["idempotency_key"])
+
+        changed = con.execute(
+            """
+            UPDATE deliveries
+            SET status = 'sending',
+                attempts = attempts + 1,
+                last_error = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+              AND status = 'pending'
+            """,
+            (game["delivery_id"],)
+        ).rowcount
+
+        if changed != 1:
+            con.rollback()
+            raise RuntimeError("Could not acquire delivery for sending")
+
+        con.commit()
+
+    try:
+        external_id = vk_send(game["message_text"], random_id)
+    except Exception as exc:
+        with connect_db() as fail_con:
+            fail_con.execute(
+                """
+                UPDATE deliveries
+                SET status = 'failed',
+                    last_error = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                  AND status = 'sending'
+                """,
+                (str(exc), game["delivery_id"])
+            )
+            fail_con.commit()
+        raise
+
+    with connect_db() as success_con:
+        changed = success_con.execute(
+            """
+            UPDATE deliveries
+            SET status = 'sent',
+                external_message_id = ?,
+                sent_at = ?,
+                last_error = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+              AND status = 'sending'
+            """,
+            (
+                str(external_id),
+                datetime.now(MOSCOW).isoformat(),
+                game["delivery_id"],
+            )
+        ).rowcount
+
+        if changed != 1:
+            raise RuntimeError(
+                "VK accepted message but delivery state could not be finalized"
+            )
+
+        success_con.commit()
+
+    print(f"VK send successful. message_id={external_id}")
+
+
 def print_status():
     with connect_db() as con:
         totals = con.execute(
@@ -204,6 +351,7 @@ def main():
 
     sub.add_parser("status")
     sub.add_parser("send-last")
+    sub.add_parser("send-today")
 
     args = parser.parse_args()
 
@@ -211,6 +359,8 @@ def main():
         print_status()
     elif args.command == "send-last":
         send_last()
+    elif args.command == "send-today":
+        send_today()
 
 
 if __name__ == "__main__":
