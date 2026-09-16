@@ -208,6 +208,23 @@ def validate_candidate(candidate, history):
             "Ссылка на источник должна быть обычным HTTP(S) URL без Markdown-разметки"
         )
 
+    message_text = candidate.get("message_text", "")
+
+    markdown_link = re.search(
+        r"\[[^\]]+\]\s*\\?\(",
+        message_text,
+    )
+
+    if markdown_link:
+        errors.append(
+            "Текст для отправки не должен содержать Markdown-ссылки"
+        )
+
+    if source_url not in message_text:
+        errors.append(
+            "Текст для отправки должен содержать чистую ссылку source_url"
+        )
+
     materials = candidate.get("materials")
     if not isinstance(materials, list) or not materials:
         errors.append("materials must be a non-empty list")
@@ -271,6 +288,64 @@ def build_retry_prompt(original_prompt, candidate, errors):
     )
 
 
+def send_ops_notification(level, title, details):
+    notifier = ROOT / "src" / "ops" / "notifier.py"
+
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(notifier),
+                level,
+                title,
+                "--details",
+                details,
+            ],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+        )
+    except Exception as exc:
+        print(
+            f"WARNING: Ops notification failed: {exc}",
+            file=sys.stderr,
+        )
+        return
+
+    if result.returncode != 0:
+        print(
+            "WARNING: Ops notification failed:\n"
+            + result.stderr[-2000:],
+            file=sys.stderr,
+        )
+    else:
+        print(result.stdout.strip())
+
+
+def send_preparation_success_alert(
+    legacy_id,
+    target_date,
+    candidate,
+    attempts,
+):
+    details = (
+        f"ID: {legacy_id}\n"
+        f"Дата: {target_date}\n"
+        f"Название: {candidate['title']}\n"
+        f"Навык: {candidate['skill']}\n"
+        f"Попыток подбора: {attempts}\n"
+        "Статус: ожидает отправки"
+    )
+
+    send_ops_notification(
+        "info",
+        "Игра подготовлена",
+        details,
+    )
+
+
 def send_failure_alert(errors):
     notifier = ROOT / "src" / "ops" / "notifier.py"
 
@@ -306,6 +381,237 @@ def send_failure_alert(errors):
         )
     else:
         print(result.stdout.strip())
+
+
+def validate_target_date(value):
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date().isoformat()
+    except ValueError as exc:
+        raise RuntimeError(
+            "Дата должна быть в формате YYYY-MM-DD"
+        ) from exc
+
+
+def game_for_date(target_date):
+    with connect_db() as con:
+        return con.execute(
+            """
+            SELECT
+                g.id,
+                g.legacy_id,
+                g.game_date,
+                g.title,
+                d.status
+            FROM games g
+            LEFT JOIN deliveries d
+                ON d.game_id = g.id
+                AND d.channel = 'vk'
+            WHERE g.game_date = ?
+            ORDER BY g.id
+            LIMIT 1
+            """,
+            (target_date,),
+        ).fetchone()
+
+
+def next_game_identity(con):
+    max_id = con.execute(
+        "SELECT COALESCE(MAX(id), 0) FROM games"
+    ).fetchone()[0]
+
+    game_id = max_id + 1
+    legacy_id = f"{game_id:03d}"
+
+    return game_id, legacy_id
+
+
+def persist_candidate(candidate, target_date):
+    with connect_db() as con:
+        con.execute("BEGIN IMMEDIATE")
+
+        existing = con.execute(
+            """
+            SELECT legacy_id, title
+            FROM games
+            WHERE game_date = ?
+            ORDER BY id
+            LIMIT 1
+            """,
+            (target_date,),
+        ).fetchone()
+
+        if existing:
+            con.rollback()
+            raise RuntimeError(
+                f"На дату {target_date} уже существует игра "
+                f"{existing['legacy_id']} — {existing['title']}"
+            )
+
+        game_id, legacy_id = next_game_identity(con)
+
+        con.execute(
+            """
+            INSERT INTO games (
+                id,
+                legacy_id,
+                game_date,
+                age_months,
+                title,
+                skill,
+                mechanics,
+                source_name,
+                source_url,
+                message_text
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                game_id,
+                legacy_id,
+                target_date,
+                candidate["age_months"],
+                candidate["title"].strip(),
+                candidate["skill"],
+                candidate["mechanics"].strip(),
+                candidate["source_name"].strip(),
+                candidate["source_url"].strip(),
+                candidate["message_text"].strip(),
+            ),
+        )
+
+        con.execute(
+            """
+            INSERT INTO deliveries (
+                game_id,
+                channel,
+                status,
+                attempts,
+                idempotency_key
+            )
+            VALUES (?, 'vk', 'pending', 0, ?)
+            """,
+            (
+                game_id,
+                f"vk-{target_date}-{legacy_id}",
+            ),
+        )
+
+        con.commit()
+
+    return game_id, legacy_id
+
+
+def select_candidate(history, target_date):
+    original_prompt = build_prompt(history)
+    prompt = original_prompt
+    last_errors = []
+
+    for attempt in range(1, 3):
+        print()
+        print(f"=== ПОПЫТКА {attempt}/2 ===")
+
+        candidate = run_codex(prompt)
+        errors = validate_candidate(candidate, history)
+
+        print()
+        print("=== КАНДИДАТ ===")
+        print(json.dumps(candidate, ensure_ascii=False, indent=2))
+
+        print()
+        print("=== ПРОВЕРКА ===")
+
+        if not errors:
+            print("PASS")
+            return candidate, attempt
+
+        for error in errors:
+            print(f"FAIL: {error}")
+
+        last_errors = errors
+
+        if attempt == 1:
+            print()
+            print(
+                "Кандидат отклонён. "
+                "Выполняется одна корректирующая попытка."
+            )
+            prompt = build_retry_prompt(
+                original_prompt,
+                candidate,
+                errors,
+            )
+
+    send_failure_alert(last_errors)
+
+    raise RuntimeError(
+        "Подготовка игры не удалась после 2 попыток"
+    )
+
+
+def prepare_run(target_date, dry_run=False):
+    target_date = validate_target_date(target_date)
+
+    # Проверяем ДО Codex — повторный запуск ничего не тратит.
+    existing = game_for_date(target_date)
+
+    if existing:
+        print("=== ИГРА УЖЕ ПОДГОТОВЛЕНА ===")
+        print(f"Дата:      {existing['game_date']}")
+        print(f"ID:        {existing['legacy_id']}")
+        print(f"Название:  {existing['title']}")
+        print(f"Delivery:  {existing['status']}")
+        print()
+        print("Codex: НЕ ЗАПУСКАЛСЯ")
+        print("SQLite: НЕ ИЗМЕНЁН")
+        print("VK: ОТПРАВКА НЕ ВЫПОЛНЯЛАСЬ")
+        return
+
+    history = load_history()
+
+    print(f"Исторических игр: {len(history)}")
+    print(f"Целевая дата: {target_date}")
+
+    candidate, attempts = select_candidate(
+        history,
+        target_date,
+    )
+
+    print()
+    print("=== ПЛАН ЗАПИСИ ===")
+    print(f"Дата:      {target_date}")
+    print(f"Название:  {candidate['title']}")
+    print(f"Возраст:   {candidate['age_months']} мес.")
+    print(f"Навык:     {candidate['skill']}")
+    print("Delivery:  vk / pending")
+
+    if dry_run:
+        print()
+        print("=== DRY RUN ===")
+        print(f"Попыток модели: {attempts}")
+        print("Production SQLite: НЕ ИЗМЕНЁН")
+        print("VK: ОТПРАВКА НЕ ВЫПОЛНЯЛАСЬ")
+        return
+
+    game_id, legacy_id = persist_candidate(
+        candidate,
+        target_date,
+    )
+
+    print()
+    print("=== ИГРА ПОДГОТОВЛЕНА ===")
+    print(f"ID:        {legacy_id}")
+    print(f"DB ID:     {game_id}")
+    print(f"Дата:      {target_date}")
+    print(f"Название:  {candidate['title']}")
+    print("Delivery:  pending")
+    print("VK: ОТПРАВКА НЕ ВЫПОЛНЯЛАСЬ")
+
+    send_preparation_success_alert(
+        legacy_id,
+        target_date,
+        candidate,
+        attempts,
+    )
 
 
 def shadow_run():
@@ -378,10 +684,27 @@ def main():
 
     sub.add_parser("shadow")
 
+    prepare = sub.add_parser("prepare")
+    prepare.add_argument(
+        "--date",
+        default=datetime.now(MOSCOW).date().isoformat(),
+        help="Целевая дата YYYY-MM-DD",
+    )
+    prepare.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Подобрать и проверить игру без записи в SQLite",
+    )
+
     args = parser.parse_args()
 
     if args.command == "shadow":
         shadow_run()
+    elif args.command == "prepare":
+        prepare_run(
+            target_date=args.date,
+            dry_run=args.dry_run,
+        )
 
 
 if __name__ == "__main__":

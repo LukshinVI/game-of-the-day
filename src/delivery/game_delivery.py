@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import subprocess
 import sys
 import urllib.parse
 import urllib.request
@@ -78,6 +79,77 @@ def today_deliveries(con):
         """,
         (today,)
     ).fetchall()
+
+
+def send_ops_notification(level, title, details):
+    project_root = Path(__file__).resolve().parents[2]
+    notifier = project_root / "src" / "ops" / "notifier.py"
+
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(notifier),
+                level,
+                title,
+                "--details",
+                details,
+            ],
+            cwd=project_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=30,
+        )
+    except Exception as exc:
+        print(
+            f"WARNING: Ops notification failed: {exc}",
+            file=sys.stderr,
+        )
+        return
+
+    if result.returncode != 0:
+        print(
+            "WARNING: Ops notification failed:\n"
+            + result.stderr[-2000:],
+            file=sys.stderr,
+        )
+    else:
+        print(result.stdout.strip())
+
+
+def send_delivery_success_alert(game, external_id):
+    details = (
+        f"ID: {game['legacy_id']}\n"
+        f"Дата: {game['game_date']}\n"
+        f"Название: {game['title']}\n"
+        "Канал: VK\n"
+        f"VK message_id: {external_id}\n"
+        f"Попыток отправки: {game['attempts'] + 1}"
+    )
+
+    send_ops_notification(
+        "info",
+        "Игра отправлена",
+        details,
+    )
+
+
+def send_delivery_failure_alert(game, error):
+    details = (
+        f"ID: {game['legacy_id']}\n"
+        f"Дата: {game['game_date']}\n"
+        f"Название: {game['title']}\n"
+        "Канал: VK\n"
+        f"Попыток отправки: {game['attempts'] + 1}\n"
+        f"Ошибка: {error}"
+    )
+
+    send_ops_notification(
+        "critical",
+        "Игра не отправлена",
+        details,
+    )
 
 
 def send_today():
@@ -171,6 +243,11 @@ def send_today():
                 (str(exc), game["delivery_id"])
             )
             fail_con.commit()
+
+        send_delivery_failure_alert(
+            game,
+            str(exc),
+        )
         raise
 
     with connect_db() as success_con:
@@ -200,6 +277,11 @@ def send_today():
         success_con.commit()
 
     print(f"VK send successful. message_id={external_id}")
+
+    send_delivery_success_alert(
+        game,
+        external_id,
+    )
 
 
 def print_status():
