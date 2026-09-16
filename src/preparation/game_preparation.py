@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import sqlite3
 import subprocess
 import sys
@@ -90,12 +91,12 @@ def run_codex(prompt):
 
     cmd = [
         "codex",
-        "exec",
         "--search",
         "--sandbox",
         "read-only",
         "--ask-for-approval",
         "never",
+        "exec",
         "--ephemeral",
         "--output-schema",
         str(SCHEMA_PATH),
@@ -193,8 +194,19 @@ def validate_candidate(candidate, history):
     source_url = candidate.get("source_url", "")
     parsed = urlparse(source_url)
 
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        errors.append("source_url is not a valid HTTP(S) URL")
+    url_allowed = re.fullmatch(
+        r"https?://[A-Za-z0-9._~:/?#@!$&'*+,;=%-]+",
+        source_url,
+    )
+
+    if (
+        not url_allowed
+        or parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+    ):
+        errors.append(
+            "Ссылка на источник должна быть обычным HTTP(S) URL без Markdown-разметки"
+        )
 
     materials = candidate.get("materials")
     if not isinstance(materials, list) or not materials:
@@ -243,40 +255,121 @@ def save_shadow(candidate):
     return archive_path
 
 
+def build_retry_prompt(original_prompt, candidate, errors):
+    feedback = {
+        "rejected_candidate": candidate,
+        "deterministic_validation_errors": errors,
+    }
+
+    return (
+        original_prompt
+        + "\n\nIMPORTANT: A previous candidate was rejected.\n"
+        + "Correct every validation error below. "
+          "Do not repeat the rejected result. "
+          "Re-check all original requirements before returning a new candidate.\n\n"
+        + json.dumps(feedback, ensure_ascii=False, indent=2)
+    )
+
+
+def send_failure_alert(errors):
+    notifier = ROOT / "src" / "ops" / "notifier.py"
+
+    details = (
+        "Подготовка игры завершилась ошибкой после 2 попыток.\n"
+        "Игра не была записана в production SQLite.\n"
+        "Отправка в VK не выполнялась.\n\n"
+        "Ошибки последней проверки:\n- "
+        + "\n- ".join(errors)
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(notifier),
+            "critical",
+            "Подготовка игры не удалась",
+            "--details",
+            details,
+        ],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=30,
+    )
+
+    if result.returncode != 0:
+        print(
+            "WARNING: Ops notification also failed:\n"
+            + result.stderr[-2000:],
+            file=sys.stderr,
+        )
+    else:
+        print(result.stdout.strip())
+
+
 def shadow_run():
     history = load_history()
 
     print(f"Loaded {len(history)} historical games.")
 
-    prompt = build_prompt(history)
-    candidate = run_codex(prompt)
+    original_prompt = build_prompt(history)
+    prompt = original_prompt
+    last_errors = []
 
-    errors = validate_candidate(candidate, history)
+    for attempt in range(1, 3):
+        print()
+        print(f"=== ATTEMPT {attempt}/2 ===")
 
-    print()
-    print("=== CANDIDATE ===")
-    print(json.dumps(candidate, ensure_ascii=False, indent=2))
+        candidate = run_codex(prompt)
+        errors = validate_candidate(candidate, history)
 
-    print()
-    print("=== VALIDATION ===")
+        print()
+        print("=== CANDIDATE ===")
+        print(json.dumps(candidate, ensure_ascii=False, indent=2))
 
-    if errors:
+        print()
+        print("=== VALIDATION ===")
+
+        if not errors:
+            print("PASS")
+
+            path = save_shadow(candidate)
+
+            print()
+            print("=== SHADOW RESULT ===")
+            print(f"Attempts: {attempt}")
+            print(f"Saved: {path}")
+            print("Production database: NOT MODIFIED")
+            print("VK delivery: NOT ATTEMPTED")
+            return
+
         for error in errors:
             print(f"FAIL: {error}")
 
-        raise RuntimeError(
-            f"Candidate rejected by {len(errors)} deterministic gate(s)"
-        )
+        last_errors = errors
 
-    print("PASS")
-
-    path = save_shadow(candidate)
+        if attempt == 1:
+            print()
+            print("Candidate rejected. Preparing one corrective retry.")
+            prompt = build_retry_prompt(
+                original_prompt,
+                candidate,
+                errors,
+            )
 
     print()
-    print("=== SHADOW RESULT ===")
-    print(f"Saved: {path}")
+    print("=== PREPARATION FAILED ===")
+    print("Attempts exhausted: 2/2")
     print("Production database: NOT MODIFIED")
     print("VK delivery: NOT ATTEMPTED")
+
+    send_failure_alert(last_errors)
+
+    raise RuntimeError(
+        "Подготовка игры не удалась после 2 попыток"
+    )
+
 
 
 def main():
