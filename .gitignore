@@ -4,17 +4,57 @@
 # Environment variables and secrets
 .env
 .env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.credentials
+credentials.json
+secrets.json
 
-# Logs
+# SSH / tunnel / deployment credentials
+.ssh/
+.cloudflared/
+*.tunnel.json
+cert.pem
+
+# Logs and runtime output
 *.log
-# Node.js
-node_modules/
+logs/
+*.pid
 
 # Node.js
 node_modules/
 
 # Wrangler local state
 .wrangler/
+.dev.vars
+.dev.vars.*
 
-# Production data
-data/
+# Python local state
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Production/local data
+/data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.bak
+*.backup
+
+# User exports and local imports
+*.csv
+*.tsv
+*.xlsx
+*.ods
+
+# Temporary files
+/tmp/
+*.tmp
