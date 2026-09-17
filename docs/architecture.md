@@ -1,281 +1,237 @@
-# Архитектура «Игра дня»
+# Architecture — Game of the Day
 
-Этот документ — source of truth по архитектуре проекта. README содержит обзор, GitHub Issues — backlog и execution state.
+This document is the architectural source of truth for the project. The README provides the public overview; GitHub Issues track implementation and migration state.
 
-> Общий VPS cutover ещё не завершён: delivery остаётся на Google до #32. Feedback-контур находится в контролируемом production cutover #31: Worker подготовлен к VPS API, финальный gate — реальная ОС из VK.
+> The system is in a controlled production migration. Delivery and persistence boundaries are being moved independently so each step can be verified and rolled back before the final source-of-truth cutover.
 
-## 0. Architecture overview
+## 1. Architecture overview
 
 ```mermaid
 flowchart LR
-    subgraph LEGACY[Current delivery — legacy until #32]
-        AUTO[Daily automation] --> GS[Google Sheets]
-        GS --> GAS[Google Apps Script]
-        GAS --> VK[VK]
+    subgraph LEGACY[Legacy delivery until final cutover]
+        AUTO[Daily automation] --> STORE[Legacy data store]
+        STORE --> SCRIPT[Legacy delivery runtime]
+        SCRIPT --> CH[Messaging channel]
     end
 
     subgraph CF[Cloudflare feedback contour]
-        VK -->|message_new| W[Worker]
-        W --> VAL{Validation + TEST/PROD routing}
+        CH -->|event| W[Worker]
+        W --> VAL{Validation + environment routing}
         VAL --> Q[Queue]
-        Q --> RAW[VPS save_raw]
-        RAW --> FA[Feedback Agent v2]
-        FA --> AI[Workers AI / Gemma]
+        Q --> RAW[Persist raw feedback]
+        RAW --> FA[Feedback Agent]
+        FA --> AI[Workers AI]
         AI --> FA
-        FA --> AN[VPS save_analysis]
+        FA --> AN[Persist analysis]
     end
 
-    subgraph VPS[VPS runtime]
-        NGINX[nginx] --> API[Feedback API on loopback]
+    subgraph APP[Application runtime]
+        RP[Reverse proxy] --> API[Feedback API]
         API --> DB[(SQLite)]
-        DELIVERY[VPS delivery service] --> DB
-        TIMER[systemd timer] --> DELIVERY
+        DELIVERY[Delivery service] --> DB
+        TIMER[Scheduler] --> DELIVERY
     end
 
-    RAW --> NGINX
-    AN --> NGINX
-    DELIVERY -. after #32 .-> VK
+    RAW --> RP
+    AN --> RP
+    DELIVERY -. after final cutover .-> CH
 
-    subgraph FUTURE[Prepared future ingress]
-        EDGE[Cloudflare Edge] --> TUNNEL[Cloudflare Tunnel]
-        TUNNEL -. after own hostname .-> NGINX
+    subgraph EDGE[Prepared secure ingress]
+        CFEDGE[Cloudflare Edge] --> TUNNEL[Cloudflare Tunnel]
+        TUNNEL -. future public hostname .-> RP
     end
 ```
 
-Текущая граница миграции:
+Current migration boundary:
 
 ```text
-delivery: Google → Apps Script → VK                  [production до #32]
-feedback: VK → Cloudflare → VPS API → SQLite         [cutover #31]
-future ingress: Cloudflare Tunnel                     [prepared, not routed]
+delivery: legacy runtime → messaging channel       [production until final cutover]
+feedback: channel → Cloudflare → Feedback API      [controlled migration]
+state:    legacy store → SQLite                    [becoming source of truth]
+ingress:  Cloudflare Tunnel                        [prepared separately]
 ```
 
-## 1. Текущее production-состояние
+Concrete production hostnames, origin addresses, runtime usernames, filesystem paths, account identifiers, recipient identities, and internal ports are intentionally excluded from the public repository.
 
-### Delivery
+## 2. Application runtime
+
+The application host contains the durable runtime being promoted to production ownership.
+
+Verified migration capabilities include:
+
+- historical activity, delivery, and feedback data imported into SQLite;
+- database integrity checks;
+- authenticated Feedback API running behind a reverse proxy;
+- a health endpoint and dedicated raw-feedback / analysis persistence contracts;
+- rejection of unauthenticated persistence requests;
+- isolated contract tests for create, duplicate/retry, analysis persistence, and processed-state semantics;
+- HTTP end-to-end tests against an isolated test database;
+- Cloudflare Worker support for the application API contract;
+- a delivery CLI/state machine that is being promoted independently from the legacy scheduler.
+
+SQLite is not directly exposed to the network.
+
+## 3. Secure ingress
+
+The target ingress boundary is:
 
 ```text
-Daily automation
-→ Google Sheets
-→ Google Apps Script
-→ VK
-```
-
-Этот путь остаётся production до контролируемого cutover #32. VPS delivery не должен параллельно отправлять ту же игру.
-
-### Feedback — текущий cutover #31
-
-```mermaid
-flowchart TD
-    VK[VK message_new] --> W[Cloudflare Worker]
-    W --> V{Validation + TEST/PROD routing}
-    V --> Q[Cloudflare Queue]
-    Q --> RAW[VPS Feedback API: POST /v1/feedback/raw]
-    RAW --> DB[(SQLite)]
-    RAW --> F[Feedback Agent v2]
-    F --> AI[Cloudflare Workers AI / Gemma]
-    AI --> F
-    F --> RES[VPS Feedback API: POST /v1/feedback/analysis]
-    RES --> DB
-```
-
-Cloudflare Queue остаётся durable boundary. Raw feedback сохраняется до AI. `external_event_id + channel` — idempotency identity. Повтор события после появления более новой игры остаётся связан с исходной игрой. Финальный production acceptance #31 — реальная ОС от PROD-пользователя VK с `processed=1` и `analysis_json` в SQLite.
-
-## 2. VPS runtime
-
-На VPS развёрнут application runtime; SQLite хранится локально вне публичного ingress.
-
-Подтверждено на migration contour:
-
-- исторические games/deliveries/feedback импортированы;
-- production DB integrity check проходит;
-- Feedback API работает как systemd service на loopback interface;
-- API имеет `/health`, authenticated `POST /v1/feedback/raw` и `POST /v1/feedback/analysis`;
-- nginx работает как reverse proxy и публикует только необходимые API paths; root возвращает 404;
-- запрос к API без bearer auth отклоняется;
-- isolated contract tests подтверждают create/retry/save-analysis/processed semantics;
-- HTTP E2E через nginx подтверждён на отдельной test DB без мутации production;
-- Cloudflare Worker использует новый VPS API contract вместо Apps Script runtime contract;
-- delivery CLI существует, но ещё не является единственным production scheduler.
-
-## 3. Public ingress и Cloudflare Tunnel
-
-Текущий рабочий ingress:
-
-```text
-Internet
-→ temporary VPS provider hostname
-→ nginx
-→ loopback Feedback API
-```
-
-Текущий hostname выдан VPS-провайдером и не находится под DNS-управлением проекта. В публичной документации конкретные hostname/IP/порты origin намеренно не фиксируются.
-
-Параллельно подготовлен Cloudflare Tunnel:
-
-```text
-Cloudflare Edge
-⇄ project VPS tunnel
-⇄ cloudflared connector on VPS
-```
-
-Состояние: connector установлен как persistent systemd service, tunnel healthy, QUIC/TCP connectivity pre-checks green. Published public hostname пока намеренно не настроен: собственный домен отложен. Tunnel не является текущим HTTP route и не заменяет nginx.
-
-Будущий ingress после появления собственного домена:
-
-```text
-api.<project-domain>
+public API hostname
 → Cloudflare Edge
 → Cloudflare Tunnel
-→ nginx
+→ reverse proxy
 → Feedback API
 ```
 
-После подтверждённого tunnel cutover прямой публичный ingress на origin можно закрыть. Для будущего второго VPS tunnel/edge layer является подготовленной точкой расширения, но geo-HA не входит в текущий MVP migration.
+The tunnel connector is treated as transport infrastructure, not as the application router or persistence layer. Direct origin exposure can be removed only after the tunnel route has been verified in production.
 
-## 4. Целевая production-схема после #32
+The repository does not publish environment-specific tunnel identifiers or origin details.
+
+## 4. Target production architecture
 
 ```mermaid
 flowchart TD
-    P[Game preparation / product workflow] --> DB[(VPS SQLite)]
-    DB --> D[VPS delivery service + systemd timer]
-    D --> VK[VK]
-    VK -->|message_new| W[Cloudflare Worker]
-    W --> V{Validation + TEST/PROD routing}
+    P[Game preparation / product workflow] --> DB[(SQLite)]
+    DB --> D[Delivery service + scheduler]
+    D --> CH[Messaging channel]
+    CH -->|feedback event| W[Cloudflare Worker]
+    W --> V{Validation + environment routing}
     V --> Q[Cloudflare Queue]
-    Q --> RAW[VPS Feedback API: save_raw]
+    Q --> RAW[Feedback API: save raw]
     RAW --> DB
-    RAW --> F[Feedback Agent v2]
-    F --> AI[Cloudflare Workers AI / Gemma]
+    RAW --> F[Feedback Agent]
+    F --> AI[Cloudflare Workers AI]
     AI --> F
-    F --> RES[VPS Feedback API: save_analysis]
+    F --> RES[Feedback API: save analysis]
     RES --> DB
 ```
 
-Ответственность после cutover:
-
-| Компонент | Ответственность |
+| Component | Responsibility |
 |---|---|
-| VPS / SQLite | durable product state, games, delivery state, feedback, analysis |
-| VPS delivery service | выбор сегодняшней игры, delivery state machine, VK send |
-| systemd timer | scheduling/retry attempts |
-| nginx | локальный HTTP ingress/reverse proxy к VPS API |
-| Cloudflare Tunnel | будущий защищённый origin transport после собственного hostname |
-| VK | пользовательский delivery/feedback channel |
-| Cloudflare Worker | callback ingress, validation, routing, Queue producer/consumer |
-| Cloudflare Queue | durable feedback processing boundary |
-| Workers AI / Gemma | semantic feedback classification |
-| VPS Feedback API | authenticated persistence boundary для Cloudflare |
-| VPS Agent | infrastructure/runtime monitoring and diagnostics |
-| Google | legacy/rollback only после cutover, затем removal |
+| SQLite | durable product state, activities, delivery state, feedback, analysis |
+| Delivery service | select the current activity, own delivery state transitions, perform channel send |
+| Scheduler | trigger safe delivery attempts |
+| Reverse proxy | constrained HTTP ingress to the application API |
+| Cloudflare Tunnel | secure origin transport when public routing is enabled |
+| Messaging channel | user-facing delivery and feedback transport |
+| Cloudflare Worker | callback ingress, validation, environment routing, queue producer/consumer |
+| Cloudflare Queue | durable boundary for feedback processing |
+| Workers AI | semantic feedback classification |
+| Feedback API | authenticated persistence boundary |
+| Monitoring agent | runtime health collection, diagnosis, and alerting |
+| Legacy runtime | rollback-only after cutover, then retirement |
 
-## 5. Migration tasks и фактический порядок
+## 5. Migration strategy
 
-Активный EPIC: #27.
+The migration is intentionally decomposed into independently verifiable boundaries:
 
 ```text
-#28 VPS delivery: send-today + recovery + idempotency
+production-safe delivery state machine
         ↓
-#29 VPS delivery scheduler / systemd
+reproducible scheduler
 
-#30 VPS Feedback API ── implemented + contract/HTTP E2E green
+Feedback API + persistence contract
         ↓
-#31 Cloudflare → VPS feedback persistence ── production cutover in progress
+Cloudflare downstream switch
         ↓
-real VK feedback acceptance
+real feedback acceptance
 
-#28 + #29 + #30 + #31 + #33
+all migration gates + observability
         ↓
-#32 production cutover / disable Google runtime
+final source-of-truth / scheduler cutover
         ↓
 stability period
         ↓
-archive/remove legacy Google code
+legacy runtime retirement
 ```
 
-#32 остаётся единственной точкой общего cutover delivery/source-of-truth. Feedback можно проверить раньше как отдельный controlled cutover #31.
+The final cutover is the only point at which the new scheduler becomes the sole production delivery owner. Structural refactoring is postponed until migration stability is established.
 
-## 6. Delivery invariants после миграции
+## 6. Delivery invariants
 
-- выбирается только игра за текущую дату в Europe/Moscow;
-- пустой message не отправляется;
-- sent delivery повторно не отправляется;
-- side effect имеет стабильную idempotency identity;
-- состояния `pending / sending / sent / failed` явные;
-- stale `sending` recoverable;
-- retryable `failed` recoverable;
-- `sent_at` фиксируется только после подтверждённого success;
-- отсутствие сегодняшней игры — штатное состояние, а не corruption;
-- scheduler не должен создавать duplicate delivery.
+- only the activity for the intended local date is eligible for scheduled delivery;
+- an empty message is never sent;
+- a confirmed `sent` delivery is not sent again;
+- external side effects have stable idempotency identities;
+- delivery states are explicit: `pending`, `sending`, `sent`, `failed`;
+- stale `sending` states are recoverable;
+- retryable failures are recoverable;
+- `sent_at` is recorded only after confirmed success;
+- absence of an activity for the current date is a valid no-op, not data corruption;
+- repeated scheduler executions must not create uncontrolled duplicate delivery.
 
 ## 7. Feedback invariants
 
 ```text
-VK callback
+channel callback
 → validate
-→ Queue
-→ VPS save_raw
-→ AI
-→ VPS save_analysis
+→ durable queue
+→ persist raw feedback
+→ semantic processing
+→ persist validated analysis
 ```
 
-- raw feedback durable до AI;
-- callback/event id — idempotency identity;
-- duplicate event не создаёт второй feedback;
-- retry сначала разрешает существующий event, а не выбирает новую target game;
-- analysis связывается с тем же feedback record по event/channel;
-- AI failure оставляет feedback received/unprocessed;
-- Queue retries остаются bounded;
-- TEST/PROD isolation сохраняется;
-- semantic contract Feedback Agent v2 не меняется в рамках storage migration.
+- raw feedback becomes durable before AI processing;
+- an external event identity is used for idempotency;
+- duplicate events do not create duplicate feedback records;
+- retries resolve the existing event/record rather than retargeting a newer activity;
+- analysis is linked to the same durable feedback record;
+- AI failure leaves feedback recoverable as received/unprocessed;
+- queue retries are bounded;
+- test and production environments remain isolated;
+- storage migration must not silently change the semantic feedback contract.
 
-## 8. Граница deterministic / AI
+## 8. Deterministic / AI boundary
 
-### Deterministic code
+### Deterministic application code
 
-- routing/security validation;
-- даты/delivery window;
-- idempotency/retry/recovery;
+Owns:
+
+- security and routing validation;
+- dates and delivery windows;
+- idempotency, retry, and recovery;
 - workflow state;
-- persistence/linking;
-- segmentation/provenance;
-- schema/business validation;
-- policy/decision;
-- внешние side effects.
+- persistence and record linking;
+- segmentation and provenance;
+- schema and business validation;
+- policy decisions;
+- external side effects.
 
 ### AI / LLM
 
-- semantic classification свободного feedback;
-- ambiguity/reaction interpretation;
-- semantic target resolution внутри разрешённого candidate space;
-- будущая персонализация/selection только там, где rules недостаточны.
+May perform:
 
-LLM не является памятью, workflow engine или source of truth.
+- semantic classification of free-form feedback;
+- interpretation of ambiguous reactions;
+- constrained semantic target resolution;
+- future recommendation steps where deterministic ranking is insufficient.
 
-## 9. Feedback Agent v2
+The LLM is not the application's memory, workflow engine, or source of truth.
+
+## 9. Feedback Agent contract
 
 ```text
-feedback.text
+feedback text
 → deterministic segmentation + provenance
 → AI classification of existing segments
 → deterministic validation
 → deterministic policy
-→ guarded target linking where applicable
+→ guarded target linking
 ```
 
-Инварианты:
+Key invariants:
 
-- LLM не создаёт evidence spans;
-- metadata — context, не evidence;
-- неподтверждённый target остаётся `UNSPECIFIED`;
-- extraction не создаёт durable preference;
-- clarification/product decisions принадлежат application layer.
+- the model does not create evidence spans;
+- metadata is context, not user evidence;
+- unresolved targets remain `UNSPECIFIED` rather than guessed;
+- semantic extraction does not directly create durable preferences;
+- clarification and product decisions belong to the application layer.
 
-Production model: `@cf/google/gemma-4-26b-a4b-it`.
+The current production model is `@cf/google/gemma-4-26b-a4b-it`.
 
-## 10. Multi-user / multi-channel boundary
+## 10. Multi-user and multi-channel boundary
 
-#20 остаётся cross-cutting constraint, но не блокирует #27.
+The current MVP does not require a full multi-tenant rewrite, but new code should avoid introducing irreversible single-user or single-channel assumptions.
 
 ```text
 context = {
@@ -288,56 +244,55 @@ context = {
 }
 ```
 
-Channel — transport, не product identity. Новая SQLite/domain model не должна закреплять новые VK-only/single-user assumptions, но migration не должна разрастаться в преждевременный multi-tenant rewrite.
+The channel is transport, not product identity. Child-specific state belongs to the child/product context and should remain reusable across delivery channels.
 
-## 11. Engineering route после migration
+## 11. Observability
 
-#26 architecture simplification приостановлен до завершения #27.
+The project favors lightweight, explicit operational observability over a large monitoring stack at its current scale.
+
+The intended chain is:
 
 ```text
-#27 Google → VPS/SQLite migration
-  ├─ #28 delivery state machine
-  ├─ #29 scheduler
-  ├─ #30 Feedback API
-  ├─ #31 Cloudflare switch
-  ├─ #33 observability
-  └─ #32 cutover
-        ↓
-#26 architecture simplification
-        ↓
-#14 request feedback UX
-→ #7 clarification workflow
-→ #8 personalization
+application events
+→ structured service logs
+→ deterministic health checks
+→ monitoring agent
+→ diagnosis on state change
+→ alert / recovery notification
 ```
 
-Параллельно: #9 AI quota/recovery/graceful degradation.
+Health checks cover database integrity, abnormal delivery states, scheduler/service health, feedback persistence state, and expected delivery freshness. Healthy polling should remain inexpensive and should not require an LLM call.
 
-Следующий product layer: #22 selectable development focus → #23 child development track → #24 goals/progress. Telegram #21 остаётся отдельным channel expansion.
+Logs must not contain credentials, secret headers, infrastructure secrets, or unnecessary raw user feedback.
 
-## 12. Zero-cost policy
+## 12. Security boundaries
 
-Hard requirement: **0 ₽ без отдельного явного решения пользователя**.
+- secrets are never committed to Git;
+- runtime credentials remain outside the repository;
+- callback and API authentication material is runtime configuration;
+- ingress callbacks are validated before business processing;
+- persistence endpoints require authentication;
+- the application API is isolated behind the ingress layer;
+- only required public paths are exposed;
+- test and production state are isolated;
+- SQLite is never directly exposed;
+- production infrastructure identifiers are not part of public documentation;
+- monitoring uses a diagnostic boundary separate from application ownership where practical.
 
-Cloudflare Workers, Queues и Workers AI используются только в бесплатном контуре. Собственный домен сейчас не является requirement и не покупается только ради migration. Никакой автоматической платной эскалации при исчерпании free quota.
+See [`../SECURITY.md`](../SECURITY.md) for repository security policy.
 
-## 13. Security boundaries
+## 13. Failure model and rollback
 
-- secrets не хранятся в Git;
-- VPS credentials/runtime secrets находятся вне repository;
-- Cloudflare callback/shared secrets — runtime secrets;
-- Worker валидирует callback до business processing;
-- VPS Feedback API аутентифицирует Cloudflare requests Bearer secret;
-- Feedback API слушает только loopback; наружу публикуется через nginx;
-- nginx публикует только необходимые health/API paths, root = 404;
-- TEST/PROD изолированы;
-- operational logs не содержат secrets/полный feedback без необходимости;
-- SQLite не публикуется наружу напрямую;
-- конкретные production hostname, origin IP и внутренние runtime paths/ports не документируются в публичном repository;
-- Cloudflare Tunnel подготовлен, но до собственного hostname не считается production ingress;
-- VPS Agent имеет отдельную read-only diagnostic identity и не является application runtime identity.
+Migration steps are designed so failure does not require destructive rollback.
 
-## 14. Rollback policy
+Before final cutover, the legacy delivery runtime remains available. During cutover it is disabled rather than immediately deleted. Data and code are retained for a stability window.
 
-До #32 Google delivery остаётся production path. Во время общего cutover старый Google runtime не удаляется: triggers/endpoints отключаются, но код и данные сохраняются на период проверки.
+Feedback downstream changes have their own rollback boundary: if real end-to-end persistence fails, routing can return to the previous persistence path while the application API is diagnosed.
 
-Для #31 rollback — вернуть Worker downstream на Apps Script Feedback API, если реальный VK → VPS feedback acceptance не проходит. Physical removal/archive Google выполняется только после стабильной работы VPS contour.
+Physical removal of legacy runtime code happens only after stable production operation on the new contour.
+
+## 14. Cost boundary
+
+The project currently follows a strict no-unplanned-spend policy. Free-tier services and quotas are acceptable; automatic paid escalation is not.
+
+Quota exhaustion or model unavailability must degrade into a recoverable application state rather than silently enabling paid consumption or breaking daily delivery.
