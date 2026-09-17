@@ -37,7 +37,7 @@ logs/
 .dev.vars
 .dev.vars.*
 
-# Test / coverage output
+# Test and coverage output
 coverage/
 .nyc_output/
 .tmp/
