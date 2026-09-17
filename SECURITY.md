@@ -2,28 +2,46 @@
 
 ## Reporting a vulnerability
 
-Please do not disclose security vulnerabilities, credentials, tokens, private infrastructure identifiers, or personal data in a public issue.
+Please do not publish credentials, tokens, private infrastructure details, personal data, or exploitable security findings in a public issue.
 
-If you discover exposed sensitive information, contact the repository owner privately through GitHub before publishing details.
+For a suspected vulnerability, use a private reporting channel provided by the repository host when available. Include enough information to reproduce and assess the issue without including unrelated personal or production data.
 
-## Repository hygiene
+## Repository security rules
 
-This repository is intended to contain source code, architecture documentation, tests, and sanitized examples only.
+The repository must not contain:
 
-The following must never be committed:
+- API tokens, passwords, private keys, session credentials, or secret-derived values;
+- production hostnames, origin IP addresses, tunnel/account identifiers, or runtime usernames when they are not part of a deliberate public interface;
+- production database files, exports, backups, or raw user feedback;
+- recipient identities or private relationship details;
+- environment-specific internal filesystem paths or internal ports unless intentionally documented as part of a public contract;
+- screenshots or logs containing any of the above.
 
-- API keys, access tokens, passwords, private keys, cookies, or authorization headers;
-- `.env` files or local secret stores;
-- production databases, exports, backups, logs, or raw user feedback;
-- real recipient/user/channel identifiers;
-- private IP addresses, production origin addresses, provider hostnames, tunnel/connector identifiers, or machine usernames;
-- personal names, email addresses, or other identifying user data unless intentionally public;
-- credentials or identifiers copied from terminal output, screenshots, support messages, or deployment logs.
+Public documentation should use role-based terms such as `recipient`, `caregiver`, `child profile`, `application host`, and `production origin`, together with placeholders such as `api.<project-domain>`.
 
-Documentation and examples should use placeholders such as `<VPS_HOST>`, `<API_PORT>`, `<RECIPIENT_ID>`, `<TUNNEL_ID>`, and `<SECRET>`.
+## Secret handling
 
-Secrets used by runtime components must be supplied through the deployment platform or environment and kept outside Git.
+Runtime secrets belong in the deployment environment or the relevant platform secret store. Example environment files must contain placeholders only.
 
-## Before making the repository public
+A secret that is accidentally committed must be considered compromised even if the commit is later removed. Rotate/revoke it first, then remove the exposed material from the repository and history as appropriate.
 
-Public release requires a review of both the current tree and Git history. Removing a secret from the latest revision is not sufficient if it exists in an earlier commit. Any credential that has ever been committed must be treated as compromised and rotated, even after history is rewritten.
+## Application security boundaries
+
+The architecture is designed around the following principles:
+
+- validate external callbacks before business processing;
+- authenticate persistence endpoints;
+- expose only required public routes;
+- keep durable storage off the public network;
+- isolate test and production state;
+- validate structured AI output before it can affect durable state;
+- keep workflow ownership and external side effects in deterministic application code;
+- avoid logging credentials, secret headers, or unnecessary raw user content.
+
+## AI-specific safety boundary
+
+LLM output is treated as untrusted structured input. Models do not own authentication, authorization, persistence, workflow state, idempotency, retries, or external side effects. Application code validates model output before it is accepted.
+
+## Supported versions
+
+The actively maintained default branch is the supported development line. Historical revisions and experimental branches may not receive security fixes.
