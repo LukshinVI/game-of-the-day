@@ -26,7 +26,7 @@ flowchart LR
     end
 
     subgraph VPS[VPS runtime]
-        NGINX[nginx :80] --> API[Feedback API 127.0.0.1:8787]
+        NGINX[nginx] --> API[Feedback API on loopback]
         API --> DB[(SQLite)]
         DELIVERY[VPS delivery service] --> DB
         TIMER[systemd timer] --> DELIVERY
@@ -83,15 +83,15 @@ Cloudflare Queue остаётся durable boundary. Raw feedback сохраня�
 
 ## 2. VPS runtime
 
-На VPS развёрнут `/srv/game-of-the-day`, SQLite находится в `data/game-of-the-day.db`.
+На VPS развёрнут application runtime; SQLite хранится локально вне публичного ingress.
 
 Подтверждено на migration contour:
 
 - исторические games/deliveries/feedback импортированы;
 - production DB integrity check проходит;
-- Feedback API работает как systemd service на `127.0.0.1:8787`;
+- Feedback API работает как systemd service на loopback interface;
 - API имеет `/health`, authenticated `POST /v1/feedback/raw` и `POST /v1/feedback/analysis`;
-- nginx работает как reverse proxy на `:80`, `/health` и `/v1/feedback/*`; root возвращает 404;
+- nginx работает как reverse proxy и публикует только необходимые API paths; root возвращает 404;
 - запрос к API без bearer auth отклоняется;
 - isolated contract tests подтверждают create/retry/save-analysis/processed semantics;
 - HTTP E2E через nginx подтверждён на отдельной test DB без мутации production;
@@ -104,18 +104,18 @@ Cloudflare Queue остаётся durable boundary. Raw feedback сохраня�
 
 ```text
 Internet
-→ vps.example.net / 203.0.113.10:80
+→ temporary VPS provider hostname
 → nginx
-→ 127.0.0.1:8787 Feedback API
+→ loopback Feedback API
 ```
 
-`vps.example.net` — hostname VPS-провайдера; authoritative DNS зоны `example.net` не находится под управлением проекта. Поэтому сейчас он остаётся временным production hostname.
+Текущий hostname выдан VPS-провайдером и не находится под DNS-управлением проекта. В публичной документации конкретные hostname/IP/порты origin намеренно не фиксируются.
 
 Параллельно подготовлен Cloudflare Tunnel:
 
 ```text
 Cloudflare Edge
-⇄ game-of-the-day-vps tunnel
+⇄ project VPS tunnel
 ⇄ cloudflared connector on VPS
 ```
 
@@ -127,11 +127,11 @@ Cloudflare Edge
 api.<project-domain>
 → Cloudflare Edge
 → Cloudflare Tunnel
-→ 127.0.0.1:80 nginx
-→ 127.0.0.1:8787 Feedback API
+→ nginx
+→ Feedback API
 ```
 
-После подтверждённого tunnel cutover публичный `:80` на origin можно закрыть. Для будущего второго VPS tunnel/edge layer является подготовленной точкой расширения, но geo-HA не входит в текущий MVP migration.
+После подтверждённого tunnel cutover прямой публичный ingress на origin можно закрыть. Для будущего второго VPS tunnel/edge layer является подготовленной точкой расширения, но geo-HA не входит в текущий MVP migration.
 
 ## 4. Целевая production-схема после #32
 
@@ -332,6 +332,7 @@ Cloudflare Workers, Queues и Workers AI используются только �
 - TEST/PROD изолированы;
 - operational logs не содержат secrets/полный feedback без необходимости;
 - SQLite не публикуется наружу напрямую;
+- конкретные production hostname, origin IP и внутренние runtime paths/ports не документируются в публичном repository;
 - Cloudflare Tunnel подготовлен, но до собственного hostname не считается production ingress;
 - VPS Agent имеет отдельную read-only diagnostic identity и не является application runtime identity.
 
