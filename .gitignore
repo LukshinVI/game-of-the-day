@@ -1,7 +1,8 @@
-# macOS
-.DS_Store
+# Dependencies
+node_modules/
+**/node_modules/
 
-# Environment variables and secrets
+# Environment and secrets
 .env
 .env.*
 !.env.example
@@ -10,51 +11,45 @@
 *.p12
 *.pfx
 *.crt
-*.credentials
+*.credentials.json
 credentials.json
-secrets.json
+secrets/
 
-# SSH / tunnel / deployment credentials
-.ssh/
-.cloudflared/
-*.tunnel.json
-cert.pem
-
-# Logs and runtime output
-*.log
-logs/
-*.pid
-
-# Node.js
-node_modules/
-
-# Wrangler local state
-.wrangler/
-.dev.vars
-.dev.vars.*
-
-# Python local state
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-
-# Production/local data
-/data/
+# Runtime data
 *.db
 *.db-shm
 *.db-wal
 *.sqlite
 *.sqlite3
-*.bak
 *.backup
+*.bak
+backups/
+data/
+runtime/
 
-# User exports and local imports
-*.csv
-*.tsv
-*.xlsx
-*.ods
+# Logs and diagnostics
+*.log
+logs/
+.wrangler/logs/
 
-# Temporary files
-/tmp/
-*.tmp
+# Cloudflare / local tooling
+.wrangler/
+.dev.vars
+.dev.vars.*
+
+# Test / coverage output
+coverage/
+.nyc_output/
+.tmp/
+tmp/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local application artifacts
+local/
+private/
