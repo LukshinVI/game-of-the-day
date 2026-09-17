@@ -1,135 +1,156 @@
-# Игра дня
+# Game of the Day
 
-Персональный сервис, который ежедневно подбирает безопасную развивающую игру для ребёнка с учётом возраста, истории игр и обратной связи пользователя. Проект также используется как практический стенд для AI/agent-систем и production automation.
+A small production-oriented service that delivers a safe, age-appropriate developmental activity each day and learns from caregiver feedback over time.
 
-## Статус проекта
+The project is also an engineering sandbox for reliable AI-assisted workflows: deterministic guardrails own state and side effects, while LLMs are limited to semantic tasks that benefit from them.
 
-### Current production
+> **Project status:** active production migration. The system is moving from a Google-based runtime to a VPS/SQLite application runtime through a controlled, reversible cutover.
 
-Delivery:
+## What the product does
+
+The core loop is intentionally simple:
 
 ```text
-Daily automation → Google Sheets → Google Apps Script → VK
+child context + safety constraints + activity history
+                    ↓
+              daily activity
+                    ↓
+              delivery channel
+                    ↓
+                 feedback
+                    ↓
+       validated product observations
+                    ↓
+          future personalization
 ```
 
-Feedback:
+Activities are expected to be age-appropriate, safe, short enough for a daily routine, non-repetitive unless repetition is explicitly useful, and backed by a verifiable source.
 
-```text
-VK → Cloudflare Worker → Queue → Apps Script save_raw → Google Sheets
-                           ↓
-                    Feedback Agent v2
-                           ↓
-                 Workers AI / Gemma
-                           ↓
-              Apps Script save_analysis → Google Sheets
+This is **not** a medical or diagnostic product.
+
+## Architecture
+
+The target production architecture is:
+
+```mermaid
+flowchart TD
+    P[Game preparation / product workflow] --> DB[(SQLite)]
+    DB --> D[Delivery service + scheduler]
+    D --> CH[Messaging channel]
+    CH --> W[Cloudflare Worker]
+    W --> V{Validation and routing}
+    V --> Q[Cloudflare Queue]
+    Q --> RAW[Feedback API: persist raw feedback]
+    RAW --> DB
+    RAW --> F[Feedback Agent]
+    F --> AI[Workers AI]
+    AI --> F
+    F --> RES[Feedback API: persist analysis]
+    RES --> DB
 ```
 
-Этот production path остаётся активным до контролируемого cutover.
+The migration deliberately separates delivery, feedback persistence, and final source-of-truth cutover so each boundary can be verified and rolled back independently.
 
-### Active migration — #27
+See [Architecture](docs/architecture.md) for the detailed runtime model and migration invariants.
 
-Текущий P0: **полностью вывести Google Sheets / Apps Script из runtime и сделать VPS/SQLite основным persistence/delivery контуром. Cloudflare остаётся.**
+## Reliability model
 
-VPS-контур уже подготовлен: проект развёрнут в `/srv/game-of-the-day`, SQLite создан, исторические данные импортированы, delivery CLI существует. Он ещё не является production source of truth/scheduler.
+A central design rule is:
 
-Целевая схема:
+> **AI failure must not become product failure.**
 
-```text
-Game workflow
-    ↓
-VPS / SQLite
-    ↓
-VPS delivery + systemd
-    ↓
-VK
-    ↓ feedback
-Cloudflare Worker → Queue → Workers AI
-    ↓
-VPS Feedback API
-    ↓
-SQLite
-```
+Raw feedback is persisted before AI processing. Long-running semantic analysis crosses a durable queue boundary. Duplicate external events are handled idempotently, retries are bounded, and workflow state remains application-owned.
 
-Migration route:
+Delivery uses explicit states such as `pending`, `sending`, `sent`, and `failed`. Repeated scheduler executions must be safe, and ambiguous failure states must be recoverable without uncontrolled duplicate delivery.
 
-```text
-#28 send-today + recovery + idempotency
-→ #29 VPS scheduler
+## Deterministic / AI boundary
 
-#30 VPS Feedback API
-→ #31 Cloudflare → VPS persistence
+The application intentionally avoids delegating workflow ownership to an LLM.
 
-#28 + #29 + #30 + #31
-→ #32 production cutover / disable Google runtime
-→ stability period
-→ archive/remove Google legacy
-```
+**Deterministic code owns:**
 
-#28 и #30 могут выполняться параллельно. #32 — единственная точка production cutover.
+- security and routing validation;
+- persistence and record linking;
+- workflow state transitions;
+- idempotency, retry, and recovery;
+- dates and delivery windows;
+- provenance and schema validation;
+- policy decisions and external side effects.
 
-## После migration
+**AI is used for:**
 
-Архитектурное упрощение #26 временно paused, чтобы не смешивать refactor со сменой runtime/storage boundary.
+- semantic classification of free-form feedback;
+- interpretation of ambiguous reactions;
+- constrained semantic target resolution;
+- future recommendation steps where deterministic ranking is insufficient.
+
+LLM output is structured and validated before it can affect durable state.
+
+## Feedback Agent
+
+The semantic feedback path follows a provenance-preserving contract:
 
 ```text
-#27 Google → VPS/SQLite
-→ #26 architecture simplification
-→ #14 request feedback UX
-→ #7 clarification
-→ #8 personalization
-```
-
-Параллельный reliability track: #9 AI quota / recovery / graceful degradation.
-
-Следующий product layer: #22 selectable development focus → #23 child development track → #24 goals/progress. Telegram #21 остаётся отдельным channel expansion. #20 — cross-cutting tenant/child/channel constraint.
-
-- [Product roadmap](docs/product-roadmap.md)
-- [Архитектура](docs/architecture.md) — source of truth по runtime и migration.
-- [GitHub Issues](../../issues) — backlog и execution state.
-
-## Product vision
-
-```text
-ежедневная полезная игра
-→ продукт слушает пользователя
-→ персональный подбор
-→ трек развития ребёнка
-→ история целей и прогресса
-```
-
-Продукт не является медицинским или диагностическим инструментом.
-
-## Правила игры
-
-Игра должна соответствовать возрасту, быть безопасной, занимать примерно 5–10 минут, не повторять ранее использованную механику без явного запроса, иметь проверяемый источник и учитывать выбранный development focus, когда он появится. Age и safety — hard constraints.
-
-## Feedback Agent v2
-
-```text
-feedback.text
-→ deterministic segmentation + provenance
-→ AI classification
+feedback text
+→ deterministic segmentation and provenance
+→ AI classification of existing segments
 → deterministic validation
 → deterministic policy
 → guarded target linking
 ```
 
-LLM не создаёт evidence spans; metadata — context, не evidence; неподтверждённый target остаётся `UNSPECIFIED`; persistent state живёт вне LLM. Production model: `@cf/google/gemma-4-26b-a4b-it`.
+The model does not invent evidence spans. Metadata may provide context but is not treated as user evidence. Unresolved targets remain unresolved instead of being guessed.
 
-Ключевой reliability principle: **AI failure != product failure**. Raw feedback сохраняется до AI, а Cloudflare Queue является durable boundary для медленного processing.
+The current production model is `@cf/google/gemma-4-26b-a4b-it` through Cloudflare Workers AI.
 
-## Бесплатность
+## Current migration
 
-Hard requirement: **0 ₽ без отдельного явного решения пользователя**. Никакой автоматической платной эскалации при исчерпании free quota.
+The active migration moves durable product state and delivery from the legacy Google runtime to SQLite on the application host.
+
+```text
+production-safe delivery state machine
+        +
+reproducible scheduler
+        +
+authenticated Feedback API
+        +
+Cloudflare → application persistence
+        +
+observability and recovery checks
+        ↓
+controlled production cutover
+        ↓
+stability period
+        ↓
+legacy runtime retirement
+```
+
+The old runtime remains available as a rollback path until the cutover has been verified. Migration and architecture refactoring are intentionally kept separate.
 
 ## Engineering principles
 
-- deterministic code владеет state, guardrails, provenance, retries и side effects;
-- LLM используется только для semantic/ambiguous задач;
-- structured AI output валидируется приложением;
-- raw user input сохраняется до AI;
-- idempotency/retry/recovery проектируются явно;
-- product state отделён от delivery channel;
-- не добавлять agents/frameworks без конкретной проблемы;
-- secrets не хранятся в Git;
-- merge, deploy и production verification — разные стадии готовности.
+- Keep state, guardrails, and side effects deterministic.
+- Persist user input before optional AI processing.
+- Design idempotency, retries, recovery, and rollback explicitly.
+- Keep product state independent from delivery transport.
+- Prefer simple application flows over premature orchestration frameworks.
+- Add agents or model-routing layers only when they solve a demonstrated problem.
+- Keep secrets, production identifiers, user data, and infrastructure-specific details out of the repository.
+- Treat merge, deploy, and production verification as separate readiness stages.
+- Prefer observable failure modes over silent recovery.
+
+## Product roadmap
+
+Near-term product development focuses on completing the feedback UX, clarification workflow, and personalization. Later layers add selectable development focus, a channel-independent child activity history, goals/progress, and additional delivery channels.
+
+See [Product Roadmap](docs/product-roadmap.md) and [GitHub Issues](../../issues) for the current execution backlog.
+
+## Repository safety
+
+Public documentation intentionally uses role-based names and placeholders instead of production hostnames, addresses, account identifiers, recipient identities, internal filesystem paths, or credentials.
+
+Runtime secrets must never be committed. See [Security Policy](SECURITY.md).
+
+## Cost policy
+
+The project currently has a strict no-unplanned-spend rule. Free-tier infrastructure and AI quotas may be used, but exhaustion of a free quota must degrade safely rather than automatically enabling paid overage.
