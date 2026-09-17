@@ -4,6 +4,52 @@
 
 > Общий VPS cutover ещё не завершён: delivery остаётся на Google до #32. Feedback-контур находится в контролируемом production cutover #31: Worker подготовлен к VPS API, финальный gate — реальная ОС из VK.
 
+## 0. Architecture overview
+
+```mermaid
+flowchart LR
+    subgraph LEGACY[Current delivery — legacy until #32]
+        AUTO[Daily automation] --> GS[Google Sheets]
+        GS --> GAS[Google Apps Script]
+        GAS --> VK[VK]
+    end
+
+    subgraph CF[Cloudflare feedback contour]
+        VK -->|message_new| W[Worker]
+        W --> VAL{Validation + TEST/PROD routing}
+        VAL --> Q[Queue]
+        Q --> RAW[VPS save_raw]
+        RAW --> FA[Feedback Agent v2]
+        FA --> AI[Workers AI / Gemma]
+        AI --> FA
+        FA --> AN[VPS save_analysis]
+    end
+
+    subgraph VPS[VPS runtime]
+        NGINX[nginx :80] --> API[Feedback API 127.0.0.1:8787]
+        API --> DB[(SQLite)]
+        DELIVERY[VPS delivery service] --> DB
+        TIMER[systemd timer] --> DELIVERY
+    end
+
+    RAW --> NGINX
+    AN --> NGINX
+    DELIVERY -. after #32 .-> VK
+
+    subgraph FUTURE[Prepared future ingress]
+        EDGE[Cloudflare Edge] --> TUNNEL[Cloudflare Tunnel]
+        TUNNEL -. after own hostname .-> NGINX
+    end
+```
+
+Текущая граница миграции:
+
+```text
+delivery: Google → Apps Script → VK                  [production до #32]
+feedback: VK → Cloudflare → VPS API → SQLite         [cutover #31]
+future ingress: Cloudflare Tunnel                     [prepared, not routed]
+```
+
 ## 1. Текущее production-состояние
 
 ### Delivery
@@ -33,7 +79,7 @@ flowchart TD
     RES --> DB
 ```
 
-Cloudflare Queue остаётся durable boundary. Raw feedback сохраняется до AI. `external_event_id + channel` — idempotency identity. Повтор события после появления более новой игры остаётся связан с исходной игрой. Финальный production acceptance #31 — реальная ОС из VK с `processed=1` и `analysis_json` в SQLite.
+Cloudflare Queue остаётся durable boundary. Raw feedback сохраняется до AI. `external_event_id + channel` — idempotency identity. Повтор события после появления более новой игры остаётся связан с исходной игрой. Финальный production acceptance #31 — реальная ОС от PROD-пользователя VK с `processed=1` и `analysis_json` в SQLite.
 
 ## 2. VPS runtime
 
