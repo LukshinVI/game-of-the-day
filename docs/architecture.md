@@ -2,7 +2,7 @@
 
 Этот документ — source of truth по архитектуре проекта. README содержит обзор, GitHub Issues — backlog и execution state.
 
-> Целевая архитектура не считается production, пока migration EPIC #27 и cutover #32 не закрыты.
+> Общий VPS cutover ещё не завершён: delivery остаётся на Google до #32. Feedback-контур находится в контролируемом production cutover #31: Worker подготовлен к VPS API, финальный gate — реальная ОС из VK.
 
 ## 1. Текущее production-состояние
 
@@ -15,47 +15,79 @@ Daily automation
 → VK
 ```
 
-Этот путь остаётся production до контролируемого cutover. Завтрашние/текущие отправки не переключаются на VPS автоматически до завершения migration tests.
+Этот путь остаётся production до контролируемого cutover #32. VPS delivery не должен параллельно отправлять ту же игру.
 
-### Feedback
+### Feedback — текущий cutover #31
 
-```text
-VK message_new
-→ Cloudflare Worker
-→ validation + TEST/PROD routing
-→ Cloudflare Queue
-→ Apps Script Feedback API: save_raw
-→ Google Sheets
-→ Feedback Agent v2
-→ Cloudflare Workers AI / Gemma
-→ Apps Script Feedback API: save_analysis
-→ Google Sheets
+```mermaid
+flowchart TD
+    VK[VK message_new] --> W[Cloudflare Worker]
+    W --> V{Validation + TEST/PROD routing}
+    V --> Q[Cloudflare Queue]
+    Q --> RAW[VPS Feedback API: POST /v1/feedback/raw]
+    RAW --> DB[(SQLite)]
+    RAW --> F[Feedback Agent v2]
+    F --> AI[Cloudflare Workers AI / Gemma]
+    AI --> F
+    F --> RES[VPS Feedback API: POST /v1/feedback/analysis]
+    RES --> DB
 ```
 
-Cloudflare Queue остаётся durable boundary. Raw feedback сохраняется до AI. Принцип `AI failure != product failure` сохраняется.
+Cloudflare Queue остаётся durable boundary. Raw feedback сохраняется до AI. `external_event_id + channel` — idempotency identity. Повтор события после появления более новой игры остаётся связан с исходной игрой. Финальный production acceptance #31 — реальная ОС из VK с `processed=1` и `analysis_json` в SQLite.
 
-## 2. Уже подготовленный VPS-контур
+## 2. VPS runtime
 
-На VPS развёрнут `/srv/game-of-the-day` и создан SQLite `data/game-of-the-day.db`.
+На VPS развёрнут `/srv/game-of-the-day`, SQLite находится в `data/game-of-the-day.db`.
 
-Текущее состояние migration contour:
+Подтверждено на migration contour:
 
-- исторические игры/доставки/feedback импортированы из Google;
-- SQLite quick_check проходит;
-- delivery CLI существует (`status`, `send-last`);
-- VK credentials вынесены из Git в runtime config;
-- CLI пока не является production scheduler;
-- `send-last` не используется как production command;
-- обнаруженный риск stale `sending` должен быть закрыт в #28;
-- VPS Agent наблюдает host/runtime и SQLite health.
+- исторические games/deliveries/feedback импортированы;
+- production DB integrity check проходит;
+- Feedback API работает как systemd service на `127.0.0.1:8787`;
+- API имеет `/health`, authenticated `POST /v1/feedback/raw` и `POST /v1/feedback/analysis`;
+- nginx работает как reverse proxy на `:80`, `/health` и `/v1/feedback/*`; root возвращает 404;
+- запрос к API без bearer auth отклоняется;
+- isolated contract tests подтверждают create/retry/save-analysis/processed semantics;
+- HTTP E2E через nginx подтверждён на отдельной test DB без мутации production;
+- Cloudflare Worker использует новый VPS API contract вместо Apps Script runtime contract;
+- delivery CLI существует, но ещё не является единственным production scheduler.
 
-SQLite уже является подготовленным новым storage contour, но **ещё не production source of truth**.
+## 3. Public ingress и Cloudflare Tunnel
 
-## 3. Активная архитектурная миграция — #27
+Текущий рабочий ingress:
 
-Цель: полностью убрать Google Sheets и Google Apps Script из production runtime, сохранив Cloudflare.
+```text
+Internet
+→ vps.example.net / 203.0.113.10:80
+→ nginx
+→ 127.0.0.1:8787 Feedback API
+```
 
-### Целевая production-схема
+`vps.example.net` — hostname VPS-провайдера; authoritative DNS зоны `example.net` не находится под управлением проекта. Поэтому сейчас он остаётся временным production hostname.
+
+Параллельно подготовлен Cloudflare Tunnel:
+
+```text
+Cloudflare Edge
+⇄ game-of-the-day-vps tunnel
+⇄ cloudflared connector on VPS
+```
+
+Состояние: connector установлен как persistent systemd service, tunnel healthy, QUIC/TCP connectivity pre-checks green. Published public hostname пока намеренно не настроен: собственный домен отложен. Tunnel не является текущим HTTP route и не заменяет nginx.
+
+Будущий ingress после появления собственного домена:
+
+```text
+api.<project-domain>
+→ Cloudflare Edge
+→ Cloudflare Tunnel
+→ 127.0.0.1:80 nginx
+→ 127.0.0.1:8787 Feedback API
+```
+
+После подтверждённого tunnel cutover публичный `:80` на origin можно закрыть. Для будущего второго VPS tunnel/edge layer является подготовленной точкой расширения, но geo-HA не входит в текущий MVP migration.
+
+## 4. Целевая production-схема после #32
 
 ```mermaid
 flowchart TD
@@ -81,15 +113,17 @@ flowchart TD
 | VPS / SQLite | durable product state, games, delivery state, feedback, analysis |
 | VPS delivery service | выбор сегодняшней игры, delivery state machine, VK send |
 | systemd timer | scheduling/retry attempts |
+| nginx | локальный HTTP ingress/reverse proxy к VPS API |
+| Cloudflare Tunnel | будущий защищённый origin transport после собственного hostname |
 | VK | пользовательский delivery/feedback channel |
-| Cloudflare Worker | ingress, validation, routing, Queue producer/consumer |
+| Cloudflare Worker | callback ingress, validation, routing, Queue producer/consumer |
 | Cloudflare Queue | durable feedback processing boundary |
 | Workers AI / Gemma | semantic feedback classification |
 | VPS Feedback API | authenticated persistence boundary для Cloudflare |
 | VPS Agent | infrastructure/runtime monitoring and diagnostics |
 | Google | legacy/rollback only после cutover, затем removal |
 
-## 4. Migration tasks и порядок
+## 5. Migration tasks и фактический порядок
 
 Активный EPIC: #27.
 
@@ -98,11 +132,13 @@ flowchart TD
         ↓
 #29 VPS delivery scheduler / systemd
 
-#30 VPS Feedback API
+#30 VPS Feedback API ── implemented + contract/HTTP E2E green
         ↓
-#31 Cloudflare → VPS feedback persistence
+#31 Cloudflare → VPS feedback persistence ── production cutover in progress
+        ↓
+real VK feedback acceptance
 
-#28 + #29 + #30 + #31
+#28 + #29 + #30 + #31 + #33
         ↓
 #32 production cutover / disable Google runtime
         ↓
@@ -111,9 +147,9 @@ stability period
 archive/remove legacy Google code
 ```
 
-#28 и #30 могут выполняться параллельно. #32 — единственная точка production cutover.
+#32 остаётся единственной точкой общего cutover delivery/source-of-truth. Feedback можно проверить раньше как отдельный controlled cutover #31.
 
-## 5. Delivery invariants после миграции
+## 6. Delivery invariants после миграции
 
 - выбирается только игра за текущую дату в Europe/Moscow;
 - пустой message не отправляется;
@@ -126,7 +162,7 @@ archive/remove legacy Google code
 - отсутствие сегодняшней игры — штатное состояние, а не corruption;
 - scheduler не должен создавать duplicate delivery.
 
-## 6. Feedback invariants после миграции
+## 7. Feedback invariants
 
 ```text
 VK callback
@@ -140,13 +176,14 @@ VK callback
 - raw feedback durable до AI;
 - callback/event id — idempotency identity;
 - duplicate event не создаёт второй feedback;
-- analysis связывается с тем же feedback record;
+- retry сначала разрешает существующий event, а не выбирает новую target game;
+- analysis связывается с тем же feedback record по event/channel;
 - AI failure оставляет feedback received/unprocessed;
 - Queue retries остаются bounded;
 - TEST/PROD isolation сохраняется;
 - semantic contract Feedback Agent v2 не меняется в рамках storage migration.
 
-## 7. Граница deterministic / AI
+## 8. Граница deterministic / AI
 
 ### Deterministic code
 
@@ -169,7 +206,7 @@ VK callback
 
 LLM не является памятью, workflow engine или source of truth.
 
-## 8. Feedback Agent v2
+## 9. Feedback Agent v2
 
 ```text
 feedback.text
@@ -190,7 +227,7 @@ feedback.text
 
 Production model: `@cf/google/gemma-4-26b-a4b-it`.
 
-## 9. Multi-user / multi-channel boundary
+## 10. Multi-user / multi-channel boundary
 
 #20 остаётся cross-cutting constraint, но не блокирует #27.
 
@@ -207,11 +244,9 @@ context = {
 
 Channel — transport, не product identity. Новая SQLite/domain model не должна закреплять новые VK-only/single-user assumptions, но migration не должна разрастаться в преждевременный multi-tenant rewrite.
 
-## 10. Текущий engineering route
+## 11. Engineering route после migration
 
-#26 architecture simplification приостановлен до завершения #27, потому что нельзя одновременно делать behavior-preserving refactor и менять storage/runtime boundary.
-
-Актуальный маршрут:
+#26 architecture simplification приостановлен до завершения #27.
 
 ```text
 #27 Google → VPS/SQLite migration
@@ -219,6 +254,7 @@ Channel — transport, не product identity. Новая SQLite/domain model н�
   ├─ #29 scheduler
   ├─ #30 Feedback API
   ├─ #31 Cloudflare switch
+  ├─ #33 observability
   └─ #32 cutover
         ↓
 #26 architecture simplification
@@ -230,27 +266,31 @@ Channel — transport, не product identity. Новая SQLite/domain model н�
 
 Параллельно: #9 AI quota/recovery/graceful degradation.
 
-Следующий product layer: #22 selectable development focus → #23 child development track → #24 goals/progress. Telegram #21 остаётся отдельным пользовательским channel expansion.
+Следующий product layer: #22 selectable development focus → #23 child development track → #24 goals/progress. Telegram #21 остаётся отдельным channel expansion.
 
-## 11. Zero-cost policy
+## 12. Zero-cost policy
 
 Hard requirement: **0 ₽ без отдельного явного решения пользователя**.
 
-Cloudflare Workers, Queues и Workers AI используются только в бесплатном контуре. Migration на VPS не должна добавлять OpenAI API или иной автоматический платный provider. Исчерпание free quota приводит к controlled failure/pending state, а не paid overage.
+Cloudflare Workers, Queues и Workers AI используются только в бесплатном контуре. Собственный домен сейчас не является requirement и не покупается только ради migration. Никакой автоматической платной эскалации при исчерпании free quota.
 
-## 12. Security boundaries
+## 13. Security boundaries
 
 - secrets не хранятся в Git;
 - VPS credentials/runtime secrets находятся вне repository;
 - Cloudflare callback/shared secrets — runtime secrets;
 - Worker валидирует callback до business processing;
-- VPS Feedback API обязан аутентифицировать Cloudflare requests;
+- VPS Feedback API аутентифицирует Cloudflare requests Bearer secret;
+- Feedback API слушает только loopback; наружу публикуется через nginx;
+- nginx публикует только необходимые health/API paths, root = 404;
 - TEST/PROD изолированы;
 - operational logs не содержат secrets/полный feedback без необходимости;
 - SQLite не публикуется наружу напрямую;
-- внешний доступ идёт через узкий API boundary;
+- Cloudflare Tunnel подготовлен, но до собственного hostname не считается production ingress;
 - VPS Agent имеет отдельную read-only diagnostic identity и не является application runtime identity.
 
-## 13. Rollback policy
+## 14. Rollback policy
 
-До #32 Google остаётся текущим production path. Во время cutover старый Google runtime не удаляется: triggers/endpoints отключаются, но код и данные сохраняются на период проверки. Physical removal/archive выполняется только после стабильной работы VPS contour.
+До #32 Google delivery остаётся production path. Во время общего cutover старый Google runtime не удаляется: triggers/endpoints отключаются, но код и данные сохраняются на период проверки.
+
+Для #31 rollback — вернуть Worker downstream на Apps Script Feedback API, если реальный VK → VPS feedback acceptance не проходит. Physical removal/archive Google выполняется только после стабильной работы VPS contour.
