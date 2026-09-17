@@ -5,6 +5,7 @@ node_modules/
 # Environment and secrets
 .env
 .env.*
+# The repository intentionally tracks only the placeholder template below.
 !.env.example
 *.pem
 *.key
