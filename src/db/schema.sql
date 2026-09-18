@@ -34,10 +34,12 @@ CREATE TABLE deliveries (
     FOREIGN KEY(game_id) REFERENCES games(id)
 );
 
+
 CREATE TABLE feedback (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     game_id INTEGER NOT NULL,
     channel TEXT NOT NULL DEFAULT 'vk',
+    external_event_id TEXT,
     raw_text TEXT NOT NULL,
     received_at TEXT,
     analysis_json TEXT,
@@ -45,6 +47,10 @@ CREATE TABLE feedback (
     analyzed_at TEXT,
     FOREIGN KEY(game_id) REFERENCES games(id)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_channel_external_event_id
+ON feedback(channel, external_event_id)
+WHERE external_event_id IS NOT NULL;
 
 CREATE TABLE migration_meta (
     key TEXT PRIMARY KEY,
