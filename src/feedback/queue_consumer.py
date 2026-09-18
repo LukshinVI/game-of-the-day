@@ -295,7 +295,7 @@ def process_message(message):
                 "save_raw returned no game context"
             )
 
-        push_enriched(
+        push_result = push_enriched(
             {
                 "version": "feedback-enriched-v1",
                 "event_id": payload["event_id"],
@@ -303,6 +303,18 @@ def process_message(message):
                 "raw_text": payload["raw_text"],
                 "game": game,
             }
+        )
+        push_metrics = (
+            (push_result.get("result") or {})
+            .get("metadata", {})
+            .get("metrics", {})
+        )
+        LOG.info(
+            "Enriched feedback queued "
+            "event_id=%s backlog_count=%s backlog_bytes=%s",
+            payload["event_id"],
+            push_metrics.get("backlog_count"),
+            push_metrics.get("backlog_bytes"),
         )
 
     ack(lease_id)

@@ -274,14 +274,12 @@ async function processQueuedFeedback(
     payload
 ) {
     const eventId =
-        typeof payload?.eventId ===
-            'string'
+        typeof payload?.eventId === 'string'
             ? payload.eventId
             : '';
 
     const feedbackText =
-        typeof payload?.feedbackText ===
-            'string'
+        typeof payload?.feedbackText === 'string'
             ? payload.feedbackText.trim()
             : '';
 
@@ -295,19 +293,18 @@ async function processQueuedFeedback(
         );
 
         /*
-         * Некорректное сообщение
-         * повтором не исправится.
-         * Возвращаемся успешно,
-         * чтобы Queue его ack-нула.
+         * Invalid input cannot be repaired by retry.
+         * Return successfully so Queue acknowledges it.
          */
         return;
     }
 
     /*
-     * Migration shadow path.
+     * Production feedback ingress.
      *
-     * Persist RAW feedback through Cloudflare Queue -> VPS
-     * independently of the legacy Feedback API.
+     * From this point persistence and enrichment are handled
+     * by the VPS storage consumer. Google Feedback API is no
+     * longer part of the production feedback path.
      */
     try {
         await env
@@ -318,211 +315,16 @@ async function processQueuedFeedback(
                 channel: 'vk',
                 raw_text: feedbackText
             });
-
-        console.log(
-            'RAW feedback storage event queued:',
-            { eventId }
-        );
     } catch (error) {
-        console.log(
-            'RAW feedback storage queue publish failed:',
+        throw new Error(
+            'RAW_STORAGE_QUEUE_FAILED: ' +
             safeErrorMessage(error)
-        );
-    }
-
-    let rawResult;
-
-    try {
-        rawResult =
-            await callFeedbackApi(
-                env,
-                '/v1/feedback/raw',
-                {
-                    event_id: eventId,
-                    channel: 'vk',
-                    raw_text: feedbackText
-                }
-            );
-    } catch (error) {
-        throw new Error(
-            'RAW_SAVE_FAILED: ' +
-            safeErrorMessage(error)
-        );
-    }
-
-    if (
-        !rawResult ||
-        !['created', 'existing'].includes(
-            rawResult.status
-        )
-    ) {
-        throw new Error(
-            'RAW_SAVE_REJECTED: ' +
-            (
-                rawResult?.error ??
-                'UNKNOWN_ERROR'
-            )
-        );
-    }
-
-    if (
-        rawResult.status === 'existing' &&
-        rawResult.processed === true
-    ) {
-        console.log(
-            'Duplicate feedback already processed:',
-            {
-                feedbackId:
-                    rawResult.feedback_id
-            }
-        );
-
-        return;
-    }
-
-    if (
-        !rawResult.game ||
-        typeof rawResult.game !==
-            'object'
-    ) {
-        /*
-         * Здесь retry бессмысленен:
-         * feedback не удалось связать
-         * с игрой.
-         *
-         * RAW уже либо сохранён,
-         * либо Feedback API вернул
-         * существующее событие.
-         */
-        console.log(
-            'Feedback processing stopped:',
-            'game context is missing'
-        );
-
-        return;
-    }
-
-    let analysis;
-
-    try {
-        analysis =
-            await analyzeFeedback(
-                env,
-                {
-                    game:
-                        rawResult.game,
-
-                    feedback: {
-                        text:
-                            feedbackText
-                    }
-                }
-            );
-    } catch (error) {
-        /*
-         * В Queue это теперь
-         * полноценная retryable ошибка.
-         *
-         * RAW уже сохранён.
-         * Повторная доставка снова
-         * получит ту же строку через
-         * eventId и попробует AI ещё раз.
-         */
-        throw new Error(
-            'FEEDBACK_AI_FAILED: ' +
-            safeErrorMessage(error)
-        );
-    }
-
-    let analysisResult;
-
-    try {
-        analysisResult =
-            await callFeedbackApi(
-                env,
-                '/v1/feedback/analysis',
-                {
-                    event_id: eventId,
-                    channel: 'vk',
-                    analysis
-                }
-            );
-    } catch (error) {
-        throw new Error(
-            'ANALYSIS_SAVE_FAILED: ' +
-            safeErrorMessage(error)
-        );
-    }
-
-    if (
-        !analysisResult ||
-        !['updated', 'existing'].includes(
-            analysisResult.status
-        )
-    ) {
-        throw new Error(
-            'ANALYSIS_SAVE_REJECTED: ' +
-            (
-                analysisResult?.error ??
-                'UNKNOWN_ERROR'
-            )
-        );
-    }
-
-    /*
-     * Shadow-write the completed feedback event to the
-     * storage Queue.
-     *
-     * During migration the existing Feedback API remains
-     * authoritative. A storage Queue failure must therefore
-     * not retry an event that has already been persisted.
-     */
-    const storageEnvelope = {
-        version: 'feedback-storage-v1',
-        event_id: eventId,
-        channel: 'vk',
-        raw_text: feedbackText,
-        analysis
-    };
-
-    try {
-        await env
-            .FEEDBACK_STORAGE_QUEUE
-            .send(storageEnvelope);
-
-        console.log(
-            'Feedback storage event queued:',
-            {
-                eventId
-            }
-        );
-    } catch (error) {
-        console.log(
-            'Feedback storage shadow publish failed:',
-            {
-                eventId,
-                error:
-                    safeErrorMessage(error)
-            }
         );
     }
 
     console.log(
-        'Feedback processed:',
-        {
-            feedbackId:
-                rawResult.feedback_id,
-
-            decision:
-                analysis.decision,
-
-            model:
-                analysis.meta?.model,
-
-            modelCalls:
-                analysis.meta
-                    ?.model_calls
-        }
+        'RAW feedback queued for VPS storage:',
+        { eventId }
     );
 }
 
