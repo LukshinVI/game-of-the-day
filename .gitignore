@@ -18,3 +18,11 @@ node_modules/
 
 # Production data
 data/
+
+# Python generated files
+__pycache__/
+*.pyc
+
+# Local runtime data
+data/*.db
+data/*.db-*

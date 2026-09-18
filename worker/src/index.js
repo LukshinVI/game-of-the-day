@@ -85,6 +85,13 @@ export default {
         const peerId =
             String(message.peer_id);
 
+        console.log(
+            'Incoming VK peer:',
+            {
+                peerId
+            }
+        );
+
         let environment;
 
         if (
@@ -138,12 +145,7 @@ export default {
             environment === 'TEST'
         ) {
             console.log(
-                'TEST feedback accepted'
-            );
-
-            return new Response(
-                'ok',
-                { status: 200 }
+                'TEST feedback routed to feedback pipeline'
             );
         }
 
@@ -219,31 +221,48 @@ export default {
                 message.body;
 
             console.log(
-                'Feedback queue delivery:',
+                'Queue delivery:',
                 {
+                    queue: batch.queue,
                     eventId:
-                        payload?.eventId
+                        payload?.eventId ??
+                        payload?.event_id
                 }
             );
 
             try {
-                await processQueuedFeedback(
-                    env,
-                    payload
-                );
+                if (
+                    batch.queue ===
+                    'game-of-the-day-feedback-prod'
+                ) {
+                    await processQueuedFeedback(
+                        env,
+                        payload
+                    );
+                } else if (
+                    batch.queue ===
+                    'game-of-the-day-feedback-enriched-prod'
+                ) {
+                    await processEnrichedFeedback(
+                        env,
+                        payload
+                    );
+                } else {
+                    throw new Error(
+                        'UNKNOWN_QUEUE: ' +
+                        batch.queue
+                    );
+                }
             } catch (error) {
                 console.log(
-                    'Feedback queue processing failed:',
-                    safeErrorMessage(error)
+                    'Queue processing failed:',
+                    {
+                        queue: batch.queue,
+                        error:
+                            safeErrorMessage(error)
+                    }
                 );
 
-                /*
-                 * Пробрасываем ошибку наружу.
-                 *
-                 * Cloudflare Queue сама
-                 * выполнит retry согласно
-                 * wrangler.jsonc.
-                 */
                 throw error;
             }
         }
@@ -284,16 +303,44 @@ async function processQueuedFeedback(
         return;
     }
 
+    /*
+     * Migration shadow path.
+     *
+     * Persist RAW feedback through Cloudflare Queue -> VPS
+     * independently of the legacy Feedback API.
+     */
+    try {
+        await env
+            .FEEDBACK_STORAGE_QUEUE
+            .send({
+                version: 'feedback-storage-v1',
+                event_id: eventId,
+                channel: 'vk',
+                raw_text: feedbackText
+            });
+
+        console.log(
+            'RAW feedback storage event queued:',
+            { eventId }
+        );
+    } catch (error) {
+        console.log(
+            'RAW feedback storage queue publish failed:',
+            safeErrorMessage(error)
+        );
+    }
+
     let rawResult;
 
     try {
         rawResult =
             await callFeedbackApi(
                 env,
+                '/v1/feedback/raw',
                 {
-                    action: 'save_raw',
-                    eventId,
-                    text: feedbackText
+                    event_id: eventId,
+                    channel: 'vk',
+                    raw_text: feedbackText
                 }
             );
     } catch (error) {
@@ -305,7 +352,9 @@ async function processQueuedFeedback(
 
     if (
         !rawResult ||
-        rawResult.ok !== true
+        !['created', 'existing'].includes(
+            rawResult.status
+        )
     ) {
         throw new Error(
             'RAW_SAVE_REJECTED: ' +
@@ -317,14 +366,14 @@ async function processQueuedFeedback(
     }
 
     if (
-        rawResult.duplicate === true &&
+        rawResult.status === 'existing' &&
         rawResult.processed === true
     ) {
         console.log(
             'Duplicate feedback already processed:',
             {
-                row:
-                    rawResult.row
+                feedbackId:
+                    rawResult.feedback_id
             }
         );
 
@@ -342,7 +391,7 @@ async function processQueuedFeedback(
          * с игрой.
          *
          * RAW уже либо сохранён,
-         * либо Apps Script вернул
+         * либо Feedback API вернул
          * существующее событие.
          */
         console.log(
@@ -391,13 +440,10 @@ async function processQueuedFeedback(
         analysisResult =
             await callFeedbackApi(
                 env,
+                '/v1/feedback/analysis',
                 {
-                    action:
-                        'save_analysis',
-
-                    row:
-                        rawResult.row,
-
+                    event_id: eventId,
+                    channel: 'vk',
                     analysis
                 }
             );
@@ -410,7 +456,9 @@ async function processQueuedFeedback(
 
     if (
         !analysisResult ||
-        analysisResult.ok !== true
+        !['updated', 'existing'].includes(
+            analysisResult.status
+        )
     ) {
         throw new Error(
             'ANALYSIS_SAVE_REJECTED: ' +
@@ -421,11 +469,49 @@ async function processQueuedFeedback(
         );
     }
 
+    /*
+     * Shadow-write the completed feedback event to the
+     * storage Queue.
+     *
+     * During migration the existing Feedback API remains
+     * authoritative. A storage Queue failure must therefore
+     * not retry an event that has already been persisted.
+     */
+    const storageEnvelope = {
+        version: 'feedback-storage-v1',
+        event_id: eventId,
+        channel: 'vk',
+        raw_text: feedbackText,
+        analysis
+    };
+
+    try {
+        await env
+            .FEEDBACK_STORAGE_QUEUE
+            .send(storageEnvelope);
+
+        console.log(
+            'Feedback storage event queued:',
+            {
+                eventId
+            }
+        );
+    } catch (error) {
+        console.log(
+            'Feedback storage shadow publish failed:',
+            {
+                eventId,
+                error:
+                    safeErrorMessage(error)
+            }
+        );
+    }
+
     console.log(
         'Feedback processed:',
         {
-            row:
-                rawResult.row,
+            feedbackId:
+                rawResult.feedback_id,
 
             decision:
                 analysis.decision,
@@ -436,6 +522,86 @@ async function processQueuedFeedback(
             modelCalls:
                 analysis.meta
                     ?.model_calls
+        }
+    );
+}
+
+
+async function processEnrichedFeedback(
+    env,
+    payload
+) {
+    const eventId =
+        typeof payload?.event_id === 'string'
+            ? payload.event_id
+            : '';
+
+    const feedbackText =
+        typeof payload?.raw_text === 'string'
+            ? payload.raw_text.trim()
+            : '';
+
+    const game =
+        payload?.game &&
+        typeof payload.game === 'object'
+            ? payload.game
+            : null;
+
+    if (
+        payload?.version !== 'feedback-enriched-v1' ||
+        !eventId ||
+        !feedbackText ||
+        !game
+    ) {
+        throw new Error(
+            'ENRICHED_FEEDBACK_INVALID_PAYLOAD'
+        );
+    }
+
+    let analysis;
+
+    try {
+        analysis = await analyzeFeedback(
+            env,
+            {
+                game,
+                feedback: {
+                    text: feedbackText
+                }
+            }
+        );
+    } catch (error) {
+        throw new Error(
+            'FEEDBACK_AI_FAILED: ' +
+            safeErrorMessage(error)
+        );
+    }
+
+    try {
+        await env
+            .FEEDBACK_STORAGE_QUEUE
+            .send({
+                version: 'feedback-storage-v1',
+                event_id: eventId,
+                channel: 'vk',
+                raw_text: feedbackText,
+                analysis
+            });
+    } catch (error) {
+        throw new Error(
+            'ANALYSIS_STORAGE_QUEUE_FAILED: ' +
+            safeErrorMessage(error)
+        );
+    }
+
+    console.log(
+        'Enriched feedback analyzed and queued for storage:',
+        {
+            eventId,
+            decision: analysis.decision,
+            model: analysis.meta?.model,
+            modelCalls:
+                analysis.meta?.model_calls
         }
     );
 }
@@ -488,6 +654,7 @@ function buildFeedbackEventId(
 
 async function callFeedbackApi(
     env,
+    path,
     payload
 ) {
     if (!env.FEEDBACK_API_URL) {
@@ -496,54 +663,92 @@ async function callFeedbackApi(
         );
     }
 
-    if (
-        !env.FEEDBACK_API_SECRET
-    ) {
+    if (!env.FEEDBACK_API_SECRET) {
         throw new Error(
             'FEEDBACK_API_SECRET_NOT_CONFIGURED'
         );
     }
 
-    const response =
-        await fetch(
-            env.FEEDBACK_API_URL,
-            {
-                method: 'POST',
+    const baseUrl =
+        env.FEEDBACK_API_URL
+            .replace(/\/+$/, '');
 
-                headers: {
-                    'Content-Type':
-                        'application/json'
-                },
+    const requestUrl = baseUrl + path;
 
-                body: JSON.stringify({
-                    ...payload,
-                    secret:
-                        env
-                            .FEEDBACK_API_SECRET
-                })
-            }
-        );
+    console.log(
+        'Feedback API request:',
+        {
+            url: requestUrl
+        }
+    );
 
-    if (!response.ok) {
-        throw new Error(
-            'FEEDBACK_API_HTTP_' +
-            response.status
-        );
-    }
+    const response = await fetch(
+        requestUrl,
+        {
+            method: 'POST',
+
+            headers: {
+                'Content-Type':
+                    'application/json',
+
+                'Authorization':
+                    'Bearer ' +
+                    env.FEEDBACK_API_SECRET
+            },
+
+            body: JSON.stringify(payload)
+        }
+    );
+
+    const responseText = await response.text();
+
+    console.log(
+        'Feedback API response:',
+        {
+            url: requestUrl,
+            status: response.status,
+            contentType:
+                response.headers.get('content-type')
+        }
+    );
 
     let result;
 
     try {
-        result =
-            await response.json();
+        result = responseText
+            ? JSON.parse(responseText)
+            : {};
     } catch {
+        if (!response.ok) {
+            throw new Error(
+                'FEEDBACK_API_HTTP_' +
+                response.status +
+                ': NON_JSON_RESPONSE'
+            );
+        }
+
         throw new Error(
-            'FEEDBACK_API_INVALID_JSON'
+            'FEEDBACK_API_INVALID_JSON: HTTP_' +
+            response.status
+        );
+    }
+
+    if (!response.ok) {
+        throw new Error(
+            'FEEDBACK_API_HTTP_' +
+            response.status +
+            ': ' +
+            (
+                result?.error ??
+                result?.message ??
+                'UNKNOWN_ERROR'
+            )
         );
     }
 
     return result;
 }
+
 
 function safeErrorMessage(
     error
