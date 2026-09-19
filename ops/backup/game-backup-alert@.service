@@ -3,6 +3,14 @@ Description=Game of the Day - alert: unit %i failed
 
 [Service]
 Type=oneshot
-# systemd reads this file as root, so the service user does not need access to it.
+# Not root: the script lives in a directory the service user can write to. systemd
+# reads EnvironmentFile as root before dropping privileges, so the token stays
+# unreadable for this account.
+User=gotd
+Group=gotd
 EnvironmentFile=-/etc/game-of-the-day/ops-bot.env
 ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/ops/notifier.py critical "Unit failed: %i" --details "journalctl -u %i -n 50"
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
