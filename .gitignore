@@ -54,3 +54,7 @@ tmp/
 # Local application artifacts
 local/
 private/
+
+# Python generated files
+__pycache__/
+*.pyc
