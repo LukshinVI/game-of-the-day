@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.feedback.feedback_api import ApiError, save_analysis, save_raw
+from src.feedback.storage import StorageError, save_analysis, save_raw
 
 
 LOG = logging.getLogger("game-feedback-consumer")
@@ -351,7 +351,7 @@ def run():
                 try:
                     process_message(message)
 
-                except ApiError as error:
+                except StorageError as error:
                     LOG.error(
                         "Persistence rejected message: %s",
                         error,

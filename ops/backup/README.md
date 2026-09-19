@@ -68,7 +68,7 @@ sqlite3 /tmp/restore-test.db 'SELECT COUNT(*) FROM games;' # plausible, non-zero
 rm /tmp/restore-test.db
 ```
 
-To restore for real: stop the writers first (feedback API, consumer, preparation and delivery timers), keep the damaged files aside, then copy the decompressed file into place with the original owner and mode.
+To restore for real: stop the writers first (queue consumer, preparation and delivery timers), keep the damaged files aside, then copy the decompressed file into place with the original owner and mode.
 
 ## Verified on the production host (2026-09-19)
 
