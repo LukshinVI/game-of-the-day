@@ -63,7 +63,10 @@ def require_secret(headers):
 
     supplied = auth[len(prefix):]
 
-    if not hmac.compare_digest(supplied, expected):
+    if not hmac.compare_digest(
+        supplied.encode("utf-8", "surrogateescape"),
+        expected.encode("utf-8"),
+    ):
         raise ApiError(401, "unauthorized", "Unauthorized")
 
 
@@ -203,53 +206,13 @@ def resolve_game(con, data):
 
 
 
-def resolve_feedback_target(con, game_id=None, game_legacy_id=None):
+def resolve_feedback_target(con):
     """
-    Resolve feedback to a game.
+    Resolve feedback without an explicit game to the newest successfully
+    sent game that has no feedback yet (the legacy Google Sheets rule).
 
-    Explicit identity wins. If no identity is supplied, preserve the
-    legacy production rule from Google Sheets:
-
-    newest successfully sent game that has no feedback yet.
+    Explicit game identity is handled by resolve_game().
     """
-
-    if game_id is not None:
-        row = con.execute(
-            """
-            SELECT id
-            FROM games
-            WHERE id = ?
-            """,
-            (game_id,),
-        ).fetchone()
-
-        if row is None:
-            raise ApiError(
-                404,
-                "game_not_found",
-                "Game not found",
-            )
-
-        return row["id"]
-
-    if game_legacy_id:
-        row = con.execute(
-            """
-            SELECT id
-            FROM games
-            WHERE legacy_id = ?
-            """,
-            (str(game_legacy_id),),
-        ).fetchone()
-
-        if row is None:
-            raise ApiError(
-                404,
-                "game_not_found",
-                "Game not found",
-            )
-
-        return row["id"]
 
     row = con.execute(
         """
@@ -465,6 +428,25 @@ def save_raw(data):
     finally:
         con.close()
 
+def canonical_json(value):
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def same_analysis(stored_json, analysis):
+    """Semantic equality: key order is irrelevant, but true != 1."""
+    try:
+        stored = json.loads(stored_json)
+    except (TypeError, ValueError):
+        return False
+
+    return canonical_json(stored) == canonical_json(analysis)
+
+
 def save_analysis(data):
     event_id = require_string(data, "event_id", 256)
     channel = require_string(data, "channel", 32)
@@ -519,12 +501,7 @@ def save_analysis(data):
             )
 
         if row["processed"]:
-            try:
-                stored_analysis = json.loads(row["analysis_json"])
-            except (TypeError, ValueError):
-                stored_analysis = None
-
-            if stored_analysis == analysis:
+            if same_analysis(row["analysis_json"], analysis):
                 con.commit()
                 return {
                     "status": "existing",
