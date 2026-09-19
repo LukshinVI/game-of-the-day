@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.feedback.feedback_api import ApiError, save_analysis, save_raw
+from src.feedback.storage import StorageError, save_analysis, save_raw
 
 
 LOG = logging.getLogger("game-feedback-consumer")
@@ -33,7 +33,7 @@ EMPTY_POLL_DELAY_SECONDS = 2
 ERROR_DELAY_SECONDS = 5
 
 
-class QueueApiError(RuntimeError):
+class QueueStorageError(RuntimeError):
     pass
 
 
@@ -71,24 +71,24 @@ def api_post(action, payload, queue_id=QUEUE_ID, url=None):
             errors="replace",
         )
 
-        raise QueueApiError(
+        raise QueueStorageError(
             f"Cloudflare HTTP {error.code}: {body[:500]}"
         ) from error
 
     except urllib.error.URLError as error:
-        raise QueueApiError(
+        raise QueueStorageError(
             f"Cloudflare connection failed: {error.reason}"
         ) from error
 
     try:
         result = json.loads(raw)
     except json.JSONDecodeError as error:
-        raise QueueApiError(
+        raise QueueStorageError(
             "Cloudflare returned invalid JSON"
         ) from error
 
     if result.get("success") is not True:
-        raise QueueApiError(
+        raise QueueStorageError(
             "Cloudflare API rejected request: "
             + json.dumps(
                 result.get("errors", []),
@@ -142,7 +142,7 @@ def ack(lease_id):
     result = response.get("result") or {}
 
     if result.get("ackCount") != 1:
-        raise QueueApiError(
+        raise QueueStorageError(
             "Cloudflare did not confirm ACK"
         )
 
@@ -351,7 +351,7 @@ def run():
                 try:
                     process_message(message)
 
-                except ApiError as error:
+                except StorageError as error:
                     LOG.error(
                         "Persistence rejected message: %s",
                         error,
