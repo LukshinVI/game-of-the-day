@@ -31,31 +31,6 @@ def deterministic_random_id(idempotency_key: str) -> int:
     return value or 1
 
 
-def latest_sendable_pending(con):
-    return con.execute(
-        """
-        SELECT
-            g.id AS game_id,
-            g.legacy_id,
-            g.game_date,
-            g.title,
-            g.message_text,
-            d.id AS delivery_id,
-            d.status,
-            d.attempts,
-            d.idempotency_key
-        FROM games g
-        JOIN deliveries d ON d.game_id = g.id
-        WHERE d.channel = 'vk'
-          AND d.status = 'pending'
-          AND g.message_text IS NOT NULL
-          AND TRIM(g.message_text) <> ''
-        ORDER BY g.game_date DESC, g.id DESC
-        LIMIT 1
-        """
-    ).fetchone()
-
-
 def today_deliveries(con):
     today = datetime.now(MOSCOW).date().isoformat()
 
@@ -388,81 +363,6 @@ def vk_send(message: str, random_id: int):
         raise RuntimeError(f"Unexpected VK response: {data}")
 
     return data["response"]
-
-
-def send_last():
-    with connect_db() as con:
-        con.execute("BEGIN IMMEDIATE")
-
-        game = latest_sendable_pending(con)
-
-        if not game:
-            con.rollback()
-            print("No sendable pending games.")
-            return
-
-        print("=== ABOUT TO SEND ===")
-        print(f"ID:    {game['legacy_id']}")
-        print(f"Date:  {game['game_date']}")
-        print(f"Title: {game['title']}")
-        print()
-
-        random_id = deterministic_random_id(game["idempotency_key"])
-
-        con.execute(
-            """
-            UPDATE deliveries
-            SET status = 'sending',
-                attempts = attempts + 1,
-                last_error = NULL,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-              AND status = 'pending'
-            """,
-            (game["delivery_id"],)
-        )
-
-        con.commit()
-
-        try:
-            external_id = vk_send(game["message_text"], random_id)
-
-        except Exception as exc:
-            with connect_db() as fail_con:
-                fail_con.execute(
-                    """
-                    UPDATE deliveries
-                    SET status = 'failed',
-                        last_error = ?,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                    """,
-                    (str(exc), game["delivery_id"])
-                )
-                fail_con.commit()
-
-            raise
-
-        with connect_db() as success_con:
-            success_con.execute(
-                """
-                UPDATE deliveries
-                SET status = 'sent',
-                    external_message_id = ?,
-                    sent_at = ?,
-                    last_error = NULL,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (
-                    str(external_id),
-                    datetime.now(MOSCOW).isoformat(),
-                    game["delivery_id"],
-                )
-            )
-            success_con.commit()
-
-        print(f"VK send successful. message_id={external_id}")
 
 
 def main():
