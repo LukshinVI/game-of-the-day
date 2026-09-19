@@ -4,8 +4,8 @@ Daily online backup of the production database, with a separate freshness check 
 
 | File | Purpose |
 |---|---|
-| `game-backup.sh run` | snapshot (`sqlite3 .backup`) -> `integrity_check` -> checkpoint -> gzip -> `gzip -t` -> atomic publish -> `.last-local-ok` -> optional off-site step -> retention |
-| `game-backup.sh check` | fail unless the newest backup exists, is non-empty, is a valid gzip and is younger than 26h |
+| `game-backup.sh run` | snapshot (`sqlite3 .backup`) -> `integrity_check` -> checkpoint -> gzip -> `gzip -t` -> atomic publish -> manifest `.last-local-ok` (`<epoch> <file>`, replaced atomically) -> optional off-site step -> retention; a `flock` refuses a second concurrent run |
+| `game-backup.sh check` | fail unless the file named in the manifest exists, is a valid gzip and the manifest is younger than 26h (touching files cannot fake freshness) |
 | `game-backup.{service,timer}` | 03:30 Moscow time, `Persistent=true`, sandboxed |
 | `game-backup-check.{service,timer}` | 12:00 Moscow time freshness check (catches a timer that never fired) |
 | `game-backup-alert@.service` | `OnFailure=` target; sends a critical message through `src/ops/notifier.py` as the service user (never root) |
@@ -16,8 +16,11 @@ Scope of this first version: local copy on the same disk. It protects against co
 
 ## Install (needs root; the unit files assume the database owner is `gotd`)
 
+Install from the exact reviewed commit, not from a moving branch: after PR #40 is merged, take its merge commit SHA.
+
 ```bash
-cd /srv/game-of-the-day && git fetch origin && git merge --ff-only origin/main
+cd /srv/game-of-the-day && git fetch origin && git merge --ff-only <MERGE_COMMIT_SHA>
+git log -1 --oneline                          # must show that commit
 sudo install -d -m 0700 -o gotd -g gotd /var/backups/game-of-the-day
 sudo install -m 0644 ops/backup/game-backup.service ops/backup/game-backup.timer \
   ops/backup/game-backup-check.service ops/backup/game-backup-check.timer \
@@ -34,10 +37,16 @@ ls -l /var/backups/game-of-the-day            # one game-*.db.gz, mode 0600, plu
 sudo systemctl start game-backup-check.service && journalctl -u game-backup-check.service -n 5 --no-pager
 ```
 
-Forced-failure test of the alert path (a Telegram message must arrive):
+Forced-failure tests (two different things):
 
 ```bash
-sudo systemd-run --wait --unit=game-backup-failtest --property=OnFailure=game-backup-alert@%n.service /bin/false
+# 1. the real failure path: a missing database must fail loudly and change nothing
+GAME_DB=/definitely/missing.db /srv/game-of-the-day/ops/backup/game-backup.sh run; echo "exit=$?"   # exit=1
+ls -la /var/backups/game-of-the-day             # same files as before, no .tmp-* left
+
+# 2. the alert wiring: OnFailure must reach Telegram (a message has to arrive)
+sudo systemd-run --wait --unit=game-backup-failtest --property=User=gotd \
+  --property=OnFailure=game-backup-alert@%n.service /bin/false
 ```
 
 Enable:
@@ -51,7 +60,10 @@ systemctl list-timers 'game-backup*'
 
 ```bash
 gunzip -c /var/backups/game-of-the-day/game-<STAMP>.db.gz > /tmp/restore-test.db
-sqlite3 /tmp/restore-test.db 'PRAGMA integrity_check;'   # must print: ok
+sqlite3 /tmp/restore-test.db 'PRAGMA integrity_check;'    # must print: ok
+sqlite3 /tmp/restore-test.db 'PRAGMA foreign_key_check;'  # should print nothing
+sqlite3 /tmp/restore-test.db '.tables'                    # games, deliveries, feedback, ... must be present
+sqlite3 /tmp/restore-test.db 'SELECT COUNT(*) FROM games;' # plausible, non-zero
 rm /tmp/restore-test.db
 ```
 
@@ -69,4 +81,4 @@ Existing backups stay in `/var/backups/game-of-the-day`.
 
 ## Tests
 
-`python3 -m unittest tests.test_backup_script` runs the script against temporary databases: consistency under a concurrent writer, corrupt source, missing database, low disk space, stale temp files, retention with a minimum count, a failing off-site step, and every `check` failure mode.
+`python3 -m unittest tests.test_backup_script` runs the script against temporary databases: consistency under a concurrent writer, corrupt source, missing database, low disk space, invalid configuration, stale temp files, a refused concurrent run (needs `flock`), retention (minimum count, ordering by name), a failing off-site step, and every `check` failure mode including a touched-old-file and a malformed manifest.
