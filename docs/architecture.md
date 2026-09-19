@@ -26,29 +26,23 @@ flowchart LR
     end
 
     subgraph APP[Application runtime]
-        RP[Reverse proxy] --> API[Feedback API]
-        API --> DB[(SQLite)]
+        STORAGE[Feedback storage] --> DB[(SQLite)]
         DELIVERY[Delivery service] --> DB
         TIMER[Scheduler] --> DELIVERY
     end
 
-    RAW --> RP
-    AN --> RP
+    RAW --> STORAGE
+    AN --> STORAGE
     DELIVERY -. after final cutover .-> CH
-
-    subgraph EDGE[Prepared secure ingress]
-        CFEDGE[Cloudflare Edge] --> TUNNEL[Cloudflare Tunnel]
-        TUNNEL -. future public hostname .-> RP
-    end
 ```
 
 Current migration boundary:
 
 ```text
 delivery: legacy runtime → messaging channel       [production until final cutover]
-feedback: channel → Cloudflare → Feedback API      [controlled migration]
+feedback: channel → Cloudflare queues → host consumer → SQLite  [cut over]
 state:    legacy store → SQLite                    [becoming source of truth]
-ingress:  Cloudflare Tunnel                        [prepared separately]
+ingress:  none for feedback (queue pull/push only)   [HTTP API removed]
 ```
 
 Concrete production hostnames, origin addresses, runtime usernames, filesystem paths, account identifiers, recipient identities, and internal ports are intentionally excluded from the public repository.
@@ -61,29 +55,17 @@ Verified migration capabilities include:
 
 - historical activity, delivery, and feedback data imported into SQLite;
 - database integrity checks;
-- authenticated Feedback API running behind a reverse proxy;
-- a health endpoint and dedicated raw-feedback / analysis persistence contracts;
-- rejection of unauthenticated persistence requests;
-- isolated contract tests for create, duplicate/retry, analysis persistence, and processed-state semantics;
-- HTTP end-to-end tests against an isolated test database;
-- Cloudflare Worker support for the application API contract;
+- a queue consumer on the host that persists raw feedback and its analysis through an idempotent storage module (unique by channel and event id);
+- isolated regression tests for create, duplicate/retry, conflict, concurrent writers, analysis persistence, and the consumer's acknowledge-only-after-persist rule;
 - a delivery CLI/state machine that is being promoted independently from the legacy scheduler.
 
 SQLite is not directly exposed to the network.
 
-## 3. Secure ingress
+## 3. Ingress
 
-The target ingress boundary is:
+Feedback reaches the host only through Cloudflare Queues: the Worker publishes, and the host consumer pulls and pushes over the queue API. There is no inbound application route.
 
-```text
-public API hostname
-→ Cloudflare Edge
-→ Cloudflare Tunnel
-→ reverse proxy
-→ Feedback API
-```
-
-The tunnel connector is treated as transport infrastructure, not as the application router or persistence layer. Direct origin exposure can be removed only after the tunnel route has been verified in production.
+The HTTP Feedback API that existed during the migration was removed after a traffic check found no callers (three rejected requests during cutover testing, none since). A future channel that needs inbound HTTP defines its own adapter and route; adapters normalise input into the same feedback envelope and do not define the domain model. A tunnel connector, where present, is transport infrastructure and not an application router.
 
 The repository does not publish environment-specific tunnel identifiers or origin details.
 
@@ -97,12 +79,12 @@ flowchart TD
     CH -->|feedback event| W[Cloudflare Worker]
     W --> V{Validation + environment routing}
     V --> Q[Cloudflare Queue]
-    Q --> RAW[Feedback API: save raw]
+    Q --> RAW[Feedback storage: save raw]
     RAW --> DB
     RAW --> F[Feedback Agent]
     F --> AI[Cloudflare Workers AI]
     AI --> F
-    F --> RES[Feedback API: save analysis]
+    F --> RES[Feedback storage: save analysis]
     RES --> DB
 ```
 
@@ -111,13 +93,12 @@ flowchart TD
 | SQLite | durable product state, activities, delivery state, feedback, analysis |
 | Delivery service | select the current activity, own delivery state transitions, perform channel send |
 | Scheduler | trigger safe delivery attempts |
-| Reverse proxy | constrained HTTP ingress to the application API |
-| Cloudflare Tunnel | secure origin transport when public routing is enabled |
+| Cloudflare Tunnel | optional secure origin transport; no application route behind it at present |
 | Messaging channel | user-facing delivery and feedback transport |
 | Cloudflare Worker | callback ingress, validation, environment routing, queue producer/consumer |
 | Cloudflare Queue | durable boundary for feedback processing |
 | Workers AI | semantic feedback classification |
-| Feedback API | authenticated persistence boundary |
+| Feedback storage | idempotent persistence boundary, called in-process by the queue consumer |
 | Monitoring agent | runtime health collection, diagnosis, and alerting |
 | Legacy runtime | rollback-only after cutover, then retirement |
 
@@ -130,7 +111,7 @@ production-safe delivery state machine
         ↓
 reproducible scheduler
 
-Feedback API + persistence contract
+Feedback storage + persistence contract
         ↓
 Cloudflare downstream switch
         ↓

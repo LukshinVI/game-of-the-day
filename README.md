@@ -40,12 +40,12 @@ flowchart TD
     CH --> W[Cloudflare Worker]
     W --> V{Validation and routing}
     V --> Q[Cloudflare Queue]
-    Q --> RAW[Feedback API: persist raw feedback]
+    Q --> RAW[Feedback storage: persist raw feedback]
     RAW --> DB
     RAW --> F[Feedback Agent]
     F --> AI[Workers AI]
     AI --> F
-    F --> RES[Feedback API: persist analysis]
+    F --> RES[Feedback storage: persist analysis]
     RES --> DB
 ```
 
@@ -116,7 +116,7 @@ production-safe delivery state machine
         +
 reproducible scheduler
         +
-authenticated Feedback API
+idempotent feedback storage
         +
 Cloudflare → application persistence
         +

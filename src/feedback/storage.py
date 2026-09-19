@@ -1,17 +1,18 @@
-#!/usr/bin/env python3
+"""Feedback persistence: raw events and their analysis in SQLite.
 
-import hashlib
-import hmac
+Called in-process by the queue consumer. Idempotent by (channel, event id);
+failures raise StorageError(status, code, message), where the status is a
+classification (404 not found, 409 conflict, 400 invalid input), not an HTTP reply.
+"""
+
 import json
 import os
 import sqlite3
 from datetime import datetime, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
 
 
-ROOT = Path("/srv/game-of-the-day")
+ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = Path(
     os.environ.get(
         "FEEDBACK_DB_PATH",
@@ -19,13 +20,8 @@ DB_PATH = Path(
     )
 )
 
-HOST = os.environ.get("FEEDBACK_API_HOST", "127.0.0.1")
-PORT = int(os.environ.get("FEEDBACK_API_PORT", "8787"))
 
-MAX_BODY_BYTES = 64 * 1024
-
-
-class ApiError(Exception):
+class StorageError(Exception):
     def __init__(self, status, code, message):
         super().__init__(message)
         self.status = status
@@ -45,36 +41,11 @@ def connect_db():
     return con
 
 
-def require_secret(headers):
-    expected = os.environ.get("FEEDBACK_API_SECRET")
-
-    if not expected:
-        raise ApiError(
-            503,
-            "api_not_configured",
-            "Feedback API secret is not configured",
-        )
-
-    auth = headers.get("Authorization", "")
-
-    prefix = "Bearer "
-    if not auth.startswith(prefix):
-        raise ApiError(401, "unauthorized", "Unauthorized")
-
-    supplied = auth[len(prefix):]
-
-    if not hmac.compare_digest(
-        supplied.encode("utf-8", "surrogateescape"),
-        expected.encode("utf-8"),
-    ):
-        raise ApiError(401, "unauthorized", "Unauthorized")
-
-
 def require_string(data, field, max_length):
     value = data.get(field)
 
     if not isinstance(value, str):
-        raise ApiError(
+        raise StorageError(
             400,
             "invalid_request",
             f"{field} must be a string",
@@ -83,14 +54,14 @@ def require_string(data, field, max_length):
     value = value.strip()
 
     if not value:
-        raise ApiError(
+        raise StorageError(
             400,
             "invalid_request",
             f"{field} must not be empty",
         )
 
     if len(value) > max_length:
-        raise ApiError(
+        raise StorageError(
             400,
             "invalid_request",
             f"{field} is too long",
@@ -99,59 +70,12 @@ def require_string(data, field, max_length):
     return value
 
 
-def parse_json_body(handler):
-    raw_length = handler.headers.get("Content-Length")
-
-    if raw_length is None:
-        raise ApiError(
-            411,
-            "length_required",
-            "Content-Length is required",
-        )
-
-    try:
-        length = int(raw_length)
-    except ValueError:
-        raise ApiError(
-            400,
-            "invalid_request",
-            "Invalid Content-Length",
-        )
-
-    if length <= 0 or length > MAX_BODY_BYTES:
-        raise ApiError(
-            413,
-            "invalid_body_size",
-            "Invalid request body size",
-        )
-
-    raw = handler.rfile.read(length)
-
-    try:
-        data = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise ApiError(
-            400,
-            "invalid_json",
-            "Request body must be valid UTF-8 JSON",
-        )
-
-    if not isinstance(data, dict):
-        raise ApiError(
-            400,
-            "invalid_request",
-            "JSON body must be an object",
-        )
-
-    return data
-
-
 def resolve_game(con, data):
     legacy_id = data.get("game_legacy_id")
 
     if legacy_id is not None:
         if not isinstance(legacy_id, str):
-            raise ApiError(
+            raise StorageError(
                 400,
                 "invalid_request",
                 "game_legacy_id must be a string",
@@ -169,7 +93,7 @@ def resolve_game(con, data):
         ).fetchone()
 
         if not row:
-            raise ApiError(
+            raise StorageError(
                 404,
                 "game_not_found",
                 "Game not found",
@@ -180,7 +104,7 @@ def resolve_game(con, data):
     game_id = data.get("game_id")
 
     if not isinstance(game_id, int) or isinstance(game_id, bool):
-        raise ApiError(
+        raise StorageError(
             400,
             "invalid_request",
             "game_id or game_legacy_id is required",
@@ -196,7 +120,7 @@ def resolve_game(con, data):
     ).fetchone()
 
     if not row:
-        raise ApiError(
+        raise StorageError(
             404,
             "game_not_found",
             "Game not found",
@@ -234,7 +158,7 @@ def resolve_feedback_target(con):
     ).fetchone()
 
     if row is None:
-        raise ApiError(
+        raise StorageError(
             409,
             "feedback_target_not_found",
             "No sent game without feedback was found",
@@ -251,7 +175,7 @@ def save_raw(data):
     received_at = data.get("received_at")
     if received_at is not None:
         if not isinstance(received_at, str) or not received_at.strip():
-            raise ApiError(
+            raise StorageError(
                 400,
                 "invalid_request",
                 "received_at must be a non-empty string",
@@ -281,7 +205,7 @@ def save_raw(data):
 
         if existing:
             if existing["raw_text"] != raw_text:
-                raise ApiError(
+                raise StorageError(
                     409,
                     "idempotency_conflict",
                     "Event ID already exists with different payload",
@@ -346,7 +270,7 @@ def save_raw(data):
         ).fetchone()
 
         if game_context is None:
-            raise ApiError(
+            raise StorageError(
                 404,
                 "game_not_found",
                 "Game not found",
@@ -394,7 +318,7 @@ def save_raw(data):
 
             if existing:
                 if existing["raw_text"] != raw_text:
-                    raise ApiError(
+                    raise StorageError(
                         409,
                         "idempotency_conflict",
                         "Event ID already exists with different payload",
@@ -454,7 +378,7 @@ def save_analysis(data):
     analysis = data.get("analysis")
 
     if not isinstance(analysis, dict):
-        raise ApiError(
+        raise StorageError(
             400,
             "invalid_request",
             "analysis must be a JSON object",
@@ -469,7 +393,7 @@ def save_analysis(data):
     analyzed_at = data.get("analyzed_at")
     if analyzed_at is not None:
         if not isinstance(analyzed_at, str) or not analyzed_at.strip():
-            raise ApiError(
+            raise StorageError(
                 400,
                 "invalid_request",
                 "analyzed_at must be a non-empty string",
@@ -494,7 +418,7 @@ def save_analysis(data):
         ).fetchone()
 
         if not row:
-            raise ApiError(
+            raise StorageError(
                 404,
                 "feedback_not_found",
                 "Raw feedback must be saved before analysis",
@@ -509,7 +433,7 @@ def save_analysis(data):
                     "event_id": event_id,
                 }
 
-            raise ApiError(
+            raise StorageError(
                 409,
                 "analysis_conflict",
                 "Feedback already contains different analysis",
@@ -543,98 +467,3 @@ def save_analysis(data):
         raise
     finally:
         con.close()
-
-
-class Handler(BaseHTTPRequestHandler):
-    server_version = "game-feedback-api"
-
-    def log_message(self, fmt, *args):
-        # Не логируем body/Authorization.
-        print(
-            f'{self.address_string()} '
-            f'{self.command} {self.path} '
-            f'{fmt % args}'
-        )
-
-    def send_json(self, status, payload):
-        raw = json.dumps(
-            payload,
-            ensure_ascii=False,
-            separators=(",", ":"),
-        ).encode("utf-8")
-
-        self.send_response(status)
-        self.send_header(
-            "Content-Type",
-            "application/json; charset=utf-8",
-        )
-        self.send_header("Content-Length", str(len(raw)))
-        self.end_headers()
-        self.wfile.write(raw)
-
-    def do_GET(self):
-        if urlparse(self.path).path == "/health":
-            self.send_json(200, {"status": "ok"})
-            return
-
-        self.send_json(
-            404,
-            {"error": "not_found"},
-        )
-
-    def do_POST(self):
-        try:
-            require_secret(self.headers)
-
-            path = urlparse(self.path).path
-            data = parse_json_body(self)
-
-            if path == "/v1/feedback/raw":
-                result = save_raw(data)
-                status = 201 if result["status"] == "created" else 200
-                self.send_json(status, result)
-                return
-
-            if path == "/v1/feedback/analysis":
-                result = save_analysis(data)
-                self.send_json(200, result)
-                return
-
-            raise ApiError(
-                404,
-                "not_found",
-                "Endpoint not found",
-            )
-
-        except ApiError as exc:
-            self.send_json(
-                exc.status,
-                {
-                    "error": exc.code,
-                    "message": exc.message,
-                },
-            )
-        except Exception:
-            # Детали исключения не отдаём клиенту.
-            self.send_json(
-                500,
-                {
-                    "error": "internal_error",
-                    "message": "Internal server error",
-                },
-            )
-
-
-def main():
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
-
-    print(
-        f"Feedback API listening on "
-        f"http://{HOST}:{PORT}"
-    )
-
-    server.serve_forever()
-
-
-if __name__ == "__main__":
-    main()
