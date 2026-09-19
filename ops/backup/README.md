@@ -8,7 +8,7 @@ Daily online backup of the production database, with a separate freshness check 
 | `game-backup.sh check` | fail unless the file named in the manifest exists, is a valid gzip and the manifest is younger than 26h (touching files cannot fake freshness) |
 | `game-backup.{service,timer}` | 03:30 Moscow time, `Persistent=true`, sandboxed |
 | `game-backup-check.{service,timer}` | 12:00 Moscow time freshness check (catches a timer that never fired) |
-| `game-backup-alert@.service` | `OnFailure=` target; sends a critical message through `src/ops/notifier.py` as the service user (never root) |
+| `game-backup-alert@.service` | `OnFailure=` target; sends a critical message in Russian ("Сбой службы: <unit>") through `src/ops/notifier.py` as the service user (never root) |
 
 Design rules: the live file is never copied; retention runs only after every earlier step succeeded (including the optional off-site step configured with `GAME_BACKUP_OFFSITE_CMD`); a failed run publishes nothing and leaves no temporary files; the shell never decides alerting on its own (`OnFailure=` does).
 
@@ -32,9 +32,9 @@ sudo systemctl daemon-reload
 ## Verify before enabling the timers
 
 ```bash
-sudo systemctl start game-backup.service && journalctl -u game-backup.service -n 20 --no-pager
-ls -l /var/backups/game-of-the-day            # one game-*.db.gz, mode 0600, plus .last-local-ok
-sudo systemctl start game-backup-check.service && journalctl -u game-backup-check.service -n 5 --no-pager
+sudo systemctl start game-backup.service && sudo journalctl -u game-backup.service -n 20 --no-pager
+ls -la /var/backups/game-of-the-day           # one game-*.db.gz (mode 0600) plus the hidden .last-local-ok manifest
+sudo systemctl start game-backup-check.service && sudo journalctl -u game-backup-check.service -n 5 --no-pager
 ```
 
 Forced-failure tests (two different things):
@@ -44,9 +44,10 @@ Forced-failure tests (two different things):
 GAME_DB=/definitely/missing.db /srv/game-of-the-day/ops/backup/game-backup.sh run; echo "exit=$?"   # exit=1
 ls -la /var/backups/game-of-the-day             # same files as before, no .tmp-* left
 
-# 2. the alert wiring: OnFailure must reach Telegram (a message has to arrive)
+# 2. the alert wiring: OnFailure must reach Telegram (a message has to arrive). Use the literal unit
+#    name: systemd-run does not expand the %n specifier that unit files support.
 sudo systemd-run --wait --unit=game-backup-failtest --property=User=gotd \
-  --property=OnFailure=game-backup-alert@%n.service /bin/false
+  --property=OnFailure=game-backup-alert@game-backup-failtest.service /bin/false
 ```
 
 Enable:
@@ -68,6 +69,10 @@ rm /tmp/restore-test.db
 ```
 
 To restore for real: stop the writers first (feedback API, consumer, preparation and delivery timers), keep the damaged files aside, then copy the decompressed file into place with the original owner and mode.
+
+## Verified on the production host (2026-09-19)
+
+Installed from `04f4195`: first run and check succeeded under the sandboxed units, the `OnFailure` alert delivered a Telegram message as the service user, timers enabled (backup 02:30 CEST = 03:30 MSK, freshness check 11:00 CEST = 12:00 MSK). The service user cannot read the system journal, so use `sudo journalctl`.
 
 ## Rollback
 

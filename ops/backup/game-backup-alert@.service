@@ -1,5 +1,6 @@
 [Unit]
 Description=Game of the Day - alert: unit %i failed
+# Owner-facing alert text is Russian on purpose (like the delivery and preparation alerts).
 
 [Service]
 Type=oneshot
@@ -9,7 +10,7 @@ Type=oneshot
 User=gotd
 Group=gotd
 EnvironmentFile=-/etc/game-of-the-day/ops-bot.env
-ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/ops/notifier.py critical "Unit failed: %i" --details "Investigate on the host: journalctl -u %i -n 50 --no-pager"
+ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/ops/notifier.py critical "Сбой службы: %i" --details "Посмотреть на сервере: sudo journalctl -u %i -n 50 --no-pager"
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
