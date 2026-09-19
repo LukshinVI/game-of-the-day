@@ -1,0 +1,21 @@
+[Unit]
+Description=Game of the Day - SQLite backup
+OnFailure=game-backup-alert@%n.service
+
+[Service]
+Type=oneshot
+# The account that owns the database today. After the service-user migration
+# (issue #39) run this under a dedicated identity with read-only access to data/.
+User=gotd
+Group=gotd
+ExecStart=/srv/game-of-the-day/ops/backup/game-backup.sh run
+TimeoutStartSec=5min
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+# SQLite needs write access next to the source database for its -shm file.
+ReadWritePaths=/var/backups/game-of-the-day /srv/game-of-the-day/data
