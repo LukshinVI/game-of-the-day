@@ -451,8 +451,8 @@ class ConsumerPersistenceBoundary(FeedbackTestCase):
         self.assertEqual(self.feedback_row()["raw_text"], "original")
 
     def test_enrichment_push_failure_keeps_raw_and_does_not_ack_then_recovers_on_retry(self):
-        self.push.side_effect = consumer.QueueStorageError("cloudflare down")
-        with self.assertRaises(consumer.QueueStorageError):
+        self.push.side_effect = consumer.QueueApiError("cloudflare down")
+        with self.assertRaises(consumer.QueueApiError):
             consumer.process_message(_message(_envelope()))
         self.ack.assert_not_called()
         self.assertEqual(len(self.feedback_rows()), 1)  # raw is durable before the failure
