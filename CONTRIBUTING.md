@@ -38,6 +38,12 @@ Avoid mixing unrelated cleanup with behavior changes.
 
 Run the relevant local tests and contract checks before submitting a change. For infrastructure or migration work, distinguish between local validation, deployment readiness, and production verification.
 
+The feedback storage contour has a stdlib-only regression suite that runs against temporary SQLite databases and refuses to touch any other path:
+
+```bash
+python3 -m unittest discover -s tests
+```
+
 Never use real production data in committed fixtures.
 
 ## Security and privacy
