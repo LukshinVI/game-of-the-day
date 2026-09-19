@@ -63,6 +63,8 @@ Raw feedback is persisted before AI processing. Long-running semantic analysis c
 
 Delivery uses explicit states such as `pending`, `sending`, `sent`, and `failed`. Repeated scheduler executions must be safe, and ambiguous failure states must be recoverable without uncontrolled duplicate delivery.
 
+See [Reliability model](docs/reliability.md) for the invariants and the known gaps between them and the running system.
+
 ## Deterministic / AI boundary
 
 The application intentionally avoids delegating workflow ownership to an LLM.
@@ -85,6 +87,8 @@ The application intentionally avoids delegating workflow ownership to an LLM.
 - future recommendation steps where deterministic ranking is insufficient.
 
 LLM output is structured and validated before it can affect durable state.
+
+See [AI design](docs/ai-design.md) for the guardrails.
 
 ## Feedback Agent
 
