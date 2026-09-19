@@ -33,7 +33,7 @@ EMPTY_POLL_DELAY_SECONDS = 2
 ERROR_DELAY_SECONDS = 5
 
 
-class QueueStorageError(RuntimeError):
+class QueueApiError(RuntimeError):
     pass
 
 
@@ -71,24 +71,24 @@ def api_post(action, payload, queue_id=QUEUE_ID, url=None):
             errors="replace",
         )
 
-        raise QueueStorageError(
+        raise QueueApiError(
             f"Cloudflare HTTP {error.code}: {body[:500]}"
         ) from error
 
     except urllib.error.URLError as error:
-        raise QueueStorageError(
+        raise QueueApiError(
             f"Cloudflare connection failed: {error.reason}"
         ) from error
 
     try:
         result = json.loads(raw)
     except json.JSONDecodeError as error:
-        raise QueueStorageError(
+        raise QueueApiError(
             "Cloudflare returned invalid JSON"
         ) from error
 
     if result.get("success") is not True:
-        raise QueueStorageError(
+        raise QueueApiError(
             "Cloudflare API rejected request: "
             + json.dumps(
                 result.get("errors", []),
@@ -142,7 +142,7 @@ def ack(lease_id):
     result = response.get("result") or {}
 
     if result.get("ackCount") != 1:
-        raise QueueStorageError(
+        raise QueueApiError(
             "Cloudflare did not confirm ACK"
         )
 
