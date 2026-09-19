@@ -1,24 +1,3 @@
-export function resolveEvidence(
-    feedbackText,
-    evidence
-) {
-    if (
-        typeof evidence !== 'string' ||
-        evidence.trim() === ''
-    ) {
-        return null;
-    }
-
-    if (feedbackText.includes(evidence)) {
-        return evidence;
-    }
-
-    return findNormalizedEvidence(
-        feedbackText,
-        evidence
-    );
-}
-
 export function isGrounded(
     feedbackText,
     value
