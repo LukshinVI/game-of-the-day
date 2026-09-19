@@ -1,0 +1,9 @@
+[Unit]
+Description=Game of the Day - daily backup freshness check
+
+[Timer]
+OnCalendar=*-*-* 12:00:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target
