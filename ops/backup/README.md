@@ -8,7 +8,7 @@ Daily online backup of the production database, with a separate freshness check 
 | `game-backup.sh check` | fail unless the newest backup exists, is non-empty, is a valid gzip and is younger than 26h |
 | `game-backup.{service,timer}` | 03:30 Moscow time, `Persistent=true`, sandboxed |
 | `game-backup-check.{service,timer}` | 12:00 Moscow time freshness check (catches a timer that never fired) |
-| `game-backup-alert@.service` | `OnFailure=` target; sends a critical message through `src/ops/notifier.py` |
+| `game-backup-alert@.service` | `OnFailure=` target; sends a critical message through `src/ops/notifier.py` as the service user (never root) |
 
 Design rules: the live file is never copied; retention runs only after every earlier step succeeded (including the optional off-site step configured with `GAME_BACKUP_OFFSITE_CMD`); a failed run publishes nothing and leaves no temporary files; the shell never decides alerting on its own (`OnFailure=` does).
 
