@@ -225,9 +225,9 @@ def resolve_feedback_target(con, game_id=None, game_legacy_id=None):
 
         if row is None:
             raise ApiError(
+                404,
                 "game_not_found",
                 "Game not found",
-                404,
             )
 
         return row["id"]
@@ -244,9 +244,9 @@ def resolve_feedback_target(con, game_id=None, game_legacy_id=None):
 
         if row is None:
             raise ApiError(
+                404,
                 "game_not_found",
                 "Game not found",
-                404,
             )
 
         return row["id"]
@@ -272,9 +272,9 @@ def resolve_feedback_target(con, game_id=None, game_legacy_id=None):
 
     if row is None:
         raise ApiError(
+            409,
             "feedback_target_not_found",
             "No sent game without feedback was found",
-            409,
         )
 
     return row["id"]
@@ -519,7 +519,12 @@ def save_analysis(data):
             )
 
         if row["processed"]:
-            if row["analysis_json"] == analysis_json:
+            try:
+                stored_analysis = json.loads(row["analysis_json"])
+            except (TypeError, ValueError):
+                stored_analysis = None
+
+            if stored_analysis == analysis:
                 con.commit()
                 return {
                     "status": "existing",
