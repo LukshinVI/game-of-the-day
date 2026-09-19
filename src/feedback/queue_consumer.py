@@ -287,7 +287,7 @@ def process_message(message):
 
     raw_result, analysis_result = persist(payload)
 
-    if analysis_result is None:
+    if analysis_result is None and not raw_result.get("processed"):
         game = raw_result.get("game")
 
         if not isinstance(game, dict):

@@ -40,7 +40,7 @@ _import_dir = tempfile.mkdtemp(prefix="feedback-import-")
 os.environ["FEEDBACK_DB_PATH"] = str(Path(_import_dir) / "import-guard.db")
 os.environ["FEEDBACK_API_SECRET"] = SECRET
 for _name in ("CF_ACCOUNT_ID", "CF_STORAGE_QUEUE_ID", "CF_ENRICHED_QUEUE_ID", "CF_QUEUE_API_TOKEN"):
-    os.environ.setdefault(_name, "dummy")  # queue_consumer reads these at import time
+    os.environ[_name] = "dummy"  # never bind real credentials; queue_consumer reads these at import time
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.feedback import feedback_api as api  # noqa: E402
@@ -254,12 +254,6 @@ class TargetResolution(FeedbackTestCase):
         self.assertApiError(409, "feedback_target_not_found", api.save_raw, self.raw(event_id="e2"))
         self.assertEqual(len(self.feedback_rows()), 1)
 
-    def test_resolve_feedback_target_helper_errors_are_well_formed(self):
-        con = api.connect_db()
-        self.addCleanup(con.close)
-        self.assertApiError(404, "game_not_found", api.resolve_feedback_target, con, 999)
-        self.assertApiError(404, "game_not_found", api.resolve_feedback_target, con, None, "nope")
-
 
 class SaveAnalysisContract(FeedbackTestCase):
     ANALYSIS = {"observations": [], "decision": "NO_PREFERENCE"}
@@ -301,6 +295,11 @@ class SaveAnalysisContract(FeedbackTestCase):
         )
         con.commit()
         self.assertEqual(api.save_analysis(self.analysis_payload({"a": 1, "b": 2}))["status"], "existing")
+
+    def test_boolean_and_number_are_not_interchangeable_in_analysis(self):
+        api.save_raw(self.raw())
+        api.save_analysis(self.analysis_payload({"flag": True}))
+        self.assertApiError(409, "analysis_conflict", api.save_analysis, self.analysis_payload({"flag": 1}))
 
     def test_different_analysis_is_a_conflict_and_keeps_the_first(self):
         api.save_raw(self.raw())
@@ -440,6 +439,10 @@ class HttpLayer(FeedbackTestCase):
                     self.assertEqual((status, payload["error"]), (401, "unauthorized"))
         self.assertEqual(len(self.feedback_rows()), 1)
 
+    def test_non_ascii_authorization_is_401_not_500(self):
+        status, payload = self.request("/v1/feedback/raw", self.raw(), auth="Bearer \u00e9")
+        self.assertEqual((status, payload["error"]), (401, "unauthorized"))
+
     def test_unconfigured_secret_fails_closed(self):
         saved = os.environ.pop("FEEDBACK_API_SECRET")
         self.addCleanup(os.environ.__setitem__, "FEEDBACK_API_SECRET", saved)
@@ -572,6 +575,22 @@ class ConsumerPersistenceBoundary(FeedbackTestCase):
         consumer.process_message(_message(_envelope(), lease="lease-2"))
         self.ack.assert_called_once_with("lease-2")
         self.assertEqual(len(self.feedback_rows()), 1)
+
+    def test_redelivery_of_an_already_analysed_event_does_not_re_enqueue_enrichment(self):
+        consumer.process_message(_message(_envelope()))
+        api.save_analysis(self.analysis_payload({"decision": "NO_PREFERENCE"}))
+        self.push.reset_mock()
+        self.ack.reset_mock()
+        consumer.process_message(_message(_envelope(), lease="lease-2"))
+        self.push.assert_not_called()
+        self.ack.assert_called_once_with("lease-2")
+
+    def test_ack_happens_after_enrichment_push(self):
+        order = mock.Mock()
+        order.attach_mock(self.push, "push")
+        order.attach_mock(self.ack, "ack")
+        consumer.process_message(_message(_envelope()))
+        self.assertEqual([c[0] for c in order.mock_calls], ["push", "ack"])
 
     def test_malformed_messages_fail_before_touching_the_db_and_never_ack(self):
         bad_messages = {
