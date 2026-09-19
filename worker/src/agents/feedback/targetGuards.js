@@ -265,34 +265,6 @@ export function overlapsOtherSignalEvidence(
  * Its semantics remain specifically about
  * BEHAVIOR_ONLY evidence.
  */
-export function overlapsBehaviorEvidence(
-    candidateText,
-    currentSignalId,
-    allSignals
-) {
-    return allSignals.some(
-        (signal) =>
-            signal.signal_id !==
-                currentSignalId &&
-            signal.evidence_type ===
-                'BEHAVIOR_ONLY' &&
-            typeof signal.evidence_text ===
-                'string' &&
-            signal.evidence_text.length >
-                0 &&
-            (
-                isContainedInEvidence(
-                    candidateText,
-                    signal.evidence_text
-                ) ||
-                substantiallyOverlapsEvidence(
-                    candidateText,
-                    signal.evidence_text
-                )
-            )
-    );
-}
-
 function longestCommonContiguousRun(
     leftTokens,
     rightTokens
