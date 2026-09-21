@@ -35,12 +35,14 @@ DANGEROUS_TERMS = {
     "химикат",
 }
 
-# "нож" must not match "ножки/ножками" (a child's legs), so knives and scissors are
-# matched as whole word forms; the other hazards are safe to match as stems.
-KNIFE_WORDS = re.compile(r"\bнож(?:а|у|ом|е|ей|ам|ами|ах|и\w*|ев\w*|ниц\w*)?\b")
+# Deny broad, allow narrow: any word that starts with "нож" is treated as a knife-family
+# hazard (нож, ножи, ножик, ножовка, ножны, ножницы, ...) unless it belongs to the small
+# family of harmless words for a child's legs (ножка, ножки, ножек, ножонки, ноженьки).
+KNIFE_PREFIX = re.compile(r"\bнож\w*")
+LEG_WORDS = re.compile(r"нож(?:к\w*|ек|онк\w*|еньк\w*)")
 
-# One attempt is usually spent correcting a formatting rejection, so a single false
-# positive on the second attempt used to cost the whole day.
+# The first attempt is often spent on a formatting rejection, so two independent validation
+# rejections used to exhaust the daily run. One more bounded corrective attempt is allowed.
 MAX_ATTEMPTS = 3
 
 
@@ -257,7 +259,10 @@ def validate_candidate(candidate, history):
                 f"dangerous-term gate triggered: {term}"
             )
 
-    if KNIFE_WORDS.search(safety_blob):
+    if any(
+        not LEG_WORDS.fullmatch(match.group())
+        for match in KNIFE_PREFIX.finditer(safety_blob)
+    ):
         errors.append("dangerous-term gate triggered: нож")
 
     if not candidate.get("message_text", "").strip():
