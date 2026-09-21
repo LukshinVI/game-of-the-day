@@ -127,7 +127,7 @@ def send_delivery_failure_alert(game, error):
     )
 
 
-def send_today():
+def send_today(retry_failed=False):
     with connect_db() as con:
         con.execute("BEGIN IMMEDIATE")
         rows = today_deliveries(con)
@@ -156,13 +156,14 @@ def send_today():
                 "Today's delivery is stuck in 'sending'; manual recovery required"
             )
 
-        if game["status"] == "failed":
+        if game["status"] == "failed" and not retry_failed:
             con.rollback()
             raise RuntimeError(
-                "Today's delivery is in 'failed'; explicit retry required"
+                "Today's delivery is in 'failed'; explicit retry required "
+                "(send-today --retry-failed)"
             )
 
-        if game["status"] != "pending":
+        if game["status"] not in ("pending", "failed"):
             con.rollback()
             raise RuntimeError(
                 f"Unexpected delivery status: {game['status']}"
@@ -191,7 +192,7 @@ def send_today():
                 last_error = NULL,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-              AND status = 'pending'
+              AND status IN ('pending', 'failed')
             """,
             (game["delivery_id"],)
         ).rowcount
@@ -370,14 +371,19 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status")
-    sub.add_parser("send-today")
+    send = sub.add_parser("send-today")
+    send.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="retry a delivery that ended in 'failed' (same VK random_id, so VK deduplicates)",
+    )
 
     args = parser.parse_args()
 
     if args.command == "status":
         print_status()
     elif args.command == "send-today":
-        send_today()
+        send_today(retry_failed=args.retry_failed)
 
 
 if __name__ == "__main__":
