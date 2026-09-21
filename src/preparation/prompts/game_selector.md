@@ -37,3 +37,9 @@ message_text must be a complete Russian-language message ready to send to the pa
 - concise steps;
 - safety note;
 - source link.
+
+Formatting rules (checked by code; a violation rejects the candidate and costs an attempt):
+- write the source link in message_text as a plain URL exactly equal to source_url;
+- never use Markdown link syntax such as [text](url), and no other Markdown in message_text;
+- materials lists only the objects the game actually uses, one short item each; do not describe what an item lacks there;
+- title, mechanics, materials and steps must not contain words for hazardous items (knife, needle, magnet, coin, bead, button, battery, glass, medicine, chemical, hot things), not even in a negation such as "without magnets"; put every prohibition in the safety field instead.
