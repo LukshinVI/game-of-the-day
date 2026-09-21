@@ -111,6 +111,12 @@ class SendToday(unittest.TestCase):
                 self.assertIn("manual recovery", str(error))
                 vk.assert_not_called()
 
+    def test_retry_failed_never_sends_a_pending_delivery(self):
+        vk, error = self.run_send(retry_failed=True)
+        self.assertIn("Nothing to retry", str(error))
+        vk.assert_not_called()
+        self.assertEqual(self.row()["status"], "pending")
+
     def test_retry_failed_on_a_sent_delivery_sends_nothing(self):
         self.run_send()
         vk, _ = self.run_send(retry_failed=True)
@@ -124,6 +130,27 @@ class SendToday(unittest.TestCase):
         vk, error = self.run_send()
         self.assertIsNone(error)
         vk.assert_not_called()
+
+    def test_state_prints_one_word_for_every_situation(self):
+        def state():
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                gd.print_state()
+            return out.getvalue().strip()
+
+        self.assertEqual(state(), "pending")
+        for status in ("sending", "sent", "failed"):
+            self.set_status(status)
+            self.assertEqual(state(), status)
+        con = sqlite3.connect(self.db)
+        con.execute("INSERT INTO games(id, legacy_id, game_date, title, message_text) VALUES (2, '002', ?, 'T2', 't')", (self.today,))
+        con.execute("INSERT INTO deliveries(game_id, status, idempotency_key) VALUES (2, 'pending', 'key-2')")
+        con.commit()
+        self.assertEqual(state(), "ambiguous")
+        con.execute("UPDATE games SET game_date = '2000-01-01'")
+        con.commit()
+        con.close()
+        self.assertEqual(state(), "none")
 
     def test_cli_exposes_the_retry_flag_and_no_send_last(self):
         parser_help = io.StringIO()

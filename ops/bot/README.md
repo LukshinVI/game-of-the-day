@@ -1,38 +1,42 @@
 # Manual delivery through the Telegram bot
 
-Owner-only control for the case where the daily delivery did not happen and someone has to send the game by hand. It replaces logging into the host and running the CLI, which cannot work reliably: the messaging credentials are only available to systemd units, and a manual run without them marks today's delivery as `failed`.
+Owner-only control for the case where the daily delivery did not happen and someone has to send the game by hand. It replaces logging into the host and running the CLI, which cannot work: the messaging credentials exist only in systemd units, and a manual run without them marks today's delivery as `failed`.
 
-| Command | What it does |
-|---|---|
-| `/status` | shows today's delivery state (`game_delivery.py status`) |
-| `/send` | shows the state and a one-time four-digit code, valid for two minutes; sends nothing |
-| `/send <code>` | runs `game_delivery.py send-today --retry-failed`, then shows the state again to confirm it is `sent` |
+| Command | Works when today's delivery is | What it does |
+|---|---|---|
+| `/status` | any | shows the delivery status |
+| `/send`, then `/send <code>` | `pending` | one-time code (2 minutes), then starts `game-delivery.service` and shows the status again |
+| `/retry`, then `/retry <code>` | `failed` | one-time code, then starts `game-delivery-retry.service` (`send-today --retry-failed`) and shows the status again |
 
-## Security model
-- Only a **private chat with the owner** is served: the chat id and the sender id must both equal `TELEGRAM_CHAT_ID`. Everything else is ignored silently (no reply, nothing runs). If that variable is a group id the bot will not answer; use the private chat id.
-- Messages older than a minute are ignored, so a backlog after a restart cannot trigger a send. A code is single-use and expires.
-- The bot only runs fixed argument lists of the delivery CLI; no user text reaches a command line. It never builds or sends game messages itself, so the state machine and idempotency stay in `src/delivery/game_delivery.py`.
-- Outbound long polling only: no inbound port, no webhook. Logs contain exception types, never URLs or tokens.
-- `--retry-failed` reuses the same VK `random_id` (derived from the delivery's idempotency key), so a retry after an ambiguous failure is deduplicated by VK.
+In every other state the bot only explains why it does nothing (already sent, no game, stuck in `sending`, ambiguous). The state is checked again when the code is used. Success is confirmed by the status after the run, not by an exit code.
 
-## Install (needs root)
+## Design
+- **Trust split.** The bot holds only the Telegram credentials. It never sees the messaging credentials: it asks systemd to start one of two fixed oneshot units, which carry those credentials themselves. A long-running process can be read by any process of the same user through `/proc`, a delivery unit exposes the credentials for seconds.
+- **Polkit rule** (`50-game-of-the-day.rules`): lets the service user start exactly `game-delivery.service` and `game-delivery-retry.service`. Nothing else: no other unit, no stop/restart. Note that this also lets any process of that user start those two units, which is the same effect the daily timer has.
+- **Authorisation.** Only a private chat whose id and sender id both equal `TELEGRAM_CHAT_ID`; everything else is ignored silently. If that variable is a group id the bot will not answer; use the private chat id. Messages older than a minute are ignored, codes are single-use, expire, and are lost on restart. A wrong or expired code invalidates the challenge.
+- **Retry safety.** `--retry-failed` only retries a `failed` delivery (a `pending` one is refused) and reuses the same VK `random_id`, so an ambiguous earlier attempt is deduplicated by VK. A retry is a separate command with a separate confirmation, after the failure reason has been shown by `/status`.
+- **Liveness.** Outbound long polling only, no inbound port. If Telegram cannot be reached for 10 minutes the bot exits so that systemd restarts it. An alert cannot help when Telegram itself is the problem, so this does not replace an independent daily-outcome check (#45).
+
+## Install (needs root; the unit files assume the service user `gotd`)
 ```bash
 cd /srv/game-of-the-day && git log -1 --oneline        # the reviewed commit
-sudo install -m 0644 ops/bot/game-bot.service /etc/systemd/system/
+sudo install -m 0644 ops/delivery/game-delivery-retry.service ops/bot/game-bot.service /etc/systemd/system/
+sudo install -m 0644 ops/bot/50-game-of-the-day.rules /etc/polkit-1/rules.d/
 sudo systemctl daemon-reload
 sudo systemctl enable --now game-bot.service
 systemctl is-active game-bot.service
 ```
-The bot sends "Бот ручной отправки запущен" to the owner when it starts. Then send `/status` from the private chat.
+The bot sends "Бот ручной отправки запущен" to the owner when it starts. Then send `/status` from the private chat. Do not start `game-delivery-retry.service` by hand to test: it retries a real failed delivery.
 
 ## Rollback
 ```bash
 sudo systemctl disable --now game-bot.service
-sudo rm /etc/systemd/system/game-bot.service && sudo systemctl daemon-reload
+sudo rm /etc/systemd/system/game-bot.service /etc/systemd/system/game-delivery-retry.service /etc/polkit-1/rules.d/50-game-of-the-day.rules
+sudo systemctl daemon-reload
 ```
 
-## Not included yet
-Preparing a game (`/prepare`) needs the model CLI and its credentials, which the sandbox of this unit does not provide; it would need a separately reviewed change.
+## Not included
+Preparing a game (`/prepare`) is deliberately not part of this bot: it calls the model, has other credentials, creates state and runs the safety validation. If it is ever needed it should be a separate, separately reviewed unit with its own confirmation.
 
 ## Tests
 `python3 -m unittest tests.test_manual_bot tests.test_game_delivery`

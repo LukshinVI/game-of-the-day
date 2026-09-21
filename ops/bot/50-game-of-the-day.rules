@@ -1,0 +1,11 @@
+// Lets the service user start exactly the two delivery units the manual bot needs.
+// Nothing else: no other unit, no stop/restart, no other user.
+polkit.addRule(function (action, subject) {
+    if (action.id === "org.freedesktop.systemd1.manage-units" &&
+        subject.user === "gotd" &&
+        action.lookup("verb") === "start" &&
+        (action.lookup("unit") === "game-delivery.service" ||
+         action.lookup("unit") === "game-delivery-retry.service")) {
+        return polkit.Result.YES;
+    }
+});
