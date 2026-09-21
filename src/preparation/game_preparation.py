@@ -28,13 +28,22 @@ DANGEROUS_TERMS = {
     "батарей",
     "магнит",
     "стекл",
-    "нож",
     "игол",
     "кипят",
     "горяч",
     "лекарств",
     "химикат",
 }
+
+# Deny broad, allow narrow: any word that starts with "нож" is treated as a knife-family
+# hazard (нож, ножи, ножик, ножовка, ножны, ножницы, ...) unless it belongs to the small
+# family of harmless words for a child's legs (ножка, ножки, ножек, ножонки, ноженьки).
+KNIFE_PREFIX = re.compile(r"\bнож\w*")
+LEG_WORDS = re.compile(r"нож(?:к\w*|ек|онк\w*|еньк\w*)")
+
+# The first attempt is often spent on a formatting rejection, so two independent validation
+# rejections used to exhaust the daily run. One more bounded corrective attempt is allowed.
+MAX_ATTEMPTS = 3
 
 
 def connect_db():
@@ -250,6 +259,12 @@ def validate_candidate(candidate, history):
                 f"dangerous-term gate triggered: {term}"
             )
 
+    if any(
+        not LEG_WORDS.fullmatch(match.group())
+        for match in KNIFE_PREFIX.finditer(safety_blob)
+    ):
+        errors.append("dangerous-term gate triggered: нож")
+
     if not candidate.get("message_text", "").strip():
         errors.append("message_text is empty")
 
@@ -350,7 +365,7 @@ def send_failure_alert(errors):
     notifier = ROOT / "src" / "ops" / "notifier.py"
 
     details = (
-        "Подготовка игры завершилась ошибкой после 2 попыток.\n"
+        f"Подготовка игры завершилась ошибкой после {MAX_ATTEMPTS} попыток.\n"
         "Игра не была записана в production SQLite.\n"
         "Отправка в VK не выполнялась.\n\n"
         "Ошибки последней проверки:\n- "
@@ -506,9 +521,9 @@ def select_candidate(history, target_date):
     prompt = original_prompt
     last_errors = []
 
-    for attempt in range(1, 3):
+    for attempt in range(1, MAX_ATTEMPTS + 1):
         print()
-        print(f"=== ПОПЫТКА {attempt}/2 ===")
+        print(f"=== ПОПЫТКА {attempt}/{MAX_ATTEMPTS} ===")
 
         candidate = run_codex(prompt)
         errors = validate_candidate(candidate, history)
@@ -529,11 +544,11 @@ def select_candidate(history, target_date):
 
         last_errors = errors
 
-        if attempt == 1:
+        if attempt < MAX_ATTEMPTS:
             print()
             print(
                 "Кандидат отклонён. "
-                "Выполняется одна корректирующая попытка."
+                "Выполняется корректирующая попытка."
             )
             prompt = build_retry_prompt(
                 original_prompt,
@@ -544,7 +559,7 @@ def select_candidate(history, target_date):
     send_failure_alert(last_errors)
 
     raise RuntimeError(
-        "Подготовка игры не удалась после 2 попыток"
+        f"Подготовка игры не удалась после {MAX_ATTEMPTS} попыток"
     )
 
 
@@ -623,9 +638,9 @@ def shadow_run():
     prompt = original_prompt
     last_errors = []
 
-    for attempt in range(1, 3):
+    for attempt in range(1, MAX_ATTEMPTS + 1):
         print()
-        print(f"=== ATTEMPT {attempt}/2 ===")
+        print(f"=== ATTEMPT {attempt}/{MAX_ATTEMPTS} ===")
 
         candidate = run_codex(prompt)
         errors = validate_candidate(candidate, history)
@@ -655,9 +670,9 @@ def shadow_run():
 
         last_errors = errors
 
-        if attempt == 1:
+        if attempt < MAX_ATTEMPTS:
             print()
-            print("Candidate rejected. Preparing one corrective retry.")
+            print("Candidate rejected. Preparing a corrective retry.")
             prompt = build_retry_prompt(
                 original_prompt,
                 candidate,
@@ -666,14 +681,14 @@ def shadow_run():
 
     print()
     print("=== PREPARATION FAILED ===")
-    print("Attempts exhausted: 2/2")
+    print(f"Attempts exhausted: {MAX_ATTEMPTS}/{MAX_ATTEMPTS}")
     print("Production database: NOT MODIFIED")
     print("VK delivery: NOT ATTEMPTED")
 
     send_failure_alert(last_errors)
 
     raise RuntimeError(
-        "Подготовка игры не удалась после 2 попыток"
+        f"Подготовка игры не удалась после {MAX_ATTEMPTS} попыток"
     )
 
 
