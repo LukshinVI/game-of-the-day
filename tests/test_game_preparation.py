@@ -52,16 +52,28 @@ class ValidCandidate(unittest.TestCase):
 
 
 class KnifeGate(unittest.TestCase):
-    def test_child_body_words_are_not_knives(self):
-        for word in ("ножками", "ножки", "ножка", "ножке", "ножек", "ножкам"):
+    LEGS = ("ножка", "ножки", "ножку", "ножке", "ножкой", "ножкою", "ножек", "ножкам", "ножками", "ножках",
+            "ножонки", "ноженьки", "подножка", "подножки")
+    KNIVES = ("нож", "ножа", "ножу", "ножом", "ноже", "ножи", "ножей", "ножам", "ножик", "ножиком",
+              "ножичек", "ножичком", "ножевой", "ножовка", "ножовкой", "ножницы", "ножницами", "ножны",
+              "ножнами", "ножная")
+
+    def test_child_leg_words_are_not_knives(self):
+        for word in self.LEGS:
             with self.subTest(word=word):
                 self.assertEqual(hazard_errors(steps=[f"Ребёнок двигает {word}.", "Повторите."]), [])
 
-    def test_knife_and_scissor_forms_are_still_rejected(self):
-        for word in ("нож", "ножа", "ножом", "ноже", "ножи", "ножей", "ножик", "ножичек", "ножичком", "ножевой", "ножницы", "ножницами"):
+    def test_every_other_word_starting_with_nozh_is_rejected(self):
+        for word in self.KNIVES:
             with self.subTest(word=word):
                 errors = hazard_errors(steps=[f"Возьмите {word}.", "Повторите."])
                 self.assertEqual(errors, ["dangerous-term gate triggered: нож"])
+
+    def test_an_unknown_word_family_is_denied_by_default(self):
+        self.assertTrue(hazard_errors(steps=["Возьмите ножеточку.", "Повторите."]))
+
+    def test_one_legs_word_does_not_hide_a_knife_in_the_same_text(self):
+        self.assertTrue(hazard_errors(steps=["Ножки ребёнка рядом, а рядом лежит нож.", "Повторите."]))
 
     def test_the_word_boundary_is_not_bypassed_by_case_or_punctuation(self):
         self.assertTrue(hazard_errors(steps=["Осторожно: НОЖ!", "Повторите."]))
