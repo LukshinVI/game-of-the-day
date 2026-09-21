@@ -156,6 +156,12 @@ def send_today(retry_failed=False):
                 "Today's delivery is stuck in 'sending'; manual recovery required"
             )
 
+        if retry_failed and game["status"] != "failed":
+            con.rollback()
+            raise RuntimeError(
+                f"Nothing to retry: today's delivery is '{game['status']}'"
+            )
+
         if game["status"] == "failed" and not retry_failed:
             con.rollback()
             raise RuntimeError(
@@ -258,6 +264,19 @@ def send_today(retry_failed=False):
         game,
         external_id,
     )
+
+
+def print_state():
+    """One word for machines (the manual bot): none, pending, sending, sent, failed or ambiguous."""
+    with connect_db() as con:
+        rows = today_deliveries(con)
+
+    if not rows:
+        print("none")
+    elif len(rows) != 1:
+        print("ambiguous")
+    else:
+        print(rows[0]["status"])
 
 
 def print_status():
@@ -371,6 +390,7 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status")
+    sub.add_parser("state")
     send = sub.add_parser("send-today")
     send.add_argument(
         "--retry-failed",
@@ -382,6 +402,8 @@ def main():
 
     if args.command == "status":
         print_status()
+    elif args.command == "state":
+        print_state()
     elif args.command == "send-today":
         send_today(retry_failed=args.retry_failed)
 

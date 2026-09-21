@@ -2,13 +2,16 @@
 """Owner-only Telegram control for manual delivery.
 
 Commands, accepted only from the owner's private chat:
-  /status         state of today's delivery
-  /send           show the state and a one-time code (valid for two minutes)
-  /send <code>    send today's game; a delivery that ended in "failed" is retried
+  /status          state of today's delivery
+  /send            when today's delivery is pending: show a one-time code (two minutes)
+  /send <code>     start the normal delivery unit
+  /retry           when today's delivery failed: show a one-time code
+  /retry <code>    start the explicit-retry delivery unit
 
-The bot never builds or sends game messages itself: it runs the delivery CLI, so the
-state machine, idempotency and alerts stay in one place. It only makes outbound calls
-(long polling), so it needs no inbound port.
+The bot holds only the Telegram credentials. It never sends game messages and never sees
+the messaging credentials: it asks systemd to start one of two fixed delivery units, which
+carry those credentials themselves (a polkit rule allows exactly these two units).
+Outbound long polling only, so there is no inbound port.
 """
 
 import json
@@ -24,20 +27,37 @@ ROOT = Path(__file__).resolve().parents[2]
 DELIVERY = ROOT / "src" / "delivery" / "game_delivery.py"
 API = "https://api.telegram.org"
 
+UNITS = {
+    "send": "game-delivery.service",
+    "retry": "game-delivery-retry.service",
+}
+REQUIRED_STATE = {"send": "pending", "retry": "failed"}
+
 CONFIRM_TTL_SECONDS = 120
 MAX_MESSAGE_AGE_SECONDS = 60
 POLL_TIMEOUT_SECONDS = 30
-CLI_TIMEOUT_SECONDS = 180
+CLI_TIMEOUT_SECONDS = 60
+UNIT_TIMEOUT_SECONDS = 300
+EXIT_AFTER_FAILING_SECONDS = 600
 MAX_REPLY_CHARS = 3500
 
 HELP = (
     "Команды:\n"
     "/status - состояние сегодняшней доставки\n"
-    "/send - отправить сегодняшнюю игру (потребуется код подтверждения)"
+    "/send - отправить сегодняшнюю игру (нужен код подтверждения)\n"
+    "/retry - повторить отправку после ошибки (нужен код подтверждения)"
 )
+
+EXPLANATIONS = {
+    "sent": "Сегодняшняя игра уже отправлена.",
+    "none": "На сегодня нет подготовленной игры: отправлять нечего.",
+    "sending": "Доставка зависла в состоянии sending: нужен ручной разбор, бот ничего не запускает.",
+    "ambiguous": "На сегодня несколько доставок: нужен ручной разбор, бот ничего не запускает.",
+}
 
 
 def run_delivery(*args):
+    """Run a read-only delivery CLI command and return its output (or an error text)."""
     try:
         result = subprocess.run(
             [sys.executable, str(DELIVERY), *args],
@@ -57,10 +77,30 @@ def run_delivery(*args):
     return output
 
 
+def start_unit(unit):
+    """Ask systemd to run a oneshot unit and wait until it finishes."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "--no-ask-password", "start", unit],
+            capture_output=True,
+            text=True,
+            timeout=UNIT_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return f"{unit} не завершился за {UNIT_TIMEOUT_SECONDS} секунд."
+
+    if result.returncode != 0:
+        details = (result.stdout + result.stderr).strip() or "(нет вывода)"
+        return f"{unit} завершился с ошибкой (код {result.returncode}):\n{details}"
+
+    return f"{unit} выполнен."
+
+
 class Controller:
-    def __init__(self, owner_id, run=run_delivery, now=time.time, new_code=None):
+    def __init__(self, owner_id, run=run_delivery, start=start_unit, now=time.time, new_code=None):
         self.owner_id = owner_id
         self.run = run
+        self.start = start
         self.now = now
         self.new_code = new_code or (lambda: f"{secrets.randbelow(10000):04d}")
         self.pending = None
@@ -91,33 +131,54 @@ class Controller:
         if command == "/status":
             return "Доставка сегодня:\n" + self.run("status")
 
-        if command == "/send":
-            return self.send(parts[1:])
+        if command in ("/send", "/retry"):
+            return self.request(command[1:], parts[1:])
 
         return HELP
 
-    def send(self, args):
+    def request(self, action, args):
+        state = self.run("state").strip()
+
+        if state != REQUIRED_STATE[action]:
+            self.pending = None
+            return self.explain(action, state)
+
         code = args[0] if args else ""
         pending = self.pending
 
-        if (
-            pending
-            and self.now() < pending[1]
-            and secrets.compare_digest(code, pending[0])
-        ):
+        if code:
+            valid = (
+                pending is not None
+                and pending[0] == action
+                and self.now() < pending[2]
+                and secrets.compare_digest(code, pending[1])
+            )
             self.pending = None
-            sent = self.run("send-today", "--retry-failed")
-            return f"{sent}\n\nПроверка:\n{self.run('status')}"
 
-        code = self.new_code()
-        self.pending = (code, self.now() + CONFIRM_TTL_SECONDS)
+            if not valid:
+                return f"Код неверен или истёк. Запросите /{action} заново."
+
+            return f"{self.start(UNITS[action])}\n\nПроверка:\n{self.run('status')}"
+
+        new_code = self.new_code()
+        self.pending = (action, new_code, self.now() + CONFIRM_TTL_SECONDS)
+        what = "отправить" if action == "send" else "повторить после ошибки"
 
         return (
             "Доставка сегодня:\n"
             + self.run("status")
-            + f"\n\nЧтобы отправить (или повторить после ошибки), "
-            f"в течение 2 минут: /send {code}"
+            + f"\n\nЧтобы {what}, в течение 2 минут: /{action} {new_code}"
         )
+
+    @staticmethod
+    def explain(action, state):
+        if state == "failed" and action == "send":
+            return "Прошлая отправка завершилась ошибкой (причина в /status). Если причина устранена: /retry."
+
+        if state == "pending" and action == "retry":
+            return "Ошибки нет, доставка ещё не выполнялась. Для отправки: /send."
+
+        return EXPLANATIONS.get(state, f"Неожиданное состояние: {state}. Бот ничего не запускает.")
 
 
 def telegram(token, method, payload, timeout):
@@ -137,6 +198,7 @@ def main():
     owner_id = int(os.environ["TELEGRAM_CHAT_ID"])
     controller = Controller(owner_id)
     offset = None
+    last_success = time.time()
 
     def reply(text):
         telegram(
@@ -167,6 +229,7 @@ def main():
                 payload,
                 POLL_TIMEOUT_SECONDS + 10,
             )
+            last_success = time.time()
 
             for update in result.get("result", []):
                 offset = update["update_id"] + 1
@@ -178,6 +241,13 @@ def main():
 
         except Exception as exc:  # noqa: BLE001 - log the type only, never URLs or tokens
             print(f"poll error: {type(exc).__name__}", flush=True)
+
+            # A bot that is "active" but cannot reach Telegram is dead in practice: exit so
+            # that systemd restarts it and the journal shows the loop.
+            if time.time() - last_success > EXIT_AFTER_FAILING_SECONDS:
+                print("no successful poll for too long; exiting", flush=True)
+                sys.exit(1)
+
             time.sleep(5)
 
 

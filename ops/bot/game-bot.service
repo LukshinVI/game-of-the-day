@@ -10,10 +10,9 @@ Type=simple
 User=gotd
 Group=gotd
 WorkingDirectory=/srv/game-of-the-day
-# Same environment as the delivery unit: the delivery CLI it runs needs the messaging
-# credentials, the bot itself needs the Telegram token and the owner's chat id.
-# systemd reads these root-only files before dropping privileges.
-EnvironmentFile=/etc/game-of-the-day/game.env
+# Only the Telegram credentials. The messaging credentials stay in the delivery units the
+# bot starts through systemd; any process of this user could read a long-running bot's
+# environment, a delivery unit exposes it for seconds. systemd reads the file as root.
 EnvironmentFile=/etc/game-of-the-day/ops-bot.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
@@ -24,7 +23,7 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-# The delivery CLI writes delivery state to SQLite next to the database.
+# The read-only status commands open SQLite (WAL needs the -shm file next to it).
 ReadWritePaths=/srv/game-of-the-day/data
 
 [Install]
