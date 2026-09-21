@@ -1,0 +1,30 @@
+[Unit]
+Description=Game of the Day - owner Telegram control (manual delivery)
+After=network-online.target
+Wants=network-online.target
+# Reuses the alert template from the backup package.
+OnFailure=game-backup-alert@%n.service
+
+[Service]
+Type=simple
+User=gotd
+Group=gotd
+WorkingDirectory=/srv/game-of-the-day
+# Only the Telegram credentials. The messaging credentials stay in the delivery units the
+# bot starts through systemd; any process of this user could read a long-running bot's
+# environment, a delivery unit exposes it for seconds. systemd reads the file as root.
+EnvironmentFile=/etc/game-of-the-day/ops-bot.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/ops/manual_bot.py
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+# The read-only status commands open SQLite (WAL needs the -shm file next to it).
+ReadWritePaths=/srv/game-of-the-day/data
+
+[Install]
+WantedBy=multi-user.target
