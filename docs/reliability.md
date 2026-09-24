@@ -57,7 +57,9 @@ A production cutover is complete only after runtime verification, not merely aft
 
 This document states the invariants the project works towards. These are the places where the running system does not yet meet them; each is tracked as work rather than hidden.
 
-- **No automated state backup.** SQLite is the single durable store on a single host. An automated online backup with integrity verification, retention, an off-host copy and a periodic restore test is not in place yet.
+- **Backups are local only.** SQLite is the single durable store on a single host. A nightly online backup with integrity verification, retention, a freshness check and a failure alert runs, but the copy sits on the same disk: there is no off-host copy and no periodic restore test yet (#37).
+- **No independent check of the day's outcome.** Process failures raise their own alerts, but nothing verifies that today's game exists and was delivered. Two consecutive missed days in September went unnoticed for that reason (#45).
+- **Two game producers exist until the cutover.** The legacy scheduled generator and the host preparation both create games, and their identifiers collide; only the host path feeds delivery (#46).
 - **Queue failures can end in silent discard.** Consumers use bounded retries, but no queue has a dead-letter destination yet, so a message that keeps failing is eventually dropped instead of being quarantined. Permanent errors (for example an event with no resolvable target) are not distinguished from transient ones.
 - **Queue redelivery is not closed end to end.** Redelivery of an already-analysed event no longer re-enqueues enrichment, but an ambiguous publish outcome (accepted by the queue, error seen by the caller) can still deliver enrichment twice. A stable idempotency key for enrichment messages and downstream deduplication are not defined yet.
 - **Runtime privilege is broader than necessary.** Some services run under a general-purpose or privileged account rather than a dedicated unprivileged service user with a sandboxed unit.
