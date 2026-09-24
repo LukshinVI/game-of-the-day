@@ -65,6 +65,8 @@ Delivery uses explicit states such as `pending`, `sending`, `sent`, and `failed`
 
 See [Reliability model](docs/reliability.md) for the invariants and the known gaps between them and the running system.
 
+Operational runbooks live next to their code: [database backup](ops/backup/README.md) and [manual delivery control](ops/bot/README.md).
+
 ## Deterministic / AI boundary
 
 The application intentionally avoids delegating workflow ownership to an LLM.
@@ -129,7 +131,7 @@ stability period
 legacy runtime retirement
 ```
 
-The old runtime remains available as a rollback path until the cutover has been verified. Migration and architecture refactoring are intentionally kept separate.
+Status: daily preparation and delivery have run from the host since 2026-09-18, together with the feedback contour. The old runtime stays enabled as a rollback path until measurable exit criteria are met (an independent daily-outcome check, a tested rollback, a recovery drill); whether it still delivers is unverified. Migration and architecture refactoring are intentionally kept separate.
 
 ## Engineering principles
 
