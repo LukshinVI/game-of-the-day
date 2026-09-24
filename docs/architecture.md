@@ -8,7 +8,7 @@ This document is the architectural source of truth for the project. The README p
 
 ```mermaid
 flowchart LR
-    subgraph LEGACY[Legacy delivery until final cutover]
+    subgraph LEGACY[Legacy path: rollback, kept enabled until the cutover criteria are met]
         AUTO[Daily automation] --> STORE[Legacy data store]
         STORE --> SCRIPT[Legacy delivery runtime]
         SCRIPT --> CH[Messaging channel]
@@ -33,13 +33,13 @@ flowchart LR
 
     RAW --> STORAGE
     AN --> STORAGE
-    DELIVERY -. after final cutover .-> CH
+    DELIVERY --> CH
 ```
 
 Current migration boundary:
 
 ```text
-delivery: legacy runtime → messaging channel       [production until final cutover]
+delivery: host scheduler → messaging channel        [production since 2026-09-18; legacy path kept as rollback]
 feedback: channel → Cloudflare queues → host consumer → SQLite  [cut over]
 state:    legacy store → SQLite                    [becoming source of truth]
 ingress:  none for feedback (queue pull/push only)   [HTTP API removed]
@@ -57,7 +57,9 @@ Verified migration capabilities include:
 - database integrity checks;
 - a queue consumer on the host that persists raw feedback and its analysis through an idempotent storage module (unique by channel and event id);
 - isolated regression tests for create, duplicate/retry, conflict, concurrent writers, analysis persistence, and the consumer's acknowledge-only-after-persist rule;
-- a delivery CLI/state machine that is being promoted independently from the legacy scheduler.
+- a delivery state machine run by a host timer: idempotent sends (same idempotency identity on retry), explicit retry of failed deliveries, a machine-readable state for tooling, and an owner-only chat control for manual send/retry;
+- daily preparation on the host with deterministic validation of every candidate (the model proposes, code enforces safety and format);
+- a nightly online backup of the database with an integrity check, a freshness check and failure alerts.
 
 SQLite is not directly exposed to the network.
 
@@ -135,8 +137,8 @@ The final cutover is the only point at which the new scheduler becomes the sole 
 - a confirmed `sent` delivery is not sent again;
 - external side effects have stable idempotency identities;
 - delivery states are explicit: `pending`, `sending`, `sent`, `failed`;
-- stale `sending` states are recoverable;
-- retryable failures are recoverable;
+- `failed` deliveries are recoverable through an explicit retry that reuses the same idempotency identity, and the retry refuses any other state;
+- a stale `sending` state is not automatically recovered yet: it needs manual recovery (tracked work);
 - `sent_at` is recorded only after confirmed success;
 - absence of an activity for the current date is a valid no-op, not data corruption;
 - repeated scheduler executions must not create uncontrolled duplicate delivery.
@@ -242,7 +244,9 @@ application events
 → alert / recovery notification
 ```
 
-Health checks cover database integrity, abnormal delivery states, scheduler/service health, feedback persistence state, and expected delivery freshness. Healthy polling should remain inexpensive and should not require an LLM call.
+The intended health checks cover database integrity, abnormal delivery states, scheduler/service health, feedback persistence state, and expected delivery freshness. Healthy polling should remain inexpensive and should not require an LLM call.
+
+Implemented today: failure alerts to the owner from preparation, delivery and failed systemd units (Telegram, in Russian); the nightly backup with its own freshness check; a bounded-liveness rule for the manual-control bot. **Not implemented yet:** an independent check that today's game was delivered. On 2026-09-20 and 2026-09-21 the preparation alert fired but the missing outcome went unnoticed for two days, so process alerts alone are not enough (tracked in #45).
 
 Logs must not contain credentials, secret headers, infrastructure secrets, or unnecessary raw user feedback.
 
@@ -268,7 +272,9 @@ Migration steps are designed so failure does not require destructive rollback.
 
 Before final cutover, the legacy delivery runtime remains available. During cutover it is disabled rather than immediately deleted. Data and code are retained for a stability window.
 
-Feedback downstream changes have their own rollback boundary: if real end-to-end persistence fails, routing can return to the previous persistence path while the application API is diagnosed.
+The feedback persistence cutover is complete. The previous persistence path and the intermediate HTTP API no longer exist (the API had no callers and was removed); rolling back feedback means reverting the change and redeploying, with the queues as the durable buffer in between.
+
+The delivery rollback path is the legacy runtime, kept enabled by decision until measurable exit criteria are met (tracked in #32). Whether the legacy sender still delivers has not been verified, so it must not be relied on as a safety net without a drill.
 
 Physical removal of legacy runtime code happens only after stable production operation on the new contour.
 
