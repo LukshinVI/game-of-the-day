@@ -4,7 +4,7 @@ A small production-oriented service that delivers a safe, age-appropriate develo
 
 The project is also an engineering sandbox for reliable AI-assisted workflows: deterministic guardrails own state and side effects, while LLMs are limited to semantic tasks that benefit from them.
 
-> **Project status:** active production migration. The system is moving from a Google-based runtime to a VPS/SQLite application runtime through a controlled, reversible cutover.
+> **Project status:** production runs on the VPS/SQLite application runtime. Delivery and feedback have moved off the legacy Google runtime; the legacy path stays enabled only as a rollback, pending explicit retirement (see below).
 
 ## What the product does
 
@@ -49,7 +49,7 @@ flowchart TD
     RES --> DB
 ```
 
-The migration deliberately separates delivery, feedback persistence, and final source-of-truth cutover so each boundary can be verified and rolled back independently.
+The design deliberately separates delivery, feedback persistence, and final source-of-truth cutover so each boundary can be verified and rolled back independently.
 
 See [Architecture](docs/architecture.md) for the detailed runtime model and migration invariants.
 
@@ -111,7 +111,7 @@ The current production model is `@cf/google/gemma-4-26b-a4b-it` through Cloudfla
 
 ## Current migration
 
-The active migration moves durable product state and delivery from the legacy Google runtime to SQLite on the application host.
+Delivery and feedback state have moved from the legacy Google runtime to SQLite on the application host — this describes how the product runs today, not a plan in progress.
 
 ```text
 production-safe delivery state machine
@@ -131,7 +131,7 @@ stability period
 legacy runtime retirement
 ```
 
-Status: daily preparation and delivery have run from the host since 2026-09-18, together with the feedback contour and an independent daily-outcome check. The old runtime stays enabled as a rollback path until the remaining measurable exit criteria are met (14 days green, a tested rollback, a recovery drill, see #32); whether it still delivers is unverified. Migration and architecture refactoring are intentionally kept separate.
+Status: daily preparation and delivery have run from the host every day since 2026-09-18 except 2026-09-20/21 (a validation bug, fixed in #44, not recurred since — ten clean days as of 2026-09-28). What remains before the migration epic (#27) closes is not technical capability, it is formally retiring the legacy path against the exit criteria the owner set in #32: the new outcome check green for 14 consecutive days (day 0 today; the recovery drill through it already succeeded once, on 2026-09-21) and a documented rollback to the legacy path tried at least once. Whether the legacy sender is even still enabled is a separate open question (#46). Migration and architecture refactoring are intentionally kept separate.
 
 ## Engineering principles
 
@@ -153,7 +153,7 @@ See [Product Roadmap](docs/product-roadmap.md) and [GitHub Issues](../../issues)
 
 ## Repository safety
 
-Public documentation intentionally uses role-based names and placeholders instead of production hostnames, addresses, account identifiers, recipient identities, internal filesystem paths, or credentials.
+Public documentation uses role-based names and placeholders instead of production hostnames, addresses, recipient identities, or credentials. Two categories still leak into tracked files as a known, tracked gap rather than a silent one: the operational unit files under `ops/` name the actual host service user and its filesystem path, and two legacy-path identifiers remain hardcoded in source. Both are pre-publication work (#34); the repository is private until they are resolved.
 
 Runtime secrets must never be committed. See [Security Policy](SECURITY.md).
 
