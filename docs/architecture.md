@@ -246,7 +246,7 @@ application events
 
 The intended health checks cover database integrity, abnormal delivery states, scheduler/service health, feedback persistence state, and expected delivery freshness. Healthy polling should remain inexpensive and should not require an LLM call.
 
-Implemented today: failure alerts to the owner from preparation, delivery and failed systemd units (Telegram, in Russian); the nightly backup with its own freshness check; a bounded-liveness rule for the manual-control bot. **Not implemented yet:** an independent check that today's game was delivered. On 2026-09-20 and 2026-09-21 the preparation alert fired but the missing outcome went unnoticed for two days, so process alerts alone are not enough (tracked in #45).
+Implemented today: failure alerts to the owner from preparation, delivery and failed systemd units (Telegram, in Russian); the nightly backup with its own freshness check; a bounded-liveness rule for the manual-control bot; an independent daily-outcome check (`ops/day-outcome`) that reads today's delivery state on its own, several times after the delivery window, and alerts if the outcome was not met — this is what process alerts alone missed on 2026-09-20/21 (two days unnoticed). **Not implemented yet:** an external heartbeat that would notice the whole host being down, which none of the above can see (#45).
 
 Logs must not contain credentials, secret headers, infrastructure secrets, or unnecessary raw user feedback.
 
