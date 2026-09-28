@@ -20,7 +20,7 @@ The product is not a medical or diagnostic tool.
 
 The first version establishes the basic daily loop: select an age-appropriate activity, prepare a delivery message, send it through the configured channel, and persist delivery state.
 
-The current production migration is moving this responsibility from the legacy Google runtime to the VPS/SQLite runtime. Migration status is tracked under #27 and its child issues.
+This responsibility has moved from the legacy Google runtime to the VPS/SQLite runtime: the host has run daily preparation and delivery since 2026-09-18. What remains is retiring the legacy path against the exit criteria in #32; migration status is tracked under #27 and its child issues.
 
 ## V2 — Feedback loop
 

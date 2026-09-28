@@ -16,7 +16,7 @@ Expected invariants:
 - an already-sent delivery is not sent again;
 - external side effects use stable identity where the channel supports it;
 - `sent` is recorded only after confirmed external success;
-- interrupted `sending` work can be detected and recovered;
+- interrupted `sending` work can be detected; automatic recovery is not built yet, it needs a manual check (tracked in #28);
 - retryable failures remain retryable;
 - absence of an eligible activity is a normal domain state, not database corruption.
 
@@ -59,7 +59,7 @@ This document states the invariants the project works towards. These are the pla
 
 - **Backups are local only.** SQLite is the single durable store on a single host. A nightly online backup with integrity verification, retention, a freshness check and a failure alert runs, but the copy sits on the same disk: there is no off-host copy and no periodic restore test yet (#37).
 - **No external heartbeat.** An independent check now verifies today's game exists and was delivered (`ops/day-outcome`, several times after the delivery window; closed #45) — this is what caught the two consecutive missed days in September too late before. What is still missing is a check from outside the host: nothing notices the host itself being down, since every check described here runs on it (#50).
-- **Two game producers exist until the cutover.** The legacy scheduled generator and the host preparation both create games, and their identifiers collide; only the host path feeds delivery (#46).
+- **Two game producers exist until the cutover.** The legacy scheduled generator and the host preparation both create games, and their identifiers collide; the host path is confirmed to feed delivery, and whether the legacy sender still fires at all is unverified (#46).
 - **Queue failures can end in silent discard.** Consumers use bounded retries, but no queue has a dead-letter destination yet, so a message that keeps failing is eventually dropped instead of being quarantined. Permanent errors (for example an event with no resolvable target) are not distinguished from transient ones.
 - **Queue redelivery is not closed end to end.** Redelivery of an already-analysed event no longer re-enqueues enrichment, but an ambiguous publish outcome (accepted by the queue, error seen by the caller) can still deliver enrichment twice. A stable idempotency key for enrichment messages and downstream deduplication are not defined yet.
 - **Runtime privilege is broader than necessary.** Some services run under a general-purpose or privileged account rather than a dedicated unprivileged service user with a sandboxed unit.
