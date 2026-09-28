@@ -131,7 +131,7 @@ stability period
 legacy runtime retirement
 ```
 
-Status: daily preparation and delivery have run from the host since 2026-09-18, together with the feedback contour. The old runtime stays enabled as a rollback path until measurable exit criteria are met (an independent daily-outcome check, a tested rollback, a recovery drill); whether it still delivers is unverified. Migration and architecture refactoring are intentionally kept separate.
+Status: daily preparation and delivery have run from the host since 2026-09-18, together with the feedback contour and an independent daily-outcome check. The old runtime stays enabled as a rollback path until the remaining measurable exit criteria are met (14 days green, a tested rollback, a recovery drill, see #32); whether it still delivers is unverified. Migration and architecture refactoring are intentionally kept separate.
 
 ## Engineering principles
 
