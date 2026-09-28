@@ -21,6 +21,8 @@ itself. This closes that gap.
 | Called before `--not-before` (default 10:15 MSK) | too early to judge — silent, exit 0 |
 | Database unreadable, or the alert itself could not be sent | exit 2 |
 
+Exit 1 ("not met, but the script sent its own alert") is declared a successful unit run (`SuccessExitStatus=1`), so `OnFailure=` does not also fire a second, generic alert for an ordinary miss. Exit 2 ("the check could not do its own job") is left as a real unit failure, so `OnFailure=` still covers that.
+
 It is deliberately separate from preparation and delivery: a bug in either of those
 does not stop this from noticing the outcome. It cannot notice that the whole host is
 down — that needs an external heartbeat, which is out of scope here.

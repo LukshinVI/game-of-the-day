@@ -16,6 +16,11 @@ WorkingDirectory=/srv/game-of-the-day
 EnvironmentFile=-/etc/game-of-the-day/ops-bot.env
 ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/ops/day_outcome_check.py
 TimeoutStartSec=2min
+# Exit 1 means "outcome not met, and the script already sent its own alert" - that must
+# not also count as a unit failure, or OnFailure= would fire a second, generic alert for
+# every ordinary miss. Exit 2 ("the check could not do its own job") is left as a real
+# failure, so OnFailure= still covers that case.
+SuccessExitStatus=1
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
