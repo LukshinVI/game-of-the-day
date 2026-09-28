@@ -15,14 +15,14 @@ flowchart LR
     end
 
     subgraph CF[Cloudflare feedback contour]
-        CH -->|event| W[Worker]
-        W --> VAL{Validation + environment routing}
-        VAL --> Q[Queue]
-        Q --> RAW[Persist raw feedback]
-        RAW --> FA[Feedback Agent]
+        CH -->|event| W[Worker: ingress + validation]
+        W --> QA[[Queue: ingress]]
+        QA --> W2[Worker: forward to host]
+        W2 --> QB[[Queue: storage]]
+        QC[[Queue: enrichment]] --> FA[Feedback Agent]
         FA --> AI[Workers AI]
         AI --> FA
-        FA --> AN[Persist analysis]
+        FA --> QB
     end
 
     subgraph APP[Application runtime]
@@ -31,10 +31,12 @@ flowchart LR
         TIMER[Scheduler] --> DELIVERY
     end
 
-    RAW --> STORAGE
-    AN --> STORAGE
+    QB --> STORAGE
+    STORAGE -. raw persisted, not yet analysed .-> QC
     DELIVERY --> CH
 ```
+
+Three separate Cloudflare Queues carry feedback, not one: an ingress queue, a storage queue used twice (raw, then analysis — this is the "storage" queue crossing into `APP` above), and an enrichment queue that sends a raw event back out to the Worker for AI classification. The host crosses the Cloudflare boundary twice per feedback event: once to persist the raw event and request enrichment, once to persist the resulting analysis. This round trip is why an ambiguous publish can duplicate enrichment (see [Reliability model](reliability.md)).
 
 Current migration boundary:
 
@@ -78,16 +80,16 @@ flowchart TD
     P[Game preparation / product workflow] --> DB[(SQLite)]
     DB --> D[Delivery service + scheduler]
     D --> CH[Messaging channel]
-    CH -->|feedback event| W[Cloudflare Worker]
-    W --> V{Validation + environment routing}
-    V --> Q[Cloudflare Queue]
-    Q --> RAW[Feedback storage: save raw]
-    RAW --> DB
-    RAW --> F[Feedback Agent]
+    CH -->|feedback event| W[Cloudflare Worker: ingress]
+    W --> QA[[Queue: ingress]]
+    QA --> W2[Cloudflare Worker: forward to host]
+    W2 --> QB[[Queue: storage]]
+    QC[[Queue: enrichment]] --> F[Feedback Agent]
     F --> AI[Cloudflare Workers AI]
     AI --> F
-    F --> RES[Feedback storage: save analysis]
-    RES --> DB
+    F --> QB
+    QB --> STORE[Feedback storage] --> DB
+    STORE -. raw persisted, not yet analysed .-> QC
 ```
 
 | Component | Responsibility |
@@ -98,7 +100,7 @@ flowchart TD
 | Cloudflare Tunnel | optional secure origin transport; no application route behind it at present |
 | Messaging channel | user-facing delivery and feedback transport |
 | Cloudflare Worker | callback ingress, validation, environment routing, queue producer/consumer |
-| Cloudflare Queue | durable boundary for feedback processing |
+| Cloudflare Queues | three durable boundaries for feedback: ingress, storage (used for both raw and analysis), enrichment |
 | Workers AI | semantic feedback classification |
 | Feedback storage | idempotent persistence boundary, called in-process by the queue consumer |
 | Monitoring agent | runtime health collection, diagnosis, and alerting |
