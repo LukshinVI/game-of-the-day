@@ -1,0 +1,24 @@
+[Unit]
+Description=Game of the Day - independent check that today's game was delivered
+After=network-online.target
+Wants=network-online.target
+# The check itself sends the alert (a Russian message naming what is missing), so
+# OnFailure only fires when the check could not even do its job (exit code 2:
+# unreadable database or the alert could not be sent).
+OnFailure=game-backup-alert@%n.service
+
+[Service]
+Type=oneshot
+User=gotd
+Group=gotd
+WorkingDirectory=/srv/game-of-the-day
+# Only to send its own alert; it never touches the messaging or delivery credentials.
+EnvironmentFile=-/etc/game-of-the-day/ops-bot.env
+ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/ops/day_outcome_check.py
+TimeoutStartSec=2min
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+# Read-only: PRAGMA query_only enforces this at the SQLite level too.
+ReadOnlyPaths=/srv/game-of-the-day/data
