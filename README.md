@@ -65,7 +65,7 @@ Delivery uses explicit states such as `pending`, `sending`, `sent`, and `failed`
 
 See [Reliability model](docs/reliability.md) for the invariants and the known gaps between them and the running system.
 
-Operational runbooks live next to their code: [database backup](ops/backup/README.md) and [manual delivery control](ops/bot/README.md).
+Operational runbooks live next to their code: [database backup](ops/backup/README.md), [manual delivery control](ops/bot/README.md), and [daily outcome check](ops/day-outcome/README.md).
 
 ## Deterministic / AI boundary
 
