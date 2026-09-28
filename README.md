@@ -30,24 +30,26 @@ This is **not** a medical or diagnostic product.
 
 ## Architecture
 
-The target production architecture is:
+The production architecture is:
 
 ```mermaid
 flowchart TD
     P[Game preparation / product workflow] --> DB[(SQLite)]
     DB --> D[Delivery service + scheduler]
     D --> CH[Messaging channel]
-    CH --> W[Cloudflare Worker]
-    W --> V{Validation and routing}
-    V --> Q[Cloudflare Queue]
-    Q --> RAW[Feedback storage: persist raw feedback]
-    RAW --> DB
-    RAW --> F[Feedback Agent]
+    CH --> W[Cloudflare Worker: ingress]
+    W --> QA[[Queue: ingress]]
+    QA --> W2[Cloudflare Worker: forward to host]
+    W2 --> QB[[Queue: storage]]
+    QC[[Queue: enrichment]] --> F[Feedback Agent]
     F --> AI[Workers AI]
     AI --> F
-    F --> RES[Feedback storage: persist analysis]
-    RES --> DB
+    F --> QB
+    QB --> STORE[Feedback storage] --> DB
+    STORE -. raw persisted, not yet analysed .-> QC
 ```
+
+Feedback crosses Cloudflare through three separate queues (ingress, storage, enrichment), not one; the storage queue carries both the raw event and, later, its analysis. The legacy Google path (not shown) still runs in parallel as an unverified rollback — see [Current migration](#current-migration).
 
 The design deliberately separates delivery, feedback persistence, and final source-of-truth cutover so each boundary can be verified and rolled back independently.
 
