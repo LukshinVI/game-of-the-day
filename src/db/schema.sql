@@ -54,6 +54,29 @@ CREATE TABLE user_events (
     notified_at TEXT
 );
 
+-- One row per model attempt in daily preparation (src/ops/llm_report.py).
+CREATE TABLE model_runs (
+    id INTEGER PRIMARY KEY,
+    at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    target_date TEXT NOT NULL,
+    child_id INTEGER,
+    attempt INTEGER NOT NULL,
+    outcome TEXT NOT NULL CHECK(outcome IN ('pass', 'rejected', 'error')),
+    backend TEXT,
+    model TEXT,
+    wall_ms INTEGER,
+    api_ms INTEGER,
+    num_turns INTEGER,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    cache_read_tokens INTEGER,
+    cache_write_tokens INTEGER,
+    web_searches INTEGER,
+    cost_usd REAL,
+    errors_json TEXT,
+    dry_run INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE games (
     id INTEGER PRIMARY KEY,
     legacy_id TEXT UNIQUE,
@@ -112,4 +135,4 @@ CREATE TABLE migration_meta (
     value TEXT
 );
 
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '3');
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '4');

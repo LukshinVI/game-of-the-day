@@ -7,6 +7,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import time
 from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -142,6 +143,13 @@ def build_prompt(history, age_months, today=None):
     )
 
 
+# Observability (issue: model quality and spend). run_model() fills LAST_RUN_META for
+# the attempt it ran; select_candidate() appends one record per attempt to RUN_LOG;
+# prepare_for_child() persists RUN_LOG to model_runs, also when the day failed.
+LAST_RUN_META = {}
+RUN_LOG = []
+
+
 def run_model(prompt):
     """Ask the configured model backend for one candidate (a dict).
 
@@ -149,6 +157,8 @@ def run_model(prompt):
     selects `claude` (Claude Code headless, the default) or `codex` (Codex CLI).
     """
     backend = os.environ.get("PREPARATION_BACKEND", "claude").strip().lower()
+    LAST_RUN_META.clear()
+    LAST_RUN_META["backend"] = backend
     if backend == "claude":
         return run_claude(prompt)
     if backend == "codex":
@@ -209,11 +219,31 @@ def run_claude(prompt):
             f"subtype={envelope.get('subtype')} result={str(envelope.get('result'))[:2000]}"
         )
 
+    LAST_RUN_META.update(claude_meta(envelope))
+
     candidate = envelope.get("structured_output")
     if not isinstance(candidate, dict):
         raise RuntimeError("Claude returned no structured_output object")
 
     return candidate
+
+
+def claude_meta(envelope):
+    """Latency, tokens and cost from the Claude Code JSON envelope (missing fields -> None)."""
+    usage = envelope.get("usage") or {}
+    server = usage.get("server_tool_use") or {}
+    models = list((envelope.get("modelUsage") or {}).keys())
+    return {
+        "model": ",".join(models) or os.environ.get("PREPARATION_CLAUDE_MODEL", "opus"),
+        "api_ms": envelope.get("duration_api_ms") or envelope.get("duration_ms"),
+        "num_turns": envelope.get("num_turns"),
+        "input_tokens": usage.get("input_tokens"),
+        "output_tokens": usage.get("output_tokens"),
+        "cache_read_tokens": usage.get("cache_read_input_tokens"),
+        "cache_write_tokens": usage.get("cache_creation_input_tokens"),
+        "web_searches": server.get("web_search_requests"),
+        "cost_usd": envelope.get("total_cost_usd"),
+    }
 
 
 def run_codex(prompt):
@@ -731,6 +761,43 @@ def persist_candidate(candidate, target_date, child=None):
     return game_id, legacy_id
 
 
+def record_attempt(attempt, outcome, errors, started):
+    RUN_LOG.append({
+        **LAST_RUN_META,
+        "attempt": attempt,
+        "outcome": outcome,
+        "errors": errors,
+        "wall_ms": int((time.monotonic() - started) * 1000),
+    })
+
+
+RUN_COLUMNS = (
+    "backend", "model", "wall_ms", "api_ms", "num_turns", "input_tokens", "output_tokens",
+    "cache_read_tokens", "cache_write_tokens", "web_searches", "cost_usd",
+)
+
+
+def persist_runs(target_date, child_id, dry_run):
+    """Write RUN_LOG to model_runs. Never fails the preparation: metrics are secondary."""
+    runs, RUN_LOG[:] = list(RUN_LOG), []
+    if not runs:
+        return
+    try:
+        with connect_db() as con:
+            if con.execute("SELECT 1 FROM sqlite_master WHERE name = 'model_runs'").fetchone() is None:
+                return
+            for run in runs:
+                con.execute(
+                    f"INSERT INTO model_runs(target_date, child_id, attempt, outcome, errors_json, dry_run, "
+                    f"{', '.join(RUN_COLUMNS)}) VALUES (?, ?, ?, ?, ?, ?, {', '.join('?' * len(RUN_COLUMNS))})",
+                    (str(target_date), child_id, run["attempt"], run["outcome"],
+                     json.dumps(run["errors"], ensure_ascii=False) if run["errors"] else None,
+                     int(dry_run), *(run.get(c) for c in RUN_COLUMNS)),
+                )
+    except sqlite3.Error as exc:
+        print(f"WARN: model run metrics not saved: {exc}", file=sys.stderr)
+
+
 def select_candidate(history, target_date, birth_date=None):
     age_months = child_age_months(target_date, birth_date)
     original_prompt = build_prompt(history, age_months, today=str(target_date))
@@ -741,8 +808,14 @@ def select_candidate(history, target_date, birth_date=None):
         print()
         print(f"=== ПОПЫТКА {attempt}/{MAX_ATTEMPTS} ===")
 
-        candidate = with_rendered_message(run_model(prompt))
+        started = time.monotonic()
+        try:
+            candidate = with_rendered_message(run_model(prompt))
+        except Exception as exc:
+            record_attempt(attempt, "error", [f"{type(exc).__name__}: {str(exc)[:300]}"], started)
+            raise
         errors = validate_candidate(candidate, history, age_months)
+        record_attempt(attempt, "rejected" if errors else "pass", errors, started)
 
         print()
         print("=== КАНДИДАТ ===")
@@ -837,11 +910,15 @@ def prepare_for_child(target_date, child, dry_run=False):
     print(f"Исторических игр: {len(history)}")
     print(f"Целевая дата: {target_date}")
 
-    candidate, attempts = select_candidate(
-        history,
-        target_date,
-        child["birth_date"] if child else None,
-    )
+    RUN_LOG.clear()
+    try:
+        candidate, attempts = select_candidate(
+            history,
+            target_date,
+            child["birth_date"] if child else None,
+        )
+    finally:
+        persist_runs(target_date, child_id, dry_run)
 
     channels = ", ".join(r["channel"] for r in child["recipients"]) if child else "vk"
 

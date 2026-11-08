@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -87,6 +87,33 @@ CREATE TABLE IF NOT EXISTS user_events (
 """
 
 
+# One row per model attempt in daily preparation: latency, tokens, cost, outcome and
+# the validator's rejection reasons (src/ops/llm_report.py summarises them).
+MIGRATION_4 = """
+CREATE TABLE IF NOT EXISTS model_runs (
+    id INTEGER PRIMARY KEY,
+    at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    target_date TEXT NOT NULL,
+    child_id INTEGER,
+    attempt INTEGER NOT NULL,
+    outcome TEXT NOT NULL CHECK(outcome IN ('pass', 'rejected', 'error')),
+    backend TEXT,
+    model TEXT,
+    wall_ms INTEGER,
+    api_ms INTEGER,
+    num_turns INTEGER,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    cache_read_tokens INTEGER,
+    cache_write_tokens INTEGER,
+    web_searches INTEGER,
+    cost_usd REAL,
+    errors_json TEXT,
+    dry_run INTEGER NOT NULL DEFAULT 0
+);
+"""
+
+
 def connect_db(path=None):
     con = sqlite3.connect(path or DB_PATH, timeout=10)
     con.row_factory = sqlite3.Row
@@ -102,6 +129,7 @@ def migrate(con):
     """Bring an existing database to SCHEMA_VERSION. Idempotent and additive only."""
     con.executescript(MIGRATION_2)
     con.executescript(MIGRATION_3)
+    con.executescript(MIGRATION_4)
     if "child_id" not in columns(con, "games"):
         con.execute("ALTER TABLE games ADD COLUMN child_id INTEGER REFERENCES children(id)")
     con.execute(
