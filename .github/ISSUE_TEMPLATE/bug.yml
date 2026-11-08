@@ -1,0 +1,21 @@
+name: Bug
+description: Something does not behave as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Observed behaviour, expected behaviour, and where (preparation, delivery, feedback, ops).
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Logs or state output. Remove tokens, recipient ids and personal data first.
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: Missed or duplicate delivery, lost feedback, wrong content, none yet.

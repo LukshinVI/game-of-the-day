@@ -1,0 +1,21 @@
+name: Feature / improvement
+description: A product or engineering change
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Which user or operational problem this solves. Not "add X" but "Y is hard because Z".
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The smallest change that solves it, and what stays deterministic vs. model-driven.
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Verifiable exit criteria, including production verification if it changes runtime behaviour.
