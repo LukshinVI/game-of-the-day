@@ -201,7 +201,7 @@ CREATE TABLE migration_meta (
     value TEXT
 );
 
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '11');
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '12');
 
 -- One-time request to star the project on GitHub (src/ops/weekly_digest.py).
 CREATE TABLE star_requests (
@@ -210,4 +210,36 @@ CREATE TABLE star_requests (
     child_id INTEGER,
     sent_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (channel, address)
+);
+
+-- VK self-service onboarding, outbox and inbound VK events (src/bot/vk_dialog.py).
+CREATE TABLE applications (
+    id INTEGER PRIMARY KEY,
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    name TEXT NOT NULL,
+    birth_date TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    decided_at TEXT,
+    child_id INTEGER REFERENCES children(id)
+);
+CREATE INDEX idx_applications_pending ON applications(channel, address) WHERE status = 'pending';
+CREATE TABLE outbox (
+    id INTEGER PRIMARY KEY,
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    sent_at TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT
+);
+CREATE TABLE inbound_events (
+    channel TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    address TEXT NOT NULL,
+    reply TEXT,
+    handled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (channel, event_id)
 );

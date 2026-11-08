@@ -130,11 +130,15 @@ cd worker
 npx wrangler secret put VK_GROUP_ID          # numeric community id
 npx wrangler secret put VK_CALLBACK_SECRET
 npx wrangler secret put VK_CONFIRMATION_CODE
-npx wrangler secret put VK_PROD_PEER_ID
-npx wrangler secret put VK_TEST_PEER_ID
+npx wrangler secret put VK_TEST_PEER_ID     # only labels test messages in the logs
 npx wrangler deploy
 ```
 
 `VK_GROUP_ID` must be set **before** deploying: without it the worker rejects
 every callback (fail closed), so feedback stops arriving instead of being
 accepted from an unverified source.
+
+Deploy the **host first**, then the Worker. The Worker passes every private VK dialog
+with the sender's peer id (`address`); a host older than schema 12 would ignore the
+address and store a stranger's message as feedback on the latest VK game. The host
+accepts events with and without an address, so the order host → Worker is safe.

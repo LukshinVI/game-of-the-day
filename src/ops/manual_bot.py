@@ -34,6 +34,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from src.bot import vk_dialog  # noqa: E402
+from src.db import children as ch  # noqa: E402
 from src.ops import llm_report, product_metrics, users_report  # noqa: E402
 
 DELIVERY = ROOT / "src" / "delivery" / "game_delivery.py"
@@ -114,8 +116,9 @@ def start_unit(unit):
 
 class Controller:
     def __init__(self, owner_id, run=run_delivery, start=start_unit, now=time.time, new_code=None,
-                 users=users_report.report, llm=llm_report.report):
+                 users=users_report.report, llm=llm_report.report, decide=None):
         self.owner_id = owner_id
+        self.decide = decide or decide_application
         self.users = users
         self.llm = llm
         self.run = run
@@ -126,6 +129,8 @@ class Controller:
 
     def handle(self, update):
         """Return the reply text for an update, or None when it must be ignored."""
+        if "callback_query" in update:
+            return self.button(update["callback_query"])
         message = update.get("message") or {}
         chat = message.get("chat") or {}
         sender = message.get("from") or {}
@@ -178,6 +183,18 @@ class Controller:
             return self.request(command[1:], parts[1:])
 
         return HELP
+
+    def button(self, query):
+        """A tap on an application button: "app:<id>:ok" or "app:<id>:no"."""
+        if (query.get("from") or {}).get("id") != self.owner_id:
+            return None
+        parts = (query.get("data") or "").split(":")
+        if len(parts) != 3 or parts[0] != "app" or not parts[1].isdigit() or parts[2] not in ("ok", "no"):
+            return None
+        try:
+            return self.decide(int(parts[1]), parts[2] == "ok")
+        except Exception as exc:  # noqa: BLE001
+            return f"Не удалось обработать заявку: {type(exc).__name__}"
 
     def request(self, action, args):
         state = self.run("state").strip()
@@ -236,11 +253,36 @@ def telegram(token, method, payload, timeout):
         return json.loads(response.read())
 
 
-def forward_user_events(reply, pending=users_report.pending_events, mark=users_report.mark_notified):
+def decide_application(app_id, approve, db_path=None):
+    con = ch.connect_db(db_path or users_report.DB_PATH)
+    con.execute("PRAGMA busy_timeout = 10000")
+    try:
+        con.execute("BEGIN IMMEDIATE")
+        text = vk_dialog.decide(con, app_id, approve)
+        con.commit()
+        return text
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
+
+
+def application_buttons(app_id):
+    return {"inline_keyboard": [[
+        {"text": "✅ Одобрить", "callback_data": f"app:{app_id}:ok"},
+        {"text": "❌ Отклонить", "callback_data": f"app:{app_id}:no"},
+    ]]}
+
+
+def forward_user_events(reply, pending=users_report.pending_events, mark=users_report.mark_notified,
+                        ask=None):
     """Send the product bot's pending events to the owner, then mark them.
 
     Marked only after Telegram accepted the message: a failed send is retried on
     the next cycle (at-least-once; a duplicate notice is harmless, a lost one is not).
+    An application (kind "application:<id>") goes as its own message with approve /
+    reject buttons, sent by ask(text, markup).
     """
     try:
         events = pending()
@@ -249,9 +291,17 @@ def forward_user_events(reply, pending=users_report.pending_events, mark=users_r
         return
     if not events:
         return
-    text = "\n".join(f"{e['text']}" for e in events)
-    reply("Продуктовый бот:\n" + text)
-    mark([e["id"] for e in events])
+    plain = [e for e in events if not str(e.get("kind") or "").startswith("application:")]
+    for event in events:
+        kind = str(event.get("kind") or "")
+        if kind.startswith("application:") and ask is not None:
+            ask(event["text"], application_buttons(kind.split(":", 1)[1]))
+            mark([event["id"]])
+        elif kind.startswith("application:"):
+            plain.append(event)
+    if plain:
+        reply("Продуктовый бот:\n" + "\n".join(f"{e['text']}" for e in plain))
+        mark([e["id"] for e in plain])
 
 
 def main():
@@ -269,6 +319,27 @@ def main():
             20,
         )
 
+    def ask(text, markup):
+        telegram(
+            token,
+            "sendMessage",
+            {"chat_id": owner_id, "text": text[:MAX_REPLY_CHARS], "reply_markup": markup},
+            20,
+        )
+
+    def answered(query, text):
+        """Close the button spinner and remove the buttons, so a decision is made once."""
+        try:
+            telegram(token, "answerCallbackQuery", {"callback_query_id": query["id"]}, 20)
+            message = query.get("message") or {}
+            if message.get("message_id"):
+                telegram(token, "editMessageText", {
+                    "chat_id": owner_id, "message_id": message["message_id"],
+                    "text": f"{message.get('text', '')}\n\n{text}"[:MAX_REPLY_CHARS],
+                }, 20)
+        except Exception as exc:  # noqa: BLE001
+            print(f"callback answer failed: {type(exc).__name__}", flush=True)
+
     try:
         reply("🟢 Ops-бот на связи (запуск или перезапуск службы). Ничего не отправлено. /help")
     except Exception as exc:  # noqa: BLE001 - the loop below reports real problems
@@ -278,7 +349,7 @@ def main():
         try:
             payload = {
                 "timeout": POLL_TIMEOUT_SECONDS,
-                "allowed_updates": ["message"],
+                "allowed_updates": ["message", "callback_query"],
             }
 
             if offset is not None:
@@ -296,11 +367,14 @@ def main():
                 offset = update["update_id"] + 1
                 text = controller.handle(update)
 
-                if text:
+                if text and "callback_query" in update:
+                    print(f"owner button handled update_id={update['update_id']}", flush=True)
+                    answered(update["callback_query"], text)
+                elif text:
                     print(f"owner command handled update_id={update['update_id']}", flush=True)
                     reply(text)
 
-            forward_user_events(reply)
+            forward_user_events(reply, ask=ask)
 
         except Exception as exc:  # noqa: BLE001 - log the type only, never URLs or tokens
             print(f"poll error: {type(exc).__name__}", flush=True)
