@@ -15,6 +15,7 @@ Members:
   /children    who is subscribed, with the current age
   /pause       stop the daily games for this chat (from the next game)
   /resume      start them again
+  /faq         what it is, who picks the games, what data is kept (src/bot/faq.txt)
   /help
   any other text: feedback on the latest game sent to this chat
 
@@ -70,9 +71,17 @@ HELP = (
     "/children — кто подписан\n"
     "/add_child — добавить ребёнка\n"
     "/pause — приостановить игры\n"
-    "/resume — возобновить"
+    "/resume — возобновить\n"
+    "/faq — частые вопросы"
 ).format(time=DELIVERY_TIME_MSK)
 OWNER_HELP = "\n\nВладелец:\n/invite — новая пригласительная ссылка\n/members — участники"
+FAQ = (Path(__file__).with_name("faq.txt")).read_text(encoding="utf-8").strip()
+WELCOME = (
+    "Здравствуйте! 👋 Я присылаю одну развивающую игру в день — "
+    "короткую, по возрасту ребёнка, из того, что есть дома.\n\n"
+    "Подключение займёт минуту: имя ребёнка и дата рождения. "
+    "Ответы на частые вопросы (что это, кто подбирает игры, какие данные храним): /faq"
+)
 ASK_NAME = "Как зовут ребёнка? (можно сокращённо или прозвище)"
 ASK_BIRTH = "Дата рождения? Например: 15.03.2025"
 
@@ -218,6 +227,10 @@ class ProductBot:
             return self.help(is_owner)
         if command == "/help":
             return self.help(is_owner)
+        if command == "/faq":
+            pending = self.step(con, chat_id)
+            prompts = {"name": ASK_NAME, "birth_date": ASK_BIRTH, "confirm": "Подтвердите: «да» или «нет»."}
+            return FAQ + (f"\n\n— Продолжим подключение. {prompts[pending['step']]}" if pending else "")
         if command == "/add_child":
             self.set_step(con, chat_id, "name")
             return ASK_NAME
@@ -274,7 +287,7 @@ class ProductBot:
             return "Ссылка недействительна или уже использована. Попросите новую."
         con.execute("UPDATE invites SET used_at = ?, used_by = ? WHERE id = ?", (utcnow(), chat_id, row["id"]))
         self.add_member(con, chat_id, row["id"], sender)
-        return "Здравствуйте! Я присылаю одну развивающую игру в день по возрасту ребёнка.\n\n" + ASK_NAME
+        return WELCOME + "\n\n" + ASK_NAME
 
     def join_owner(self, con, chat_id, sender):
         self.add_member(con, chat_id, None, sender)

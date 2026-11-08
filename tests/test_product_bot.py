@@ -206,3 +206,19 @@ class StartGuard(BotTest):
         ch.add_child(con, "Старший", "2025-09-01", adopt_existing=True)
         self.assertIsNone(pb.single_child_guard(con))
         con.close()
+
+
+class Faq(BotTest):
+    def test_the_welcome_points_to_the_faq_and_the_faq_resumes_the_questionnaire(self):
+        link = self.say(OWNER, "/invite")
+        welcome = self.say("42", "/start " + link.split("start=")[1].split()[0])
+        self.assertIn("/faq", welcome)
+        self.say("42", "Петя")
+        faq = self.say("42", "/faq")
+        self.assertIn("медицинский", faq)
+        self.assertTrue(faq.endswith(pb.ASK_BIRTH))
+        self.assertIn("Всё верно", self.say("42", "01.01.2026"))
+        self.assertLess(len(pb.FAQ), 4000)  # one Telegram message
+
+    def test_strangers_do_not_get_the_faq(self):
+        self.assertEqual(self.say("42", "/faq"), pb.CLOSED)

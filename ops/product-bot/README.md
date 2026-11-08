@@ -27,7 +27,12 @@ user:  opens it ->  member  ->  child's name  ->  birth date  ->  "N months, rig
        -> children + recipients(telegram, chat) rows; picked up by the next 07:00 preparation
 ```
 
-Member commands: `/children`, `/add_child`, `/pause`, `/resume`, `/cancel`, `/help`.
+The invite opens with a short welcome that points to `/faq` (`src/bot/faq.txt`: what it
+is, who picks the games, not medical advice, what data is kept and how to delete it).
+Edit that file to change the wording; `/faq` in the middle of the questionnaire repeats
+the pending question afterwards.
+
+Member commands: `/faq`, `/children`, `/add_child`, `/pause`, `/resume`, `/cancel`, `/help`.
 Any other text is feedback on the latest game sent **to this chat** (explicit game id, so
 one family's answer cannot attach to another family's game). The owner gets a message
 on every join, subscription and pause.
