@@ -137,11 +137,18 @@ class Insights(unittest.TestCase):
         insights.run(self.db, now=NOW, model=broken, sender=lambda *a: None)
         self.assertEqual(self.rows("SELECT count(*) FROM feedback WHERE insights_at IS NULL"), [(1,)])
 
-    def test_old_feedback_is_analysed_without_a_reply(self):
-        self.feedback("Понравилось очень", 60 * 24 * 30)
+    def test_old_feedback_is_analysed_without_a_reply_and_ages_from_when_it_was_written(self):
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE games SET child_id = ?", (self.child,))
+        con.commit()
+        con.close()
+        self.feedback("Понравилось очень", 60 * 24 * 90)
         self.run_insights([{"kind": "outcome", "value": "liked", "skill": None, "evidence": "Понравилось"}])
         self.assertEqual(self.rows("SELECT count(*) FROM observations"), [(1,)])
         self.assertEqual(self.replies, [])
+        con = ch.connect_db(self.db)
+        self.assertEqual(profile.load(con, self.child), {})  # written 90 days ago: outside the window
+        con.close()
 
     def test_the_reply_with_nothing_extracted_is_still_polite(self):
         self.assertIn("Сохранили его", insights.reply_text("Башенка", []))
