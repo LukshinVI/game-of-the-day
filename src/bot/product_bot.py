@@ -322,6 +322,11 @@ class ProductBot:
         if chat_id != self.owner_id:
             self.notify_owner(f"👋 Новый участник: {display or '—'} (chat {chat_id})", con, chat_id, "join")
 
+    def who(self, con, chat_id):
+        member = self.member(con, chat_id)
+        name = member["display_name"] if member is not None and member["display_name"] else "—"
+        return f"{name} (chat {chat_id})"
+
     @staticmethod
     def notify_owner(text, con, chat_id, kind):
         """Record an owner-facing event; the ops bot forwards it (src/ops/manual_bot.py)."""
@@ -451,7 +456,7 @@ class ProductBot:
         if not changed:
             return "Игры уже идут." if active else "Игры уже на паузе (или ещё не подписаны)."
         self.notify_owner(
-            f"{'▶️' if active else '⏸'} chat {chat_id}: {'возобновил' if active else 'поставил на паузу'} игры",
+            f"{'▶️' if active else '⏸'} {self.who(con, chat_id)}: {'возобновил(а)' if active else 'поставил(а) на паузу'} игры",
             con, chat_id, "resume" if active else "pause",
         )
         if active:
