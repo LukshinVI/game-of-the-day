@@ -14,7 +14,8 @@ Requirements:
   feedback), use it: follow `next_difficulty` for the chosen skill (harder: one step more
   demanding than what `went_well` describes; easier: break it into smaller steps), never
   build the game around anything in `dislikes` or `disliked_games`, and prefer to build on
-  `likes`;
+  `likes`; when `child_profile.required_next` is present, the game must train exactly that
+  skill, one step harder or easier (as `direction` says) than the game named in `after`;
 - safe under direct adult supervision;
 - do not repeat a previous game's title or core mechanics;
 - use a reliable primary or authoritative source;
