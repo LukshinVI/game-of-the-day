@@ -394,4 +394,25 @@ class TestChild(TempDb):
         con.commit()
         target = storage.resolve_feedback_target(con, "vk")
         self.assertEqual(con.execute("SELECT title FROM games WHERE id = ?", (target,)).fetchone()[0], "Семейная")
-        self.assertEqual([c["is_test"] for c in ch.active_children(con)], [0, 1])
+        self.assertEqual([c["is_test"] for c in ch.active_children(con)], [0])
+        self.assertEqual([c["is_test"] for c in ch.active_children(con, include_test=True)], [0, 1])
+
+    def test_the_daily_run_skips_test_children_a_manual_run_reaches_them(self):
+        con = self.con()
+        family = ch.add_child(con, "Всеволод", "2025-09-03")
+        test = ch.add_child(con, "Тест", "2025-09-03", is_test=True)
+        ch.add_recipient(con, family, "vk", "1")
+        ch.add_recipient(con, test, "vk", "2")
+        seen = []
+
+        def select(history, target_date, birth_date):
+            seen.append(len(seen))
+            return candidate(gp.child_age_months(target_date, birth_date), title=f"Игра {len(seen)}"), 1
+
+        with contextlib.redirect_stdout(io.StringIO()), \
+                mock.patch.object(gp, "select_candidate", side_effect=select), \
+                mock.patch.object(gp, "send_preparation_success_alert"):
+            gp.prepare_run(self.today)
+            self.assertEqual(self.query("SELECT child_id FROM games"), [(family,)])
+            gp.prepare_run(self.today, only_child=test)
+        self.assertEqual(self.query("SELECT child_id FROM games ORDER BY id"), [(family,), (test,)])
