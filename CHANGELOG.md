@@ -5,6 +5,17 @@ versions follow [Semantic Versioning](https://semver.org/). Every version is wha
 running in production at that point. Versions before 1.0.0 were tagged retroactively,
 on the commit that completed each milestone.
 
+## [Unreleased]
+
+### Added
+- LLM observability: every model attempt in daily preparation is recorded in
+  `model_runs` (latency, turns, tokens, web searches, API-equivalent cost, outcome and
+  the validator's rejection reasons), also when the day fails. A weekly report per model
+  goes to the owner on Mondays, and `/llm` in the ops bot shows it on demand.
+
+### Changed
+- Schema version 4 (additive).
+
 ## [1.2.0] - 2026-11-08 — Backups that leave the host
 
 ### Added

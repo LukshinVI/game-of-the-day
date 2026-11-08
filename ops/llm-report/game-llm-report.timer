@@ -1,0 +1,9 @@
+[Unit]
+Description=Game of the Day - weekly LLM report
+
+[Timer]
+OnCalendar=Mon *-*-* 10:30:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target

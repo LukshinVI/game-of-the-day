@@ -8,6 +8,7 @@ Commands, accepted only from the owner's private chat:
   /retry           when today's delivery failed: show a one-time code
   /retry <code>    start the explicit-retry delivery unit
   /users           product-bot families: children, subscription, last game, feedback
+  /llm             the last 7 days of game selection: attempts, latency, tokens, cost, rejections
 
 It also forwards owner-facing events the product bot records in SQLite (new member,
 new child, pause, limit, block) within one polling cycle, so the public product bot
@@ -31,7 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.ops import users_report  # noqa: E402
+from src.ops import llm_report, users_report  # noqa: E402
 
 DELIVERY = ROOT / "src" / "delivery" / "game_delivery.py"
 API = "https://api.telegram.org"
@@ -55,7 +56,8 @@ HELP = (
     "/status - состояние сегодняшней доставки\n"
     "/send - отправить сегодняшнюю игру (нужен код подтверждения)\n"
     "/retry - повторить отправку после ошибки (нужен код подтверждения)\n"
-    "/users - семьи в продуктовом боте"
+    "/users - семьи в продуктовом боте\n"
+    "/llm - подбор игр за неделю: попытки, время, токены, стоимость"
 )
 
 EXPLANATIONS = {
@@ -108,9 +110,10 @@ def start_unit(unit):
 
 class Controller:
     def __init__(self, owner_id, run=run_delivery, start=start_unit, now=time.time, new_code=None,
-                 users=users_report.report):
+                 users=users_report.report, llm=llm_report.report):
         self.owner_id = owner_id
         self.users = users
+        self.llm = llm
         self.run = run
         self.start = start
         self.now = now
@@ -146,6 +149,12 @@ class Controller:
         if command == "/users":
             try:
                 return "Пользователи:\n\n" + self.users()
+            except Exception as exc:  # noqa: BLE001
+                return f"Не удалось построить отчёт: {type(exc).__name__}"
+
+        if command == "/llm":
+            try:
+                return self.llm()
             except Exception as exc:  # noqa: BLE001
                 return f"Не удалось построить отчёт: {type(exc).__name__}"
 

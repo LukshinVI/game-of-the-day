@@ -1,0 +1,19 @@
+[Unit]
+Description=Game of the Day - weekly LLM report (game selection quality, latency, cost) to the owner
+OnFailure=game-backup-alert@%n.service
+
+[Service]
+Type=oneshot
+User=gotd
+Group=gotd
+WorkingDirectory=/srv/game-of-the-day
+EnvironmentFile=/etc/game-of-the-day/ops-bot.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/ops/llm_report.py --send
+TimeoutStartSec=2min
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+# Read-only queries; SQLite in WAL mode still needs the -shm file next to the database.
+ReadWritePaths=/srv/game-of-the-day/data
