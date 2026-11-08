@@ -843,6 +843,11 @@ def select_candidate(history, target_date, birth_date=None, age_months=None):
             raise
         errors = validate_candidate(candidate, history, age_months)
         record_attempt(attempt, "rejected" if errors else "pass", errors, started)
+        required = (PROFILE_CONTEXT or {}).get("required_next")
+        if not errors and required and candidate.get("skill") != required["skill"]:
+            errors = [f"after the parent's feedback on «{required['after']}» the next game must train "
+                      f"{required['skill']} ({required['direction']} than before), not {candidate.get('skill')}"]
+            RUN_LOG[-1]["outcome"], RUN_LOG[-1]["errors"] = "rejected", errors
         if not errors:
             problems, meta = review.review(candidate, age_months)
             if meta is not None:
@@ -1019,6 +1024,9 @@ def prepare_for_child(target_date, child, dry_run=False):
     global PROFILE_CONTEXT
     with connect_db() as con:
         PROFILE_CONTEXT = child_profile.load(con, child_id)
+        required = child_profile.required_next(con, child_id, history)
+    if required:
+        PROFILE_CONTEXT = {**PROFILE_CONTEXT, "required_next": required}
     if PROFILE_CONTEXT:
         print(f"Профиль: {json.dumps(PROFILE_CONTEXT, ensure_ascii=False)}")
 

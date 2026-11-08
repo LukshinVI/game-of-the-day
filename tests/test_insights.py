@@ -186,3 +186,38 @@ class Wishes(InsightsSetup):
         self.assertIn("пожелание к сервису передали", self.replies[0])
         from src.ops import users_report
         self.assertIn("больше игр на улице", users_report.wishes(self.db))
+
+
+class RequiredNext(InsightsSetup):
+    def test_too_easy_yesterday_means_the_same_skill_harder_today(self):
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE games SET child_id = ?", (self.child,))
+        con.commit()
+        con.close()
+        self.feedback("Слишком легко", 30)
+        self.run_insights([{"kind": "difficulty", "value": "too_easy", "skill": "fine_motor", "evidence": "Слишком легко"}])
+        con = ch.connect_db(self.db)
+        history = [{"skill": "speech"}, {"skill": "fine_motor"}]
+        self.assertEqual(profile.required_next(con, self.child, history),
+                         {"skill": "fine_motor", "direction": "harder", "after": "Башенка"})
+        # rotation wins: fine motor in both of the last two games
+        self.assertIsNone(profile.required_next(con, self.child, [{"skill": "fine_motor"}, {"skill": "fine_motor"}]))
+        con.close()
+
+    def test_the_gate_rejects_another_skill(self):
+        from src.preparation import game_preparation as gp
+        from unittest import mock
+        import contextlib, io
+        def cand(skill):
+            return {"title": "Новая", "age_months": 14, "duration_minutes": 5, "goal": "Цель.", "skill": skill,
+                    "mechanics": f"{skill} m", "materials": ["Кубики"], "steps": ["Раз.", "Два."],
+                    "safety": "Под присмотром.", "source_name": "CDC", "source_url": "https://www.cdc.gov/x"}
+        answers = [cand("speech"), cand("fine_motor")]
+        gp.PROFILE_CONTEXT = {"required_next": {"skill": "fine_motor", "direction": "harder", "after": "Башенка"}}
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    mock.patch.object(gp, "run_model", side_effect=lambda p: answers.pop(0)):
+                _, attempts = gp.select_candidate([], "2026-11-09", age_months=14)
+        finally:
+            gp.PROFILE_CONTEXT = {}
+        self.assertEqual(attempts, 2)

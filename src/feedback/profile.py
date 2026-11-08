@@ -110,3 +110,34 @@ def load(con, child_id):
         return {}
     row = con.execute("SELECT profile_json FROM child_profiles WHERE child_id = ?", (child_id,)).fetchone()
     return json.loads(row[0]) if row else {}
+
+
+def required_next(con, child_id, history):
+    """The skill the next game must exercise, from difficulty feedback on the latest game.
+
+    "Too easy" on yesterday's game means the next game trains the same skill one step
+    harder ("too hard": easier), unless that skill was used in both of the last two games
+    (the rotation rule wins). Returns {"skill", "direction", "after"} or None.
+    """
+    if child_id is None or not history:
+        return None
+    if con.execute("SELECT 1 FROM sqlite_master WHERE name = 'observations'").fetchone() is None:
+        return None
+    latest = con.execute(
+        "SELECT id, title, skill FROM games WHERE child_id = ? ORDER BY game_date DESC, id DESC LIMIT 1",
+        (child_id,),
+    ).fetchone()
+    if latest is None:
+        return None
+    row = con.execute(
+        "SELECT value, COALESCE(skill, ?) FROM observations WHERE game_id = ? AND kind = 'difficulty' "
+        "AND value IN ('too_easy', 'too_hard') ORDER BY id DESC LIMIT 1",
+        (latest[2], latest[0]),
+    ).fetchone()
+    if row is None:
+        return None
+    value, skill = row
+    last = [g.get("skill") for g in history[-2:]]
+    if len(last) == 2 and all(s == skill for s in last):
+        return None
+    return {"skill": skill, "direction": "harder" if value == "too_easy" else "easier", "after": latest[1]}
