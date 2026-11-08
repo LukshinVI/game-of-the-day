@@ -46,7 +46,8 @@ class Capture(unittest.TestCase):
         for target in (mock.patch.object(gp, "DB_PATH", self.db),
                        mock.patch.object(gp, "send_preparation_success_alert"),
                        mock.patch.object(gp, "send_failure_alert"),
-                       mock.patch.dict("os.environ", {"CHILD_BIRTH_DATE": "2025-09-03", "VK_PEER_ID": "1"})):
+                       mock.patch.dict("os.environ", {"CHILD_BIRTH_DATE": "2025-09-03", "VK_PEER_ID": "1",
+                                                      "PREPARATION_FALLBACK_MODEL": ""})):
             target.start()
             self.addCleanup(target.stop)
 

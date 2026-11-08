@@ -90,7 +90,10 @@ CREATE TABLE games (
     source_url TEXT,
     message_text TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    child_id INTEGER REFERENCES children(id)
+    child_id INTEGER REFERENCES children(id),
+    origin TEXT NOT NULL DEFAULT 'model',
+    origin_reason TEXT,
+    candidate_json TEXT
 );
 
 CREATE INDEX idx_games_date ON games(game_date);
@@ -136,4 +139,4 @@ CREATE TABLE migration_meta (
     value TEXT
 );
 
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '5');
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '6');

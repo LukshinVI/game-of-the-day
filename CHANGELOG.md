@@ -8,13 +8,19 @@ on the commit that completed each milestone.
 ## [Unreleased]
 
 ### Added
+- Graceful degradation: a day is never lost to the model. If the primary model fails its
+  attempts, a cheaper fallback model (Haiku) gets the same gate; if the subscription quota
+  is exhausted or the daily model budget is spent, or the fallback fails too, code picks an
+  already validated game from the library (age window, skill rules, nothing repeated). The
+  owner is told which path produced the day; every game records its origin; `/llm` counts
+  reserve days.
 - Test children (`children.py add --test`): games only from a manual run
   (`prepare --child ID`), never from the daily schedule, and never the target of feedback
   that arrives without an explicit game, so a family's VK answer cannot land on a test game.
 - `game_preparation.py prepare --child ID` limits a manual run to one child.
 
 ### Changed
-- Schema version 5 (additive).
+- Schema version 6 (additive).
 
 ## [1.3.0] - 2026-11-08 — Measured, then cheaper
 
