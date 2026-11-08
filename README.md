@@ -65,7 +65,7 @@ feedback text
 
 | Suite | What it covers | Runs |
 |---|---|---|
-| `tests/` (Python, 121 tests) | delivery state machine, feedback storage idempotency, preparation validation, backup script, outcome check, ops bot | every push (CI) |
+| `tests/` (Python, 135 tests) | delivery state machine, feedback storage idempotency, preparation validation and message layout, child age, model backends, backup script, outcome check, ops bot | every push (CI) |
 | `worker/evals/runSegmentationEvals.js` | deterministic segmentation and relation detection | every push (CI) |
 | `worker/evals/feedbackCases.js` (16 cases) | end-to-end semantic feedback analysis against a real model; compares `baseline` / `gemma` / `glm` | manual workflow ([LLM evals](.github/workflows/llm-evals.yml)) |
 | ShellCheck | backup script | every push (CI) |
@@ -102,16 +102,22 @@ src/
 worker/
   src/           Cloudflare Worker: callback ingress and the feedback agent
   evals/         deterministic and LLM eval suites
-ops/             systemd units, timers and runbooks (backup, bot, outcome check, delivery retry)
-docs/            architecture, reliability, AI design, roadmap
+ops/             systemd units, timers and runbooks (preparation, delivery, feedback, backup, bot, outcome check)
+docs/            architecture, reliability, AI design, deployment, roadmap, postmortems
 legacy/          the original Google Apps Script sender (rollback path)
 ```
 
 Runbooks: [database backup](ops/backup/README.md) · [manual delivery control](ops/bot/README.md) · [daily outcome check](ops/day-outcome/README.md)
 
+## In production
+
+- In daily use since 2026-09-01: 43 activities delivered, no repeated titles, a balanced skill mix (coordination 16, speech 14, fine motor 13).
+- In October the only host was lost together with its database. The service was rebuilt from this repository in one night, with the history recovered from the messenger and nothing re-sent. What went wrong and what changed: [postmortem](docs/postmortems/2026-10-host-loss.md).
+- Activity selection runs on Claude Code in headless mode with structured output; Codex CLI is a drop-in fallback behind the same validation.
+
 ## Status
 
-- Daily preparation and delivery have run on the host/SQLite runtime since 2026-09-18. The original Google Sheets + Apps Script runtime is kept only as a rollback path.
+- Daily preparation and delivery run on the host/SQLite runtime. The original Google Sheets + Apps Script runtime is kept only as a rollback path.
 - The semantic feedback pipeline is in production. Next: feedback UX, a clarification workflow, and personalization from validated observations ([roadmap](docs/product-roadmap.md)).
 - Known gaps are documented, not hidden. For example, an interrupted `sending` delivery is detected but still needs a manual decision ([reliability model](docs/reliability.md)).
 
