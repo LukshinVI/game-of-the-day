@@ -2,8 +2,11 @@
 Description=Game of the Day - daily delivery at 10:00 Moscow time
 
 [Timer]
-# A repeated run is safe: an already-sent delivery is not sent again.
+# A repeated run is safe: an already-sent delivery is not sent again. The second
+# run resolves a delivery interrupted at 10:00 (stuck in 'sending') from VK
+# history, before the 10:15 outcome check would report it (issue #28).
 OnCalendar=*-*-* 10:00:00 Europe/Moscow
+OnCalendar=*-*-* 10:12:00 Europe/Moscow
 Persistent=true
 
 [Install]

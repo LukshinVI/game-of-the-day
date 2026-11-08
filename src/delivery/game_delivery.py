@@ -11,11 +11,18 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 DB_PATH = Path(__file__).resolve().parents[2] / "data" / "game-of-the-day.db"
 MOSCOW = ZoneInfo("Europe/Moscow")
 VK_API_VERSION = "5.199"
+
+# A delivery left in 'sending' longer than this is treated as interrupted (the
+# process died between acquiring it and recording the VK result). A younger one
+# may still be in flight in another process and is left alone.
+SENDING_STALE_AFTER = timedelta(minutes=10)
+# How many recent messages of the dialog are searched for our random_id.
+VK_RECONCILE_WINDOW = 50
 
 
 def connect_db():
@@ -45,7 +52,8 @@ def today_deliveries(con):
             d.id AS delivery_id,
             d.status,
             d.attempts,
-            d.idempotency_key
+            d.idempotency_key,
+            d.updated_at
         FROM games g
         JOIN deliveries d ON d.game_id = g.id
         WHERE d.channel = 'vk'
@@ -152,8 +160,20 @@ def send_today(retry_failed=False):
 
         if game["status"] == "sending":
             con.rollback()
+            outcome = recover_stuck_sending(game)
+            if outcome == "sent":
+                print("Today's game was already delivered (recovered from VK). Nothing sent.")
+                return
+            if outcome == "failed":
+                # Even with --retry-failed: the owner asked to retry a failure they
+                # had seen, not this one. The new state and reason are shown first.
+                raise RuntimeError(
+                    "An interrupted delivery was not found in VK and is now 'failed'; "
+                    "explicit retry required (send-today --retry-failed)"
+                )
             raise RuntimeError(
-                "Today's delivery is stuck in 'sending'; manual recovery required"
+                "Today's delivery is in 'sending' and may still be in flight; "
+                "not touching it (manual recovery if it stays so)"
             )
 
         if retry_failed and game["status"] != "failed":
@@ -264,6 +284,94 @@ def send_today(retry_failed=False):
         game,
         external_id,
     )
+
+
+def is_stale(updated_at, now=None):
+    """updated_at is SQLite CURRENT_TIMESTAMP (UTC, 'YYYY-MM-DD HH:MM:SS')."""
+    if not updated_at:
+        return True
+    started = datetime.strptime(updated_at, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    return (now or datetime.now(timezone.utc)) - started >= SENDING_STALE_AFTER
+
+
+def recover_stuck_sending(game, now=None):
+    """Resolve an interrupted 'sending' delivery without guessing (issue #28).
+
+    VK keeps the random_id of messages we sent, and our random_id is derived from
+    the idempotency key. So the dialog history answers the only question that
+    matters: did the message go out?
+
+    - found      -> 'sent' with the real VK message id (no second message);
+    - not found  -> 'failed' with the reason; a resend stays an explicit decision;
+    - too recent -> left alone, another process may still be sending.
+    Returns 'sent', 'failed' or 'in-flight'.
+    """
+    if not is_stale(game["updated_at"], now):
+        return "in-flight"
+
+    random_id = deterministic_random_id(game["idempotency_key"])
+    message_id = vk_find_sent(random_id)
+
+    with connect_db() as con:
+        if message_id is not None:
+            changed = con.execute(
+                """
+                UPDATE deliveries
+                SET status = 'sent',
+                    external_message_id = ?,
+                    sent_at = COALESCE(sent_at, ?),
+                    last_error = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status = 'sending'
+                """,
+                (str(message_id), datetime.now(MOSCOW).isoformat(), game["delivery_id"]),
+            ).rowcount
+            outcome = "sent"
+        else:
+            changed = con.execute(
+                """
+                UPDATE deliveries
+                SET status = 'failed',
+                    last_error = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status = 'sending'
+                """,
+                ("interrupted while sending; not found in VK history", game["delivery_id"]),
+            ).rowcount
+            outcome = "failed"
+        con.commit()
+
+    if changed != 1:
+        raise RuntimeError("Delivery state changed during recovery; not touching it")
+
+    if outcome == "sent":
+        send_ops_notification(
+            "info",
+            "Зависшая отправка восстановлена",
+            f"ID: {game['legacy_id']}\nДата: {game['game_date']}\n"
+            f"Сообщение найдено в VK (message_id {message_id}), повторно не отправлялось.",
+        )
+    else:
+        send_ops_notification(
+            "critical",
+            "Зависшая отправка: сообщения нет в VK",
+            f"ID: {game['legacy_id']}\nДата: {game['game_date']}\n"
+            "Отправка прервалась, в VK сообщения нет. Статус: failed. "
+            "Повторить: /retry в ops-боте.",
+        )
+    return outcome
+
+
+def recover_command():
+    """Recover today's interrupted delivery, if any. Safe to run at any time."""
+    with connect_db() as con:
+        rows = today_deliveries(con)
+    stuck = [row for row in rows if row["status"] == "sending"]
+    if not stuck:
+        print("Nothing to recover.")
+        return
+    for game in stuck:
+        print(f"{game['legacy_id']}: {recover_stuck_sending(game)}")
 
 
 def print_state():
@@ -385,12 +493,49 @@ def vk_send(message: str, random_id: int):
     return data["response"]
 
 
+def vk_find_sent(random_id):
+    """Return the VK message id of our message with this random_id, or None."""
+    token = os.environ.get("VK_TOKEN")
+    peer_id = os.environ.get("VK_PEER_ID")
+
+    if not token or not peer_id:
+        raise RuntimeError("VK_TOKEN or VK_PEER_ID is missing")
+
+    payload = urllib.parse.urlencode({
+        "peer_id": peer_id,
+        "count": str(VK_RECONCILE_WINDOW),
+        "access_token": token,
+        "v": VK_API_VERSION,
+    }).encode("utf-8")
+
+    request = urllib.request.Request(
+        "https://api.vk.com/method/messages.getHistory",
+        data=payload,
+        method="POST",
+    )
+
+    with urllib.request.urlopen(request, timeout=20) as response:
+        data = json.loads(response.read().decode("utf-8"))
+
+    if "error" in data:
+        error = data["error"]
+        raise RuntimeError(
+            f"VK error {error.get('error_code')}: {error.get('error_msg')}"
+        )
+
+    for item in data.get("response", {}).get("items", []):
+        if item.get("out") == 1 and item.get("random_id") == random_id:
+            return item["id"]
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(prog="game-delivery")
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("status")
     sub.add_parser("state")
+    sub.add_parser("recover", help="resolve an interrupted 'sending' delivery using VK history")
     send = sub.add_parser("send-today")
     send.add_argument(
         "--retry-failed",
@@ -404,6 +549,8 @@ def main():
         print_status()
     elif args.command == "state":
         print_state()
+    elif args.command == "recover":
+        recover_command()
     elif args.command == "send-today":
         send_today(retry_failed=args.retry_failed)
 

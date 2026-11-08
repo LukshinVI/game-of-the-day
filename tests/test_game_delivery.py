@@ -108,7 +108,7 @@ class SendToday(unittest.TestCase):
             with self.subTest(status=status):
                 self.set_status(status)
                 vk, error = self.run_send(retry_failed=True)
-                self.assertIn("manual recovery", str(error))
+                self.assertIn("in flight", str(error))
                 vk.assert_not_called()
 
     def test_retry_failed_never_sends_a_pending_delivery(self):
@@ -159,6 +159,78 @@ class SendToday(unittest.TestCase):
                 gd.main()
         self.assertIn("--retry-failed", parser_help.getvalue())
         self.assertFalse(hasattr(gd, "send_last"))
+
+
+class StuckSending(unittest.TestCase):
+    """Issue #28: an interrupted 'sending' delivery is resolved from VK history."""
+
+    setUp = SendToday.setUp
+    row = SendToday.row
+    run_send = SendToday.run_send
+
+    def make_stuck(self, minutes_ago):
+        con = sqlite3.connect(self.db)
+        con.execute(
+            "UPDATE deliveries SET status='sending', attempts=1, "
+            "updated_at=datetime('now', ?) WHERE game_id=1",
+            (f"-{minutes_ago} minutes",),
+        )
+        con.commit()
+        con.close()
+
+    def run_with_history(self, found_id, **kwargs):
+        finder = mock.Mock(return_value=found_id)
+        with mock.patch.object(gd, "vk_find_sent", finder):
+            vk, error = self.run_send(**kwargs)
+        return finder, vk, error
+
+    def test_a_message_found_in_vk_is_recorded_as_sent_without_resending(self):
+        self.make_stuck(30)
+        finder, vk, error = self.run_with_history(77)
+        self.assertIsNone(error)
+        vk.assert_not_called()
+        finder.assert_called_once_with(gd.deterministic_random_id("key-1"))
+        row = self.row()
+        self.assertEqual((row["status"], row["external_message_id"]), ("sent", "77"))
+
+    def test_a_message_missing_in_vk_becomes_failed_and_needs_an_explicit_retry(self):
+        self.make_stuck(30)
+        _, vk, error = self.run_with_history(None)
+        vk.assert_not_called()
+        self.assertIn("explicit retry", str(error))
+        row = self.row()
+        self.assertEqual(row["status"], "failed")
+        self.assertIn("not found in VK", row["last_error"])
+        # the explicit retry then resends with the same random_id
+        vk, error = self.run_send(retry_failed=True)
+        self.assertIsNone(error)
+        vk.assert_called_once_with("text", gd.deterministic_random_id("key-1"))
+
+    def test_retry_failed_does_not_resend_a_freshly_recovered_failure(self):
+        self.make_stuck(30)
+        _, vk, error = self.run_with_history(None, retry_failed=True)
+        vk.assert_not_called()
+        self.assertEqual(self.row()["status"], "failed")
+
+    def test_a_recent_sending_is_left_alone_as_possibly_in_flight(self):
+        self.make_stuck(1)
+        finder, vk, error = self.run_with_history(77)
+        finder.assert_not_called()
+        vk.assert_not_called()
+        self.assertIn("in flight", str(error))
+        self.assertEqual(self.row()["status"], "sending")
+
+    def test_recover_command_is_a_no_op_without_a_stuck_delivery(self):
+        finder = mock.Mock()
+        with contextlib.redirect_stdout(io.StringIO()) as out, mock.patch.object(gd, "vk_find_sent", finder):
+            gd.recover_command()
+        finder.assert_not_called()
+        self.assertIn("Nothing to recover", out.getvalue())
+
+    def test_staleness_uses_the_utc_sqlite_timestamp(self):
+        now = datetime(2026, 11, 8, 7, 0, tzinfo=gd.timezone.utc)
+        self.assertTrue(gd.is_stale("2026-11-08 06:50:00", now))
+        self.assertFalse(gd.is_stale("2026-11-08 06:55:00", now))
 
 
 if __name__ == "__main__":
