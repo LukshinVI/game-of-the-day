@@ -127,7 +127,7 @@ def report(db_path=DB_PATH, now=None):
         summary = (
             f"Итого: семей {totals['families']} (новых за неделю {totals['new']}), "
             f"детей в Telegram активно {totals['children']}, на паузе {totals['paused']}; "
-            f"всего активных детей с VK: {all_active}."
+            f"всего активных детей (вместе с VK): {all_active}."
         )
         if totals["failed"]:
             summary += f"\n🔴 Сегодня не доставлено: {totals['failed']}."
