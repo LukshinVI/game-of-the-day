@@ -25,7 +25,8 @@ DIFFICULTY_SCORE = {"too_easy": 1.0, "right": 0.0, "too_hard": -1.0}
 
 def _age_days(created_at, now):
     try:
-        then = datetime.fromisoformat(created_at.replace(" ", "T")).replace(tzinfo=timezone.utc)
+        then = datetime.fromisoformat(created_at.replace(" ", "T").replace("Z", "+00:00"))
+        then = then if then.tzinfo else then.replace(tzinfo=timezone.utc)
     except (ValueError, AttributeError):
         return 0.0
     return max(0.0, (now - then).total_seconds() / 86400)
@@ -87,8 +88,10 @@ def build(observations, now=None):
 
 def rebuild(con, child_id, now=None):
     rows = [dict(r) for r in con.execute(
-        "SELECT o.kind, o.value, o.skill, o.evidence, o.created_at, g.title AS game_title "
-        "FROM observations o LEFT JOIN games g ON g.id = o.game_id WHERE o.child_id = ?",
+        # Recency counts from when the parent wrote, not from when it was analysed.
+        "SELECT o.kind, o.value, o.skill, o.evidence, COALESCE(f.received_at, o.created_at) AS created_at, "
+        "g.title AS game_title FROM observations o LEFT JOIN games g ON g.id = o.game_id "
+        "LEFT JOIN feedback f ON f.id = o.feedback_id WHERE o.child_id = ?",
         (child_id,),
     )]
     profile = build(rows, now)
