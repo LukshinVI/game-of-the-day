@@ -27,6 +27,9 @@ die() { log "ERROR: $*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || die "run as root"
 exec 9> /run/game-deploy.lock
 flock -n 9 || die "another deploy is running"
+# The tests run as the application user, which cannot enter root's home: never
+# inherit the caller's working directory.
+cd "$APP"
 
 "${G[@]}" fetch -q origin
 old=$("${G[@]}" rev-parse HEAD)
