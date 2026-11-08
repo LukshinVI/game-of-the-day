@@ -26,4 +26,6 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 # Read-only: PRAGMA query_only enforces this at the SQLite level too.
-ReadOnlyPaths=/srv/game-of-the-day/data
+# SQLite in WAL mode: even a reader must write the -shm index next to the database,
+# so the directory cannot be read-only. The script itself opens it with PRAGMA query_only.
+ReadWritePaths=/srv/game-of-the-day/data
