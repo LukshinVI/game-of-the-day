@@ -1,0 +1,279 @@
+[
+  {
+    "id": "newborn-2m",
+    "age_months": 2,
+    "passed": true,
+    "attempts": 1,
+    "candidate": {
+      "title": "Гулим вместе: разговор по очереди",
+      "age_months": 2,
+      "duration_minutes": 5,
+      "goal": "Поддержать гуление и научить малыша первым диалогам по очереди: послушать, ответить звуком, подождать",
+      "skill": "speech",
+      "mechanics": "Взрослый держит лицо в 20–30 см от лица малыша, повторяет его звуки («а-а», «у-у»), делает паузу и ждёт ответа, радостно откликаясь на каждый звук",
+      "materials": [
+        "Мягкий коврик или колени взрослого"
+      ],
+      "steps": [
+        "Выберите время, когда малыш сыт, бодр и спокоен. Уложите его на спину на коврик или держите на коленях лицом к себе.",
+        "Наклонитесь так, чтобы ваше лицо было в 20–30 см от лица малыша, улыбнитесь и ласково поздоровайтесь.",
+        "Произнесите протяжный звук, например «а-а-а» или «у-у-у», и сделайте паузу на 5–10 секунд, глядя малышу в глаза.",
+        "Когда малыш издаст любой звук, повторите его, улыбнитесь и удивлённо порадуйтесь: «Ты сказал у-у! Как здорово!»",
+        "Продолжайте обмен звуками по очереди и посмотрите, сколько «реплик» получится. Закончите игру через 5 минут или раньше, если малыш устал."
+      ],
+      "safety": "Игра только под постоянным присмотром взрослого, малыша не оставляйте одного на возвышении. Говорите мягко, без громких звуков у уха. Остановитесь, если малыш отворачивается, хнычет, зевает или устал.",
+      "source_name": "CDC — Milestones by 2 Months (Learn the Signs. Act Early.)",
+      "source_url": "https://www.cdc.gov/act-early/milestones/2-months.html",
+      "message_text": "🎲 Игра дня: «Гулим вместе: разговор по очереди»\n⏱ 5 минут\n🎯 Цель: Поддержать гуление и научить малыша первым диалогам по очереди: послушать, ответить звуком, подождать\n🤲 Навык: речь.\n🧸 Нужно: Мягкий коврик или колени взрослого.\n\nКак играть:\n1. Выберите время, когда малыш сыт, бодр и спокоен. Уложите его на спину на коврик или держите на коленях лицом к себе.\n2. Наклонитесь так, чтобы ваше лицо было в 20–30 см от лица малыша, улыбнитесь и ласково поздоровайтесь.\n3. Произнесите протяжный звук, например «а-а-а» или «у-у-у», и сделайте паузу на 5–10 секунд, глядя малышу в глаза.\n4. Когда малыш издаст любой звук, повторите его, улыбнитесь и удивлённо порадуйтесь: «Ты сказал у-у! Как здорово!»\n5. Продолжайте обмен звуками по очереди и посмотрите, сколько «реплик» получится. Закончите игру через 5 минут или раньше, если малыш устал.\n\n✅ Безопасность: Игра только под постоянным присмотром взрослого, малыша не оставляйте одного на возвышении. Говорите мягко, без громких звуков у уха. Остановитесь, если малыш отворачивается, хнычет, зевает или устал.\n\nИсточник: CDC — Milestones by 2 Months (Learn the Signs. Act Early.)\nhttps://www.cdc.gov/act-early/milestones/2-months.html"
+    },
+    "lint": [
+      "goal is not a finished sentence"
+    ],
+    "judge": {
+      "age_fit": 5,
+      "clarity": 5,
+      "developmental_value": 5,
+      "safety_concerns": [
+        "Holding the baby on the lap facing the adult: the steps don't say to support the head and neck. Head control is still weak at 2 months, so the baby should lie along the adult's thighs with the head supported."
+      ],
+      "notes": "A strong fit for a 2-month-old. It builds on cooing, which typically appears around 6–8 weeks, and on the baby's interest in faces. The 20–30 cm face distance suits infant vision, and the 5–10 s pauses give the baby enough time to respond in turn. No toys and nothing touching the face, as the case intends; the only gap is that the lap position should mention head support.",
+      "cost_usd": 0.053335999999999995
+    },
+    "rejections": [],
+    "wall_ms": 33936,
+    "cost_usd": 0.119,
+    "model": "claude-opus-5-5,claude-haiku-5-5"
+  },
+  {
+    "id": "infant-6m-fine-motor-heavy",
+    "age_months": 6,
+    "passed": true,
+    "attempts": 1,
+    "candidate": {
+      "title": "Разговор по очереди",
+      "age_months": 6,
+      "duration_minutes": 7,
+      "goal": "Поддержать лепет и умение по очереди обмениваться звуками со взрослым",
+      "skill": "speech",
+      "mechanics": "взрослый повторяет звуки малыша, делает паузу и ждёт ответного лепета",
+      "materials": [
+        "удобное место лицом к лицу с малышом"
+      ],
+      "steps": [
+        "Уложите или усадите малыша с опорой так, чтобы ваши лица были на расстоянии 25–30 см.",
+        "Дождитесь, когда малыш издаст звук (агу, визг, пузыри губами).",
+        "Повторите его звук с улыбкой и сделайте паузу 3–5 секунд, глядя малышу в глаза.",
+        "Когда малыш ответит, снова повторите звук или добавьте новый простой слог: ба, ма, па.",
+        "Продолжайте «разговор» несколько минут, хваля каждый ответ."
+      ],
+      "safety": "Играйте, когда малыш бодр и сыт, и не оставляйте его одного на возвышении. Если сидит с опорой, держите рядом руку. Прекратите, если малыш отворачивается, хнычет или устал.",
+      "source_name": "CDC — Milestones by 6 Months (Learn the Signs. Act Early.)",
+      "source_url": "https://www.cdc.gov/act-early/milestones/6-months.html",
+      "message_text": "🎲 Игра дня: «Разговор по очереди»\n⏱ 7 минут\n🎯 Цель: Поддержать лепет и умение по очереди обмениваться звуками со взрослым\n🤲 Навык: речь.\n🧸 Нужно: удобное место лицом к лицу с малышом.\n\nКак играть:\n1. Уложите или усадите малыша с опорой так, чтобы ваши лица были на расстоянии 25–30 см.\n2. Дождитесь, когда малыш издаст звук (агу, визг, пузыри губами).\n3. Повторите его звук с улыбкой и сделайте паузу 3–5 секунд, глядя малышу в глаза.\n4. Когда малыш ответит, снова повторите звук или добавьте новый простой слог: ба, ма, па.\n5. Продолжайте «разговор» несколько минут, хваля каждый ответ.\n\n✅ Безопасность: Играйте, когда малыш бодр и сыт, и не оставляйте его одного на возвышении. Если сидит с опорой, держите рядом руку. Прекратите, если малыш отворачивается, хнычет или устал.\n\nИсточник: CDC — Milestones by 6 Months (Learn the Signs. Act Early.)\nhttps://www.cdc.gov/act-early/milestones/6-months.html"
+    },
+    "lint": [
+      "goal is not a finished sentence"
+    ],
+    "judge": {
+      "age_fit": 5,
+      "clarity": 4,
+      "developmental_value": 5,
+      "safety_concerns": [],
+      "notes": "This fits the case intent: it moves from fine motor to speech. It also matches the CDC 6-month milestones (taking turns making sounds, squealing, blowing raspberries), and the safety notes on elevated surfaces, supported sitting and tiredness cues are enough. Clarity loses one point because step 2 has no fallback if the baby stays quiet (for example, the adult could start with a sound like \"агу\" and wait); \"несколько минут\" is also vaguer than the stated 7 minutes.",
+      "cost_usd": 0.026617599999999998
+    },
+    "rejections": [],
+    "wall_ms": 30263,
+    "cost_usd": 0.0794,
+    "model": "claude-opus-5-5,claude-haiku-5-5"
+  },
+  {
+    "id": "mouthing-age-9m",
+    "age_months": 9,
+    "passed": true,
+    "attempts": 1,
+    "candidate": {
+      "title": "Найди игрушку под платочком",
+      "age_months": 9,
+      "duration_minutes": 7,
+      "goal": "Развивать понимание постоянства объекта: предмет существует, даже когда его не видно, и его можно найти.",
+      "skill": "cognitive",
+      "mechanics": "Взрослый на глазах у ребёнка прячет крупную любимую игрушку под лёгкую ткань, сначала частично, затем полностью; ребёнок ищет и снимает ткань, взрослый радостно комментирует находку.",
+      "materials": [
+        "Лёгкая тонкая пелёнка или платок",
+        "Крупная мягкая игрушка, которая нравится ребёнку"
+      ],
+      "steps": [
+        "Сядьте с ребёнком на пол на мягкое покрывало лицом друг к другу.",
+        "Покажите игрушку, дайте её подержать и назовите: «Вот мишка!».",
+        "На глазах у ребёнка накройте игрушку пелёнкой так, чтобы её край выглядывал. Спросите: «Где мишка?»",
+        "Когда ребёнок стянет ткань, радостно скажите: «Вот он!» и похвалите.",
+        "Если получается, спрячьте игрушку полностью, а затем попробуйте прятать то под пелёнкой, то рядом с ней.",
+        "Повторите 4–6 раз и закончите игру, пока ребёнку ещё интересно."
+      ],
+      "safety": "Играйте только под постоянным присмотром взрослого. Не оставляйте ткань на лице ребёнка и уберите пелёнку сразу после игры. Остановитесь, если ребёнок устал, капризничает или потерял интерес.",
+      "source_name": "Pathways.org — Hide and Find",
+      "source_url": "https://pathways.org/activities/hide-and-find",
+      "message_text": "🎲 Игра дня: «Найди игрушку под платочком»\n⏱ 7 минут\n🎯 Цель: Развивать понимание постоянства объекта: предмет существует, даже когда его не видно, и его можно найти.\n🤲 Навык: мышление.\n🧸 Нужно: Лёгкая тонкая пелёнка или платок; Крупная мягкая игрушка, которая нравится ребёнку.\n\nКак играть:\n1. Сядьте с ребёнком на пол на мягкое покрывало лицом друг к другу.\n2. Покажите игрушку, дайте её подержать и назовите: «Вот мишка!».\n3. На глазах у ребёнка накройте игрушку пелёнкой так, чтобы её край выглядывал. Спросите: «Где мишка?»\n4. Когда ребёнок стянет ткань, радостно скажите: «Вот он!» и похвалите.\n5. Если получается, спрячьте игрушку полностью, а затем попробуйте прятать то под пелёнкой, то рядом с ней.\n6. Повторите 4–6 раз и закончите игру, пока ребёнку ещё интересно.\n\n✅ Безопасность: Играйте только под постоянным присмотром взрослого. Не оставляйте ткань на лице ребёнка и уберите пелёнку сразу после игры. Остановитесь, если ребёнок устал, капризничает или потерял интерес.\n\nИсточник: Pathways.org — Hide and Find\nhttps://pathways.org/activities/hide-and-find"
+    },
+    "lint": [],
+    "judge": {
+      "age_fit": 5,
+      "clarity": 4,
+      "developmental_value": 5,
+      "safety_concerns": [
+        "The soft toy should have no eyes, noses, buttons or other parts that can come off, since a 9-month-old will mouth and chew it (choking risk); the text only says 'large soft toy' and does not ask the parent to check it.",
+        "The scarf or blanket should have no fringe, tassels, sequins or loose threads that can be chewed off and swallowed."
+      ],
+      "notes": "A classic object-permanence task that suits 9 months well, and the move from a partly hidden toy to a fully hidden one is good scaffolding. The step about hiding the toy 'next to' the blanket is a bit vague, and the safety section covers the cloth over the face but does not mention checking the toy for small detachable parts.",
+      "cost_usd": 0.0300176
+    },
+    "rejections": [],
+    "wall_ms": 29922,
+    "cost_usd": 0.0841,
+    "model": "claude-opus-5-5,claude-haiku-5-5"
+  },
+  {
+    "id": "toddler-14m-long-history",
+    "age_months": 14,
+    "passed": true,
+    "attempts": 1,
+    "candidate": {
+      "title": "Рисуем йогуртом",
+      "age_months": 14,
+      "duration_minutes": 10,
+      "goal": "Дать малышу исследовать пальцами и ладошками прохладную, мягкую и скользкую текстуру и увидеть, как от его движений остаются следы.",
+      "skill": "sensory",
+      "mechanics": "размазывает йогурт пальцами и ладонями по тарелке или подносу стульчика и рисует следы",
+      "materials": [
+        "натуральный йогурт без добавок",
+        "бумажная тарелка или поднос детского стульчика",
+        "нагрудник",
+        "влажная салфетка"
+      ],
+      "steps": [
+        "Посадите малыша в стульчик для кормления, застегните ремни и наденьте нагрудник.",
+        "Выложите 2–3 ложки йогурта на тарелку или поднос.",
+        "Покажите сами: проведите пальцем дорожку, шлёпните ладошкой, нарисуйте кружок.",
+        "Предложите малышу потрогать и размазать йогурт, называйте ощущения: «холодный», «мягкий», «скользкий».",
+        "Через 5–10 минут вместе вытрите ручки салфеткой и похвалите малыша."
+      ],
+      "safety": "Взрослый всё время рядом, малыш пристёгнут в стульчике. Используйте только продукт, который ребёнок уже ел без аллергии. Прекратите игру, если малыш устал, капризничает или пытается встать.",
+      "source_name": "Pathways.org — Activities to Help Babies and Toddlers Develop Their Sense of Touch (Pudding/Yogurt Painting, 13–18 months)",
+      "source_url": "https://pathways.org/touch-sense-activities",
+      "message_text": "🎲 Игра дня: «Рисуем йогуртом»\n⏱ 10 минут\n🎯 Цель: Дать малышу исследовать пальцами и ладошками прохладную, мягкую и скользкую текстуру и увидеть, как от его движений остаются следы.\n🤲 Навык: сенсорика.\n🧸 Нужно: натуральный йогурт без добавок; бумажная тарелка или поднос детского стульчика; нагрудник; влажная салфетка.\n\nКак играть:\n1. Посадите малыша в стульчик для кормления, застегните ремни и наденьте нагрудник.\n2. Выложите 2–3 ложки йогурта на тарелку или поднос.\n3. Покажите сами: проведите пальцем дорожку, шлёпните ладошкой, нарисуйте кружок.\n4. Предложите малышу потрогать и размазать йогурт, называйте ощущения: «холодный», «мягкий», «скользкий».\n5. Через 5–10 минут вместе вытрите ручки салфеткой и похвалите малыша.\n\n✅ Безопасность: Взрослый всё время рядом, малыш пристёгнут в стульчике. Используйте только продукт, который ребёнок уже ел без аллергии. Прекратите игру, если малыш устал, капризничает или пытается встать.\n\nИсточник: Pathways.org — Activities to Help Babies and Toddlers Develop Their Sense of Touch (Pudding/Yogurt Painting, 13–18 months)\nhttps://pathways.org/touch-sense-activities"
+    },
+    "lint": [],
+    "judge": {
+      "age_fit": 5,
+      "clarity": 5,
+      "developmental_value": 5,
+      "safety_concerns": [
+        "A paper plate can be torn, chewed and swallowed in soggy pieces. Using only the high-chair tray, or a sturdy non-breakable plate, is safer.",
+        "The child will put yogurt-covered hands and possibly the wet wipe in their mouth. Use a fragrance-free, alcohol-free baby wipe or a damp cloth, and keep the wipe out of the child's reach."
+      ],
+      "notes": "This is a good fit for 14 months: the child sits strapped into a high chair and explores with the whole hand and fingers. Using a food the child has already eaten makes mouthing safe, and the parent naming each sensation adds real sensory and language value. I couldn't check the case intent (no repeated title or mechanic) because the activity history wasn't included in the input.",
+      "cost_usd": 0.031881599999999996
+    },
+    "rejections": [],
+    "wall_ms": 42393,
+    "cost_usd": 0.1202,
+    "model": "claude-opus-5-5,claude-haiku-5-5"
+  },
+  {
+    "id": "speech-24m",
+    "age_months": 24,
+    "passed": true,
+    "attempts": 1,
+    "candidate": {
+      "title": "Наряжаемся как взрослые",
+      "age_months": 24,
+      "duration_minutes": 10,
+      "goal": "Начать играть в «понарошку»: примерить взрослые вещи и изобразить простую роль (мама/папа идёт в магазин, на работу).",
+      "skill": "imagination",
+      "mechanics": "ребёнок наряжается во взрослые вещи и изображает роль взрослого в простом сюжете",
+      "materials": [
+        "взрослая шляпа или кепка",
+        "большая рубашка",
+        "взрослые тапочки или шлёпанцы",
+        "сумка"
+      ],
+      "steps": [
+        "Разложите вещи на полу и предложите: «Давай нарядимся как мама и папа!»",
+        "Помогите надеть рубашку и шляпу, назовите каждую вещь.",
+        "Покажите роль: возьмите сумку и скажите «Я иду в магазин, пока-пока!»",
+        "Предложите ребёнку повторить: надеть тапочки, взять сумку, «уйти» и «вернуться» с покупками.",
+        "Поменяйтесь ролями и похвалите любую его выдумку."
+      ],
+      "safety": "Играйте под постоянным присмотром взрослого. Во взрослой обуви ребёнок ходит только по ровному полу, без ступенек; шарфы и галстуки не используйте. Остановите игру, если ребёнок спотыкается или устал.",
+      "source_name": "CDC — Important Milestones: Your Child By Two Years",
+      "source_url": "https://www.cdc.gov/ncbddd/actearly/milestones/milestones-2yr.html",
+      "message_text": "🎲 Игра дня: «Наряжаемся как взрослые»\n⏱ 10 минут\n🎯 Цель: Начать играть в «понарошку»: примерить взрослые вещи и изобразить простую роль (мама/папа идёт в магазин, на работу).\n🤲 Навык: воображение.\n🧸 Нужно: взрослая шляпа или кепка; большая рубашка; взрослые тапочки или шлёпанцы; сумка.\n\nКак играть:\n1. Разложите вещи на полу и предложите: «Давай нарядимся как мама и папа!»\n2. Помогите надеть рубашку и шляпу, назовите каждую вещь.\n3. Покажите роль: возьмите сумку и скажите «Я иду в магазин, пока-пока!»\n4. Предложите ребёнку повторить: надеть тапочки, взять сумку, «уйти» и «вернуться» с покупками.\n5. Поменяйтесь ролями и похвалите любую его выдумку.\n\n✅ Безопасность: Играйте под постоянным присмотром взрослого. Во взрослой обуви ребёнок ходит только по ровному полу, без ступенек; шарфы и галстуки не используйте. Остановите игру, если ребёнок спотыкается или устал.\n\nИсточник: CDC — Important Milestones: Your Child By Two Years\nhttps://www.cdc.gov/ncbddd/actearly/milestones/milestones-2yr.html"
+    },
+    "lint": [],
+    "judge": {
+      "age_fit": 4,
+      "clarity": 4,
+      "developmental_value": 4,
+      "safety_concerns": [
+        "The guidance doesn't say to check or empty a real adult bag first. It may hold coins, keys, medicine, lipstick or batteries, which are choking or poisoning hazards.",
+        "A bag with a long shoulder strap can be a strangulation hazard. Use a bag with short handles or no strap.",
+        "The 'purchases' aren't specified, so a parent might use small items. Say to use only objects too big to choke on, like a large toy or a piece of fruit.",
+        "A very long adult shirt can trip the child or get caught on their face while it's being put on. Roll up the sleeves and hem, and don't pull it over the face.",
+        "Check hats and caps for drawstrings or elastic cords and remove them before play."
+      ],
+      "notes": "This is a good starting pretend game for a 2-year-old: the adult shows the role first and uses a short phrase ('Я иду в магазин, пока-пока!'), which fits the case intent. Two things are unclear: step 5 ('поменяйтесь ролями') repeats step 4, and the 'purchases' aren't defined. Safety is good on shoes and scarves but leaves out the bag's contents and strap and any small 'purchases'.",
+      "cost_usd": 0.0355216
+    },
+    "rejections": [],
+    "wall_ms": 38796,
+    "cost_usd": 0.0942,
+    "model": "claude-opus-5-5,claude-haiku-5-5"
+  },
+  {
+    "id": "upper-bound-36m",
+    "age_months": 36,
+    "passed": true,
+    "attempts": 1,
+    "candidate": {
+      "title": "День рождения мишки",
+      "age_months": 36,
+      "duration_minutes": 10,
+      "goal": "Развивать сюжетно-ролевую игру: ребёнок придумывает и разыгрывает праздник для игрушек, говорит за них и решает, что они делают.",
+      "skill": "imagination",
+      "mechanics": "Сюжетно-ролевая игра: ребёнок устраивает игрушкам праздник на пледе, угощает их понарошку, а взрослый задаёт открытые вопросы о том, что делают гости и во что они играют.",
+      "materials": [
+        "2-4 мягкие игрушки",
+        "плед или покрывало",
+        "бумажные тарелки",
+        "бумажные стаканчики",
+        "свёрнутое полотенце в роли торта"
+      ],
+      "steps": [
+        "Расстелите плед на полу и предложите ребёнку пригласить игрушки на день рождения мишки.",
+        "Пусть ребёнок рассадит гостей и раздаст каждому тарелку и стаканчик.",
+        "Вынесите «торт» из свёрнутого полотенца, вместе понарошку зажгите свечи, спойте песенку и задуйте их.",
+        "Ребёнок «режет» торт ладошкой и угощает гостей; спросите: «Что любит есть зайка? Что мишка скажет гостям?»",
+        "Предложите придумать, во что гости поиграют после торта, и разыграйте эту игру вместе.",
+        "В конце гости говорят «спасибо» и «до свидания», а ребёнок помогает убрать посуду."
+      ],
+      "safety": "Играйте рядом с ребёнком всё время. Следите, чтобы он не жевал бумажные стаканчики и тарелки и не тянул в рот мелкие детали игрушек. Закончите игру, если ребёнок устал или потерял интерес.",
+      "source_name": "ZERO TO THREE — Play Activities for 24 to 36 Months",
+      "source_url": "https://www.zerotothree.org/resource/play-activities-for-24-to-36-months/",
+      "message_text": "🎲 Игра дня: «День рождения мишки»\n⏱ 10 минут\n🎯 Цель: Развивать сюжетно-ролевую игру: ребёнок придумывает и разыгрывает праздник для игрушек, говорит за них и решает, что они делают.\n🤲 Навык: воображение.\n🧸 Нужно: 2-4 мягкие игрушки; плед или покрывало; бумажные тарелки; бумажные стаканчики; свёрнутое полотенце в роли торта.\n\nКак играть:\n1. Расстелите плед на полу и предложите ребёнку пригласить игрушки на день рождения мишки.\n2. Пусть ребёнок рассадит гостей и раздаст каждому тарелку и стаканчик.\n3. Вынесите «торт» из свёрнутого полотенца, вместе понарошку зажгите свечи, спойте песенку и задуйте их.\n4. Ребёнок «режет» торт ладошкой и угощает гостей; спросите: «Что любит есть зайка? Что мишка скажет гостям?»\n5. Предложите придумать, во что гости поиграют после торта, и разыграйте эту игру вместе.\n6. В конце гости говорят «спасибо» и «до свидания», а ребёнок помогает убрать посуду.\n\n✅ Безопасность: Играйте рядом с ребёнком всё время. Следите, чтобы он не жевал бумажные стаканчики и тарелки и не тянул в рот мелкие детали игрушек. Закончите игру, если ребёнок устал или потерял интерес.\n\nИсточник: ZERO TO THREE — Play Activities for 24 to 36 Months\nhttps://www.zerotothree.org/resource/play-activities-for-24-to-36-months/"
+    },
+    "lint": [],
+    "judge": {
+      "age_fit": 5,
+      "clarity": 5,
+      "developmental_value": 5,
+      "safety_concerns": [],
+      "notes": "This fits a 36-month-old well and is a real toddler game, not a worksheet. At this age children can follow a short story in order (guests, cake, game, goodbye), use one object as another (a towel as a cake), and talk for their toys, and the open questions in steps 4–5 give the child room to invent. The steps are concrete and need only household items, the candles are pretend only, and the safety note already covers chewing on paper items and small parts of toys, so I found no other risks.",
+      "cost_usd": 0.028833599999999997
+    },
+    "rejections": [],
+    "wall_ms": 38484,
+    "cost_usd": 0.1023,
+    "model": "claude-opus-5-5,claude-haiku-5-5"
+  }
+]
