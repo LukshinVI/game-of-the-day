@@ -6,6 +6,7 @@ network or the notifier.
 
 import contextlib
 import io
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -39,12 +40,12 @@ def candidate(**overrides):
 
 
 def hazard_errors(**overrides):
-    return [e for e in gp.validate_candidate(candidate(**overrides), []) if "dangerous-term" in e]
+    return [e for e in gp.validate_candidate(candidate(**overrides), [], 12) if "dangerous-term" in e]
 
 
 class ValidCandidate(unittest.TestCase):
     def test_a_well_formed_candidate_passes(self):
-        self.assertEqual(gp.validate_candidate(candidate(), []), [])
+        self.assertEqual(gp.validate_candidate(candidate(), [], 12), [])
 
     def test_the_safety_field_may_name_forbidden_items(self):
         # The gate scans title, mechanics, materials and steps only, so prohibitions belong in safety.
@@ -96,16 +97,16 @@ class OtherHazardsStayStrict(unittest.TestCase):
 
 class FormattingRules(unittest.TestCase):
     def test_markdown_links_in_the_message_are_rejected(self):
-        errors = gp.validate_candidate(candidate(message_text=f"Игра\n\n[Pathways.org]({URL})"), [])
+        errors = gp.validate_candidate(candidate(message_text=f"Игра\n\n[Pathways.org]({URL})"), [], 12)
         self.assertIn("Текст для отправки не должен содержать Markdown-ссылки", errors)
 
     def test_the_plain_source_url_must_be_in_the_message(self):
-        errors = gp.validate_candidate(candidate(message_text="Игра без ссылки"), [])
+        errors = gp.validate_candidate(candidate(message_text="Игра без ссылки"), [], 12)
         self.assertIn("Текст для отправки должен содержать чистую ссылку source_url", errors)
 
     def test_duplicates_of_history_are_rejected(self):
         history = [{"title": "Толкни мяч", "mechanics": "другое"}]
-        errors = gp.validate_candidate(candidate(), history)
+        errors = gp.validate_candidate(candidate(), history, 12)
         self.assertTrue(any(e.startswith("duplicate title") for e in errors))
 
 
@@ -118,6 +119,12 @@ class Prompt(unittest.TestCase):
 
 
 class AttemptLoop(unittest.TestCase):
+    def setUp(self):
+        # 12 completed months on the 2026-09-21 delivery date used below.
+        env = mock.patch.dict(os.environ, {"CHILD_BIRTH_DATE": "2025-09-01"})
+        env.start()
+        self.addCleanup(env.stop)
+
     def run_select(self, candidates):
         with contextlib.redirect_stdout(io.StringIO()), \
                 mock.patch.object(gp, "run_codex", side_effect=candidates) as codex, \
@@ -160,6 +167,40 @@ class AttemptLoop(unittest.TestCase):
             gp.select_candidate([], "2026-09-21")
         self.assertNotIn("deterministic_validation_errors", prompts[0])
         self.assertIn("deterministic_validation_errors", prompts[1])
+
+
+class ChildAge(unittest.TestCase):
+    def test_age_counts_completed_months(self):
+        self.assertEqual(gp.child_age_months("2026-09-21", "2025-09-15"), 12)
+        self.assertEqual(gp.child_age_months("2026-09-14", "2025-09-15"), 11)
+        self.assertEqual(gp.child_age_months("2026-11-08", "2025-09-15"), 13)
+
+    def test_a_month_only_birth_date_means_the_first(self):
+        self.assertEqual(gp.child_age_months("2026-09-01", "2025-09"), 12)
+        self.assertEqual(gp.child_age_months("2026-08-31", "2025-09"), 11)
+
+    def test_age_comes_from_the_environment(self):
+        with mock.patch.dict(os.environ, {"CHILD_BIRTH_DATE": "2025-09-01"}):
+            self.assertEqual(gp.child_age_months("2027-03-01"), 18)
+
+    def test_missing_or_invalid_birth_date_is_an_error_not_a_guess(self):
+        for raw in ("", "September 2025", "2025-13-01"):
+            with self.subTest(raw=raw), mock.patch.dict(os.environ, {"CHILD_BIRTH_DATE": raw}):
+                with self.assertRaises(ValueError):
+                    gp.child_age_months("2026-09-21")
+
+    def test_a_birth_date_after_the_delivery_date_is_rejected(self):
+        with self.assertRaises(ValueError):
+            gp.child_age_months("2025-01-01", "2025-09-01")
+
+    def test_the_prompt_carries_the_computed_age(self):
+        prompt = gp.build_prompt([], 14, today="2026-11-08")
+        self.assertIn('"child_age_months": 14', prompt)
+        self.assertNotIn("12-month", prompt)
+
+    def test_a_candidate_for_another_age_is_rejected(self):
+        errors = gp.validate_candidate(candidate(), [], 14)
+        self.assertIn("age_months must be exactly 14", errors)
 
 
 if __name__ == "__main__":

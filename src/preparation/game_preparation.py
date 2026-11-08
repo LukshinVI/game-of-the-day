@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
 import argparse
+import os
 import json
 import re
 import sqlite3
 import subprocess
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
@@ -74,12 +75,46 @@ def load_history():
     return [dict(row) for row in rows]
 
 
-def build_prompt(history):
+def child_age_months(on_date, birth_date=None):
+    """Completed months of age on `on_date` (a date or YYYY-MM-DD string).
+
+    The birth date comes from CHILD_BIRTH_DATE (YYYY-MM-DD, or YYYY-MM meaning the
+    1st of that month) so the age advances on its own and stays out of the repository.
+    A missing or invalid value is an error: guessing an age would silently select
+    activities for the wrong developmental stage.
+    """
+    raw = birth_date if birth_date is not None else os.environ.get("CHILD_BIRTH_DATE", "")
+    raw = raw.strip()
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}", raw):
+            birth = date.fromisoformat(raw + "-01")
+        else:
+            birth = date.fromisoformat(raw)
+    except ValueError:
+        raise ValueError(
+            "CHILD_BIRTH_DATE must be set as YYYY-MM-DD or YYYY-MM, got "
+            f"{raw!r}"
+        ) from None
+
+    if isinstance(on_date, str):
+        on_date = date.fromisoformat(on_date)
+
+    months = (on_date.year - birth.year) * 12 + (on_date.month - birth.month)
+    if on_date.day < birth.day:
+        months -= 1
+
+    if months < 0:
+        raise ValueError(f"CHILD_BIRTH_DATE {raw} is after {on_date.isoformat()}")
+
+    return months
+
+
+def build_prompt(history, age_months, today=None):
     base = PROMPT_PATH.read_text(encoding="utf-8")
 
     context = {
-        "today": datetime.now(MOSCOW).date().isoformat(),
-        "child_age_months": 12,
+        "today": today or datetime.now(MOSCOW).date().isoformat(),
+        "child_age_months": age_months,
         "previous_games": history,
     }
 
@@ -152,7 +187,7 @@ def normalize(text):
     return " ".join(str(text).lower().split())
 
 
-def validate_candidate(candidate, history):
+def validate_candidate(candidate, history, expected_age_months):
     errors = []
 
     required = {
@@ -176,8 +211,8 @@ def validate_candidate(candidate, history):
             "missing fields: " + ", ".join(sorted(missing))
         )
 
-    if candidate.get("age_months") != 12:
-        errors.append("age_months must be exactly 12")
+    if candidate.get("age_months") != expected_age_months:
+        errors.append(f"age_months must be exactly {expected_age_months}")
 
     duration = candidate.get("duration_minutes")
     if not isinstance(duration, int) or not 5 <= duration <= 10:
@@ -517,7 +552,8 @@ def persist_candidate(candidate, target_date):
 
 
 def select_candidate(history, target_date):
-    original_prompt = build_prompt(history)
+    age_months = child_age_months(target_date)
+    original_prompt = build_prompt(history, age_months, today=str(target_date))
     prompt = original_prompt
     last_errors = []
 
@@ -526,7 +562,7 @@ def select_candidate(history, target_date):
         print(f"=== ПОПЫТКА {attempt}/{MAX_ATTEMPTS} ===")
 
         candidate = run_codex(prompt)
-        errors = validate_candidate(candidate, history)
+        errors = validate_candidate(candidate, history, age_months)
 
         print()
         print("=== КАНДИДАТ ===")
@@ -634,7 +670,8 @@ def shadow_run():
 
     print(f"Loaded {len(history)} historical games.")
 
-    original_prompt = build_prompt(history)
+    age_months = child_age_months(datetime.now(MOSCOW).date())
+    original_prompt = build_prompt(history, age_months)
     prompt = original_prompt
     last_errors = []
 
@@ -643,7 +680,7 @@ def shadow_run():
         print(f"=== ATTEMPT {attempt}/{MAX_ATTEMPTS} ===")
 
         candidate = run_codex(prompt)
-        errors = validate_candidate(candidate, history)
+        errors = validate_candidate(candidate, history, age_months)
 
         print()
         print("=== CANDIDATE ===")
