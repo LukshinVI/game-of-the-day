@@ -1,192 +1,76 @@
 # Product Roadmap — Game of the Day
 
-This document describes the product direction and dependencies between major initiatives. Technical architecture lives in [`architecture.md`](architecture.md); executable work is tracked in GitHub Issues.
+Product direction and what is done. The system itself is in
+[architecture.md](architecture.md); shipped changes are in [CHANGELOG.md](../CHANGELOG.md).
 
 ## Product vision
 
 ```text
 useful daily activity
-→ listen to caregiver feedback
+→ listen to the caregiver
 → personalize future activities
-→ maintain a child activity history
+→ keep a history of activities and observations
 → support goals and explainable progress
 ```
 
-The intended value is straightforward: a caregiver chooses what they want to focus on, receives appropriate and safe activities, records what actually happened, and gradually builds a useful history of activities and observations.
+A caregiver gets one short, safe, age-appropriate activity a day, answers in a couple of
+words, and the next activities follow what actually happened. Not a medical or
+diagnostic tool.
 
-The product is not a medical or diagnostic tool.
+## Done
 
-## V1 — Daily activity delivery
+**V1 — Daily activity delivery.** Age-appropriate activity every day at 10:00 MSK on a
+host/SQLite runtime with an explicit delivery state machine; the day's outcome checked
+independently; the original Google Sheets runtime retired to `legacy/`.
 
-The first version establishes the basic daily loop: select an age-appropriate activity, prepare a delivery message, send it through the configured channel, and persist delivery state.
+**Families and channels.** Several children per family and several families; VK and a
+Telegram product bot; invite-only self-service onboarding (name, birth date, confirmed
+age); a welcome and FAQ; pause and resume; abuse limits; the child's name on games in a
+shared chat; birthday and month-birthday greetings.
 
-This responsibility has moved from the legacy Google runtime to the VPS/SQLite runtime: the host has run daily preparation and delivery since 2026-09-18. What remains is retiring the legacy path against the exit criteria in #32; migration status is tracked under #27 and its child issues.
+**V2 — Feedback loop.** VK feedback through a durable queue and a semantic feedback agent;
+Telegram feedback attached to the exact game; stickers and photos ask for a few words;
+wishes about the service reach the owner (`/idea`, `/ideas`).
 
-## V2 — Feedback loop
+**V3 — Personalization, first step.** Observations extracted from feedback with verbatim
+quotes; a code-built profile per child (difficulty direction per skill, what went well,
+likes, dislikes); the selection prompt follows it; the parent sees what was taken into
+account.
 
-The semantic feedback pipeline is already operational. The remaining work is primarily product UX and reliability hardening.
+**Quality and reliability of selection.** Eight age-banded skills; safety by design in the
+prompt; selection evals that chose Sonnet over Opus on evidence; per-attempt metrics and a
+weekly report; a fallback chain (fallback model → library and warm reserve) so a model
+problem never costs a day.
 
-```text
-channel feedback
-→ ingress validation
-→ durable queue
-→ persist raw feedback
-→ Feedback Agent
-→ persist validated analysis
-```
+## Next
 
-Completed foundations include feedback persistence/linking and provenance-safe semantic analysis. Remaining product work includes explicit post-activity feedback collection (#14), multi-turn clarification (#7), and AI quota/recovery hardening (#9).
+- **Second safety line.** After the gate, a cheap model reviews the activity against a
+  safety checklist; a finding triggers one corrective attempt, then the library. Its
+  precision is measured by the evals.
+- **Weekly digest for parents.** Sundays: the week's games and skills, what went well
+  from feedback, what typically appears at this age (marked "not a medical assessment");
+  once a month one question: "what is missing?".
+- **Similarity, not just exact duplicates.** A mechanic tag set by the model and a
+  deterministic no-repeat window.
+- **"Too easy" means the same skill, harder.** Make the difficulty direction a rule
+  instead of a preference the model may route around.
+- **One feedback path for both channels.** The Worker passes the VK peer id (test and
+  family dialogs told apart) and reaction labels; Telegram feedback joins the semantic
+  agent.
 
-`played / not_played`, rating, and free-form observation are deliberately modeled as different facts. A skipped activity is not automatically a negative rating, and lack of feedback is not interpreted as a negative signal.
+## Later
 
-## V3 — Personalization
+**V4 — Activity and development history.** A caregiver-facing history of activities and
+observations per child, exportable.
 
-Future activity selection should use confirmed product memory rather than raw or ambiguous feedback.
+**V5 — Goals and progress.** The caregiver picks a focus ("more speech this month");
+selection weights it; progress is explained from observations, never inferred as a
+diagnosis.
 
-```text
-age
-+ safety
-+ activity history
-+ confirmed preferences / observations
-+ selected development focus
-+ later: active goals
-→ next activity
-```
+## Non-goals for this stage
 
-Age and safety remain hard constraints and take precedence over user preferences or model suggestions.
-
-Primary initiatives:
-
-- #8 — personalization from confirmed feedback;
-- #22 — selectable development focus and skill;
-- #15 — replace an already prepared activity when fresh confirmed feedback makes it unsuitable.
-
-## V4 — Child activity and development track
-
-The product state should be independent of the messaging transport.
-
-```text
-child profile
-  ├── age / birth date
-  ├── selected focus
-  ├── goals
-  ├── activity history
-  ├── played / not played
-  ├── ratings / feedback
-  ├── caregiver observations
-  └── progress
-```
-
-The key initiative is #23.
-
-Important boundaries:
-
-- child state belongs to `child_id`, not to a VK or Telegram peer;
-- changing channels must not reset history;
-- caregiver observations remain observations rather than medical conclusions;
-- workflow execution state and durable product memory remain separate.
-
-## V5 — Goals and progress
-
-Tracked in #24.
-
-```text
-focus / skill
-→ goal
-→ activities
-→ played/not played + observations
-→ explainable progress
-→ active / achieved / paused
-```
-
-An LLM must not declare a goal achieved without confirmed evidence or an explicit deterministic rule.
-
-## Multi-channel delivery
-
-VK is the current user-facing channel. Telegram is planned as an additional full delivery and feedback channel (#21).
-
-Target boundary:
-
-```text
-channel connection
-→ tenant / family
-→ recipient
-→ child profile
-→ shared product state
-```
-
-#20 defines the cross-cutting constraint: transport must not define product identity or product logic.
-
-Implemented (branch `feat/multi-child`): `children` and `recipients` tables; each child gets its own daily game for its own age and history; each recipient (VK peer or Telegram chat) gets its own delivery with its own state, retry and recovery. Single-child mode stays the default until a child is added. Telegram feedback ingestion is the remaining part of #21.
-
-## Engineering track
-
-The current P0 priority is the controlled runtime migration (#27): move delivery and durable state to the VPS/SQLite contour while preserving rollback and feedback reliability.
-
-After migration stability is established, #26 focuses on simplifying the application structure without changing behavior. This sequencing avoids mixing a storage/runtime migration with a structural refactor.
-
-```text
-#27 runtime migration
-→ stability period
-→ #26 architecture simplification
-→ #14 feedback request UX
-→ #7 clarification workflow
-→ #8 personalization
-```
-
-#9 remains a parallel reliability track.
-
-A multi-agent harness or model router (#10) is deliberately deferred until there is a demonstrated orchestration or provider-routing problem. Additional architecture is not a goal by itself.
-
-## Dependency map
-
-```mermaid
-flowchart TD
-    M27[#27 Runtime migration] --> A26[#26 Simplify architecture]
-    A26 --> F14[#14 Request feedback UX]
-    F14 --> F7[#7 Clarification workflow]
-    F7 --> F8[#8 Personalization]
-
-    F8 --> F22[#22 Select development focus]
-    F22 --> F23[#23 Child activity track]
-    F23 --> F24[#24 Goals and progress]
-
-    R9[#9 AI reliability / quota / recovery] -. cross-cutting .-> M27
-    R9 -. cross-cutting .-> F14
-    R9 -. cross-cutting .-> F7
-    R9 -. cross-cutting .-> F8
-
-    F20[#20 Tenant/channel readiness] -. constrains .-> F21[#21 Telegram]
-    F20 -. constrains .-> F23
-    F21 -. shared product state .-> F23
-```
-
-## Near-term priority
-
-```text
-NOW:
-#27 complete controlled VPS/SQLite migration
-
-THEN:
-#26 architecture simplification
-→ #14 feedback request UX
-→ #7 clarification workflow
-→ #8 personalization
-
-NEXT PRODUCT LAYER:
-#22 selectable focus
-→ #23 child activity track
-→ #24 goals/progress
-```
-
-Telegram (#21) is a channel-expansion initiative and must reuse the same product state rather than creating a separate data silo.
-
-## Explicit non-goals for the current stage
-
-- no premature microservice migration;
-- no separate database technology solely for hypothetical scale;
-- no orchestration framework without a demonstrated need;
-- no additional agents simply to increase agent count;
-- no product features hidden inside infrastructure/refactoring work;
+- no microservices, no new database, no orchestration framework without a demonstrated need;
+- no additional agents for the sake of agent count;
 - no automatic paid AI or infrastructure overage;
-- no medical or diagnostic interpretation of child observations.
+- no medical or diagnostic interpretation of observations;
+- no open sign-up: families join by invitation.

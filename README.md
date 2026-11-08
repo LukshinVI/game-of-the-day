@@ -5,7 +5,7 @@
 
 A small production service that sends a caregiver one safe, age-appropriate developmental activity for a young child every day, collects free-form feedback in a messenger, and turns it into structured observations for future personalization.
 
-It runs in production for a real family. It is also an engineering sandbox for one question: **how do you put LLMs into a production workflow without letting them own state, side effects, or safety?**
+It runs in production for real families (VK and a Telegram bot, invite-only). It is also an engineering sandbox for one question: **how do you put LLMs into a production workflow without letting them own state, side effects, or safety?**
 
 > Not a medical or diagnostic product.
 
@@ -56,6 +56,7 @@ Details: [Deployment](docs/deployment.md) · [Architecture](docs/architecture.md
 
 **LLMs are used for:**
 - **Daily preparation:** proposing an activity candidate as structured output. It is then validated, and retried with the reasons if rejected ([`src/preparation`](src/preparation)).
+- **Feedback insights:** a small model extracts observations with verbatim quotes; code builds the child's profile ([`src/feedback`](src/feedback)).
 - **Feedback agent:** classifying free-form caregiver feedback and resolving which activity it refers to, inside an application-controlled candidate space ([`worker/src/agents`](worker/src/agents)). Production model: `@cf/google/gemma-4-26b-a4b-it` on Workers AI.
 
 ```text
@@ -103,31 +104,30 @@ Configuration lives in environment variables; see [`.env.example`](.env.example)
 src/
   preparation/   daily activity generation: prompt, output schema, safety validation, retry
   delivery/      delivery state machine and messenger sender
-  feedback/      queue consumer and idempotent feedback storage
+  feedback/      queue consumer, idempotent storage, insights and the child profile
   ops/           daily outcome check, owner-only Telegram bot, alert notifier
   bot/           product Telegram bot: invites, onboarding, feedback
-  db/            schema and one-off import/sync from the legacy sheet
+  db/            schema, additive migrations, children and recipients
 worker/
   src/           Cloudflare Worker: callback ingress and the feedback agent
   evals/         deterministic and LLM eval suites
 ops/             systemd units, timers and runbooks (preparation, delivery, feedback, backup, bot, outcome check)
+evals/           selection evals and model comparison reports
 docs/            architecture, reliability, AI design, deployment, roadmap, postmortems
-legacy/          the original Google Apps Script sender (rollback path)
+legacy/          the original Google Apps Script sender (reference only)
 ```
 
 Runbooks: [database backup](ops/backup/README.md) · [manual delivery control](ops/bot/README.md) · [daily outcome check](ops/day-outcome/README.md) · [product bot](ops/product-bot/README.md)
 
 ## In production
 
-- In daily use since 2026-09-01: 43 activities delivered, no repeated titles, a balanced skill mix (coordination 16, speech 14, fine motor 13).
-- In October the only host was lost together with its database. The service was rebuilt from this repository in one night, with the history recovered from the messenger and nothing re-sent. What went wrong and what changed: [postmortem](docs/postmortems/2026-10-host-loss.md).
-- Activity selection runs on Claude Code in headless mode with structured output; Codex CLI is a drop-in fallback behind the same validation.
+- In daily use since 2026-09-01; several families on VK and Telegram.
+- In October the only host was lost together with its database. The service was rebuilt from this repository in one night, with the history recovered from the messenger and nothing re-sent ([postmortem](docs/postmortems/2026-10-host-loss.md)); backups now leave the host encrypted and are restore-tested weekly.
+- Selection runs on Claude Sonnet in headless Claude Code, chosen over Opus by the [selection evals](evals/preparation/reports/2026-11-08-comparison.md); Haiku and a library of validated games are the fallback.
 
 ## Status
 
-- Daily preparation and delivery run on the host/SQLite runtime. The original Google Sheets + Apps Script runtime is kept only as a rollback path.
-- The semantic feedback pipeline is in production. Next: feedback UX, a clarification workflow, and personalization from validated observations ([roadmap](docs/product-roadmap.md)).
-- Known gaps are documented, not hidden ([reliability model](docs/reliability.md)). An interrupted `sending` delivery used to be one of them; it is now reconciled against the messenger history by its stable message id.
+- Done and next: [roadmap](docs/product-roadmap.md). Known gaps are documented, not hidden: [reliability model](docs/reliability.md).
 
 Changes are released as tagged versions with notes from the [changelog](CHANGELOG.md). Development is done through small PRs against an issue tracker. Issue numbers like `#27` in the docs and commit history refer to that tracker, which stays private because it contains production operational details.
 
