@@ -7,6 +7,7 @@ Owner-only control for the case where the daily delivery did not happen and some
 | `/status` | any | shows the delivery status |
 | `/send`, then `/send <code>` | `pending` | one-time code (2 minutes), then starts `game-delivery.service` and shows the status again |
 | `/retry`, then `/retry <code>` | `failed` | one-time code, then starts `game-delivery-retry.service` (`send-today --retry-failed`) and shows the status again |
+| `/users` | any | read-only report of product-bot families: children and ages, active or paused, last delivered game, feedback in 7 days, today's failures |
 
 In every other state the bot only explains why it does nothing (already sent, no game, stuck in `sending`, ambiguous). The state is checked again when the code is used. Success is confirmed by the status after the run, not by an exit code.
 
@@ -40,3 +41,9 @@ Preparing a game (`/prepare`) is deliberately not part of this bot: it calls the
 
 ## Tests
 `python3 -m unittest tests.test_manual_bot tests.test_game_delivery`
+
+## Product-bot events
+
+The bot also forwards owner-facing events that the product bot (`ops/product-bot`) writes
+to `user_events`: a new member, a new child, pause/resume, a reached limit, a block. They
+are marked as forwarded only after Telegram accepts the message (at-least-once).

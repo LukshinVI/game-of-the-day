@@ -76,7 +76,7 @@ class Invites(BotTest):
         self.assertEqual(self.rows("SELECT code_hash FROM invites"), [(pb.hash_code("code0"),)])
         self.assertIn("Как зовут", self.say("42", "/start code0"))
         self.assertIn("недействительна", self.say("43", "/start code0"))
-        self.assertEqual(self.bot.outbox[0][0], OWNER)
+        self.assertEqual(self.rows("SELECT kind, chat_id FROM user_events"), [("join", "42")])
 
     def test_an_expired_invite_is_rejected(self):
         self.say(OWNER, "/invite")
@@ -289,7 +289,7 @@ class Abuse(BotTest):
             reply = self.onboard("43", name="Оля")
         self.assertIn("мест нет", reply)
         self.assertEqual(self.rows("SELECT count(*) FROM children"), [(1,)])
-        self.assertTrue(any("лимит детей" in text for _, text in self.bot.outbox))
+        self.assertEqual(self.rows("SELECT kind FROM user_events WHERE kind='limit'"), [("limit",)])
 
     def test_feedback_per_day_is_capped(self):
         self.onboard("42")
