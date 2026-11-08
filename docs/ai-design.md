@@ -8,6 +8,7 @@ a deterministic check after it, a fallback when it fails, a budget, and a measur
 | use | model | input | output | checked by | if it fails |
 |---|---|---|---|---|---|
 | propose the day's activity | Claude Sonnet (Claude Code headless, web search) | age in months, skills offered at that age with recent counts, history, the child's profile | candidate JSON (schema) | the gate: schema, age, duration, safety terms, safety length, skill band and rotation, duplicates; corrective retry with the reasons | Haiku under the same gate, then a library game chosen by code |
+| review safety after the gate | Claude Haiku | the activity, the child's age | serious, concrete problems only | a finding rejects like a gate error and reaches the retry; a reviewer outage never blocks | the gate result stands |
 | extract observations from feedback | Claude Haiku | the feedback text, the game | observations with verbatim quotes; wishes about the service | quote must be verbatim in the text; enums; caps per child and per day | feedback stays pending, retried next run |
 | classify VK feedback semantically | Gemma 4 on Workers AI | application-segmented feedback | classification of existing segments | deterministic validation, policy, guarded target linking | raw feedback remains stored |
 | judge evals (offline) | Claude Opus | an activity and the case intent | age fit, clarity, value, safety concerns, profile fit | — | — |
@@ -18,7 +19,7 @@ The child's name and birth date never reach a model; only the age in months does
 
 ```text
 age → skills.for_age() ─┐
-history → recent skills ├→ prompt → model → gate ──pass──→ game (origin: model)
+history → recent skills ├→ prompt → model → gate → reviewer ──ok──→ game (origin: model)
 profile (code-built) ───┘               │ reject: reasons → retry (×3)
                                         └ fail → fallback model → gate → game (origin: fallback_model)
                                                    └ fail / quota / budget → library (origin: library)
@@ -31,6 +32,11 @@ profile (code-built) ───┘               │ reject: reasons → retry (�
 - **Safety by design.** The prompt asks for safe materials, positioning in the steps,
   a clear floor and explicit setup steps; the gate rejects hazardous terms and long
   generic safety notes. Evals measured the effect (judged safety concerns 6/6 → 4/6).
+- **Required skill.** "Too easy" (or "too hard") on the latest game makes the next game
+  train the same skill one step harder (easier); a gate rule, not a hint.
+- **Second safety line.** A small model reviews what passed the gate against an age
+  checklist and reports only serious, concrete problems. In evals it flagged 2 of 7 cases,
+  all valid, and the judge found nothing left in them afterwards.
 - **Library.** Validated past games and a warm reserve per age, chosen by code: age window,
   skill rules, nothing the child already had, least recent skill first.
 

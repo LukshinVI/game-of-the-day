@@ -18,6 +18,7 @@ much of this is in the [postmortem](postmortems/2026-10-host-loss.md).
 
 | failure | detected by | recovery |
 |---|---|---|
+| the gate passes something unsafe the words cannot catch | safety reviewer after the gate | rejected with the reason, corrective retry |
 | model rejects or fails 3 attempts | preparation | fallback model (Haiku) under the same gate; owner gets 🟡 with the reason |
 | subscription quota exhausted, daily budget spent | preparation | library game chosen by code; owner gets 🟠 "from the reserve" with the reason |
 | no library game fits the child | preparation | 🔴 alert; day can be sent manually after a fix (`/send`) |

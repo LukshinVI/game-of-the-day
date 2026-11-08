@@ -14,7 +14,7 @@ It runs in production for real families (VK and a Telegram bot, invite-only). It
 | Problem | How it is solved |
 |---|---|
 | LLM output is probabilistic, but delivery must be exactly-once | The LLM only *proposes*. Deterministic code owns the delivery state machine (`pending → sending → sent / failed`), dates, idempotency, and retries. |
-| An unsafe activity must never reach a child | Generated candidates are validated against a JSON Schema and deterministic safety rules (for example, sharp-object hazards). A rejected candidate gets a corrective retry with the rejection reasons, never a silent pass. |
+| An unsafe activity must never reach a child | Two lines: a deterministic gate (schema, age-banded skills, hazardous terms, duplicates), then a small model that reviews safety against an age checklist. A rejection reaches the corrective retry with its reasons; nothing passes silently. |
 | A model outage or an exhausted quota must not cost the family a day | Primary model → cheaper fallback model under the same gate → a validated game from the library, chosen by code; a daily model budget; the owner is told which path made the day. |
 | Model outage must not lose user input | Raw feedback is persisted **before** any model call and crosses a durable queue boundary. A model failure leaves feedback retryable, not lost. |
 | Personalization without giving the model memory | A small model only extracts observations from feedback, each with a verbatim quote checked by code; code builds the child's profile; the selection prompt follows it; evals score profile fit. |
@@ -22,6 +22,7 @@ It runs in production for real families (VK and a Telegram bot, invite-only). It
 | Prompt and model changes regress silently | Eval suites: deterministic segmentation evals on every push, LLM evals against real Workers AI models on demand, with side-by-side model comparison. |
 | "It ran" is not "the user got the game" | An independent daily-outcome check verifies that today's activity actually exists and was delivered, separately from the per-process alerts. |
 | Onboarding without the operator | Families join through a one-time invite link in a Telegram bot and enter the child's birth date themselves; the age is computed, confirmed and stored, the next run picks the child up. No model is involved. |
+| Parents should see the point | A Sunday digest: the week's games and skills, what went well from feedback, typical milestones for the age (marked as a guide), and a monthly question about what is missing. |
 | Small moments matter | A deterministic greeting on the child's month-birthdays in the first year, then on birthdays and half-birthdays, put before that day's game; end-of-month and leap-day births handled. |
 | "Is the model getting worse or more expensive?" | Every model attempt is recorded (latency, tokens, cost, outcome, the validator's rejection reasons); a weekly report and `/llm` in the ops bot compare models on real runs. |
 | Ops for a one-person service | systemd units with hardening, verified SQLite backups with retention and alerting, an owner-only Telegram bot for manual send/retry. |
