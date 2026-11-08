@@ -17,7 +17,7 @@ from src.feedback import insights, profile  # noqa: E402
 NOW = datetime(2026, 11, 9, 12, 0, tzinfo=timezone.utc)
 
 
-class Insights(unittest.TestCase):
+class InsightsSetup(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -61,6 +61,8 @@ class Insights(unittest.TestCase):
         finally:
             con.close()
 
+
+class Insights(InsightsSetup):
     def test_close_messages_are_merged_and_a_fresh_one_waits(self):
         self.feedback("Башенку построил сам!", 30)
         self.feedback("Даже слишком легко было", 25)
@@ -152,3 +154,20 @@ class Insights(unittest.TestCase):
 
     def test_the_reply_with_nothing_extracted_is_still_polite(self):
         self.assertIn("Сохранили его", insights.reply_text("Башенка", []))
+
+
+class ReactionsInVk(InsightsSetup):
+    def test_a_vk_sticker_gets_one_nudge_and_no_model_call(self):
+        self.feedback("[стикер]", 30, event="s1")
+        self.feedback("[стикер]", 5 * 60, event="s0")
+        self.run_insights([{"kind": "outcome", "value": "liked", "skill": None, "evidence": "x"}])
+        self.assertEqual(self.prompts, [])
+        self.assertEqual(len(self.replies), 1)
+        self.assertIn("пару слов текстом", self.replies[0])
+        self.assertEqual(self.rows("SELECT DISTINCT insights_status FROM feedback"), [("reaction",)])
+
+    def test_text_with_a_sticker_is_analysed_without_the_label(self):
+        self.feedback("Понравилось [стикер]", 30)
+        self.run_insights([{"kind": "outcome", "value": "liked", "skill": None, "evidence": "Понравилось"}])
+        self.assertNotIn("[стикер]", self.prompts[0].split("INPUT:", 1)[1])
+        self.assertEqual(self.rows("SELECT kind FROM observations"), [("outcome",)])

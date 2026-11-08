@@ -49,7 +49,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.db import children as ch  # noqa: E402
-from src.feedback import storage  # noqa: E402
+from src.feedback import reactions, storage  # noqa: E402
 
 DB_PATH = ch.DB_PATH
 API = "https://api.telegram.org"
@@ -200,6 +200,10 @@ class ProductBot:
             return None
         chat_id = str(chat.get("id"))
         text = (message.get("text") or "").strip()
+        label = None if text else reactions.telegram_label(message)
+        if label:
+            caption = (message.get("caption") or "").strip()
+            text = f"{caption} {label}".strip()
         if not text:
             return None
 
@@ -266,6 +270,8 @@ class ProductBot:
 
         current = self.step(con, chat_id)
         if current is not None:
+            if reactions.is_reaction(text):
+                return "Ответьте, пожалуйста, текстом 🙂"
             return self.questionnaire(con, chat_id, current, text)
         return self.feedback(con, chat_id, text, message)
 
@@ -508,6 +514,15 @@ class ProductBot:
         })
         if result.get("status") == "existing":
             return None
+        if reactions.is_reaction(text):
+            # No model for a sticker or a photo; ask for words once per game.
+            nudge = not reactions.already_nudged(con, game["id"])
+            con.execute(
+                "UPDATE feedback SET insights_at = ?, insights_status = 'reaction', "
+                "reply_sent_at = CASE WHEN ? THEN CURRENT_TIMESTAMP END WHERE id = ?",
+                (datetime.now(timezone.utc).isoformat(timespec="seconds"), int(nudge), result["feedback_id"]),
+            )
+            return reactions.NUDGE if nudge else None
         return "Спасибо, записал! 🙏 Через несколько минут напишу, что учтём."
 
 

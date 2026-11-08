@@ -313,3 +313,34 @@ class Abuse(BotTest):
         self.assertEqual(self.rows("SELECT count(*) FROM recipients WHERE channel='telegram' AND active=1"), [(0,)])
         self.assertNotIn("42", self.say(OWNER, "/members"))
         self.assertIn("Себя", self.say(OWNER, f"/block {OWNER}"))
+
+
+class Reactions(BotTest):
+    def media(self, chat, **payload):
+        self.message_id += 1
+        return self.bot.handle({"message": {
+            "message_id": self.message_id, "chat": {"id": int(chat), "type": "private"},
+            "from": {"id": int(chat)}, **payload}})
+
+    def test_a_sticker_gets_one_request_for_words_per_game_and_no_model(self):
+        self.onboard("42")
+        Feedback.sent_game(self, "42", "A")
+        first = self.media("42", sticker={"emoji": "👍"})
+        self.assertIn("пару слов текстом", first)
+        self.assertIsNone(self.media("42", photo=[{"file_id": "x"}]))  # same game: asked already
+        self.assertEqual(self.rows("SELECT raw_text, insights_status FROM feedback ORDER BY id"),
+                         [("[стикер 👍]", "reaction"), ("[фото]", "reaction")])
+        self.assertIn("Спасибо, записал", self.say("42", "понравилось"))
+
+    def test_a_photo_with_a_caption_is_analysed_like_text(self):
+        self.onboard("42")
+        Feedback.sent_game(self, "42", "A")
+        reply = self.media("42", photo=[{"file_id": "x"}], caption="Строил сам!")
+        self.assertIn("Спасибо, записал", reply)
+        self.assertEqual(self.rows("SELECT raw_text, insights_status FROM feedback"), [("Строил сам! [фото]", None)])
+
+    def test_a_sticker_during_the_questionnaire_is_not_a_name(self):
+        link = self.say(OWNER, "/invite")
+        self.say("42", "/start " + link.split("start=")[1].split()[0])
+        self.assertIn("текстом", self.media("42", sticker={"emoji": "😊"}))
+        self.assertEqual(self.rows("SELECT step FROM onboarding"), [("name",)])

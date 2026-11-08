@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Cloudflare Worker: VK callback ingress and the semantic feedback agent",
   "scripts": {
-    "test": "node evals/runSegmentationEvals.js",
+    "test": "node evals/runSegmentationEvals.js && node evals/runReactionTests.js",
     "evals:segmentation": "node evals/runSegmentationEvals.js",
     "evals:llm:dev": "wrangler dev --remote -c wrangler.evals.jsonc"
   },

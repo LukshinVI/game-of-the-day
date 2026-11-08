@@ -33,7 +33,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.feedback import profile  # noqa: E402
+from src.feedback import profile, reactions  # noqa: E402
 from src.preparation import skills  # noqa: E402
 
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
@@ -128,7 +128,7 @@ def analyses_today(con, now, child_id=None):
 
 def build_prompt(group):
     game = group[0]
-    text = "\n".join(r["raw_text"].strip() for r in group)[:MAX_TEXT_CHARS]
+    text = "\n".join(reactions.strip_labels(r["raw_text"]) for r in group if reactions.strip_labels(r["raw_text"]))[:MAX_TEXT_CHARS]
     context = {
         "game": {"title": game["title"], "skill": game["skill"], "mechanics": game["mechanics"],
                  "age_months": game["age_months"]},
@@ -264,6 +264,21 @@ def run(db_path=None, now=None, reply=True, model=run_model, sender=send_reply):
                 break
             if child_id is not None and analyses_today(con, now, child_id) >= PER_CHILD_PER_DAY:
                 print(f"child {child_id}: daily cap reached; waits for tomorrow")
+                continue
+            if all(reactions.is_reaction(r["raw_text"]) for r in group):
+                # Stickers / photos only: no model; one request for words per game.
+                nudge = reply and not reactions.already_nudged(con, group[0]["game_id"]) \
+                    and now - group[-1]["at"] <= timedelta(hours=REPLY_WITHIN_HOURS)
+                mark(con, group, "reaction", now)
+                con.commit()
+                if nudge:
+                    try:
+                        sender(con, group, reactions.NUDGE)
+                        con.executemany("UPDATE feedback SET reply_sent_at = CURRENT_TIMESTAMP WHERE id = ?",
+                                        [(r["id"],) for r in group])
+                        con.commit()
+                    except Exception as exc:  # noqa: BLE001
+                        print(f"nudge failed: {type(exc).__name__}", file=sys.stderr)
                 continue
             prompt, text = build_prompt(group)
             try:
