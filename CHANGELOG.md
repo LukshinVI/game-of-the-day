@@ -8,6 +8,10 @@ on the commit that completed each milestone.
 ## [Unreleased]
 
 ### Added
+- Stickers, photos, videos and voice messages as feedback: labelled by the channel
+  adapters (the Worker for VK, the product bot for Telegram), never downloaded or stored;
+  a reaction alone gets one request per game to write a few words and costs no model call;
+  text sent along with it is analysed as usual.
 - The child profile from feedback (`src/feedback/insights.py`, `profile.py`): a small model
   extracts observations (outcome, difficulty, what went well or was hard, likes and
   dislikes) into a strict schema; code keeps only those whose quote is verbatim in the

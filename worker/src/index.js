@@ -117,10 +117,13 @@ export default {
         }
 
         const feedbackText =
-            typeof message.text ===
-                'string'
-                ? message.text.trim()
-                : '';
+            withReactionLabel(
+                typeof message.text ===
+                    'string'
+                    ? message.text.trim()
+                    : '',
+                message.attachments
+            );
 
         console.log(
             'Feedback received:',
@@ -455,6 +458,38 @@ function buildFeedbackEventId(
     return null;
 }
 
+
+/*
+ * Stickers, photos, videos and voice messages carry no text. They are still a
+ * reaction to the game: pass a label on, never the media itself (photos of
+ * children are not downloaded or stored). The host asks once per game for a
+ * few words and spends no model call on a label.
+ */
+export function withReactionLabel(
+    text,
+    attachments
+) {
+    const labels = {
+        sticker: '[стикер]',
+        photo: '[фото]',
+        video: '[видео]',
+        audio_message: '[голосовое]',
+        doc: '[файл]'
+    };
+
+    const found =
+        (Array.isArray(attachments) ? attachments : [])
+            .map((item) => labels[item?.type])
+            .filter(Boolean);
+
+    const unique =
+        [...new Set(found)];
+
+    return [text, ...unique]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+}
 
 function safeErrorMessage(
     error
