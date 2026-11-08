@@ -2,6 +2,7 @@
 Description=Game of the Day - retry a failed daily delivery (manual, started by the bot)
 After=network-online.target
 Wants=network-online.target
+OnFailure=game-backup-alert@%n.service
 
 [Service]
 Type=oneshot
