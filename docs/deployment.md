@@ -83,7 +83,7 @@ preparation depends on its `--json-schema` structured output.
 | `ops/day-outcome/game-day-outcome.{service,timer}` | 10:15, 11:15, 13:15, 17:15 MSK |
 | `ops/backup/game-backup*.{service,timer}` | 03:30 backup, 12:00 freshness check |
 | `ops/bot/game-bot.service` | always on (owner only) |
-| `ops/product-bot/game-product-bot.service` | always on (families; optional) |
+| `ops/product-bot/game-product-bot.service` | always on (families; optional; runs as `gotd-bot`, see its runbook) |
 
 Then install the units following each runbook:
 [backup](../ops/backup/README.md), [manual delivery bot](../ops/bot/README.md),

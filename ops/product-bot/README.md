@@ -15,7 +15,19 @@ The owner's ops bot (`ops/bot`) stays private and is never shown to users.
 
 2. The delivery unit reads the same file (`EnvironmentFile=-…/product-bot.env`) to send
    games to Telegram recipients.
-3. `install -m 644 ops/product-bot/game-product-bot.service /etc/systemd/system/ &&
+3. A separate identity for the public-facing process, sharing only the database:
+
+   ```bash
+   groupadd --system gotd-data
+   useradd --system --no-create-home --shell /usr/sbin/nologin --user-group gotd-bot
+   usermod -aG gotd-data gotd-bot
+   chgrp gotd-data /srv/game-of-the-day/data /srv/game-of-the-day/data/game-of-the-day.db*
+   chmod 2770 /srv/game-of-the-day/data && chmod 660 /srv/game-of-the-day/data/game-of-the-day.db
+   ```
+
+   SQLite gives the `-wal`/`-shm` files the database file's mode, and the setgid directory
+   gives them its group, so both identities keep access.
+4. `install -m 644 ops/product-bot/game-product-bot.service /etc/systemd/system/ &&
    systemctl daemon-reload && systemctl enable --now game-product-bot.service`.
    On start the bot applies the additive schema migration (`src/db/children.py`).
 
@@ -56,6 +68,7 @@ The bot is public in Telegram search, so anyone can write to it.
 | guessing an invite | 96-bit random code, one-time, 7 days, stored as a hash |
 | impersonating the owner | owner commands check the sender chat id that Telegram sets |
 | a leaked invite or a misbehaving member | `GAME_MAX_CHILDREN_PER_CHAT` (3), `GAME_MAX_ACTIVE_CHILDREN` (20; each child is a model run a day, the owner is alerted at the cap), `GAME_MAX_FEEDBACK_PER_DAY` (20); `/block <chat_id>` |
+| a compromised bot process | runs as `gotd-bot`, not the application user: it cannot read the other services' tokens through `/proc` (`ProtectProc=invisible`), only the database |
 | a leaked bot token | the token lives only in a root-owned 0600 file read by systemd; rotate with BotFather `/revoke` |
 | prompt injection through names | the child's name and birth date never reach a model; only the age in months does |
 

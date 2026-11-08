@@ -6,8 +6,13 @@ OnFailure=game-backup-alert@%n.service
 
 [Service]
 Type=simple
-User=gotd
-Group=gotd
+# Its own identity, not the application user: this process faces the public. As a
+# different uid it cannot read the environment (tokens) of the delivery, preparation
+# or feedback processes through /proc. It shares only the database, through the
+# gotd-data group (data/ is setgid gotd-data, the database file is 0660).
+User=gotd-bot
+Group=gotd-bot
+SupplementaryGroups=gotd-data
 WorkingDirectory=/srv/game-of-the-day
 # Only the product bot token and the owner chat id. No VK, model or Cloudflare
 # credentials: this process faces the public and never needs them.
@@ -21,6 +26,8 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
+ProtectProc=invisible
+ProcSubset=pid
 PrivateDevices=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
