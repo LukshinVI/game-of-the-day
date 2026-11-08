@@ -93,21 +93,17 @@ export default {
             }
         );
 
-        let environment;
-
+        /*
+         * Every private dialog with the community is passed on with its sender:
+         * the host decides whether it is feedback from a subscribed family or a
+         * new family onboarding (src/bot/vk_dialog.py). Group chats are ignored.
+         */
         if (
-            peerId ===
-            env.VK_TEST_PEER_ID
+            !/^[0-9]+$/.test(peerId) ||
+            Number(peerId) >= 2000000000
         ) {
-            environment = 'TEST';
-        } else if (
-            peerId ===
-            env.VK_PROD_PEER_ID
-        ) {
-            environment = 'PROD';
-        } else {
             console.log(
-                'Ignored unknown peer'
+                'Ignored non-private peer'
             );
 
             return new Response(
@@ -115,6 +111,11 @@ export default {
                 { status: 200 }
             );
         }
+
+        const environment =
+            peerId === env.VK_TEST_PEER_ID
+                ? 'TEST'
+                : 'PROD';
 
         const feedbackText =
             withReactionLabel(
@@ -176,7 +177,8 @@ export default {
                 .FEEDBACK_QUEUE
                 .send({
                     eventId,
-                    feedbackText
+                    feedbackText,
+                    address: peerId
                 });
 
             console.log(
@@ -287,6 +289,12 @@ async function processQueuedFeedback(
             ? payload.feedbackText.trim()
             : '';
 
+    const address =
+        typeof payload?.address === 'string' &&
+        /^[0-9]+$/.test(payload.address)
+            ? payload.address
+            : null;
+
     if (
         !eventId ||
         !feedbackText
@@ -317,7 +325,8 @@ async function processQueuedFeedback(
                 version: 'feedback-storage-v1',
                 event_id: eventId,
                 channel: 'vk',
-                raw_text: feedbackText
+                raw_text: feedbackText,
+                ...(address ? { address } : {})
             });
     } catch (error) {
         throw new Error(

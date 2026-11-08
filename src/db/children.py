@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -197,6 +197,44 @@ CREATE TABLE IF NOT EXISTS star_requests (
 );
 """
 
+# VK self-service onboarding (src/bot/vk_dialog.py): a stranger fills the questionnaire
+# in the community chat, the owner approves it in the ops bot. Outbox: messages to
+# families written by processes without a messenger token (the ops bot approving an
+# application); the feedback consumer sends them. Inbound events: each VK message is
+# handled once, and the reply is kept so a queue retry resends the same text.
+MIGRATION_12 = """
+CREATE TABLE IF NOT EXISTS applications (
+    id INTEGER PRIMARY KEY,
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    name TEXT NOT NULL,
+    birth_date TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    decided_at TEXT,
+    child_id INTEGER REFERENCES children(id)
+);
+CREATE INDEX IF NOT EXISTS idx_applications_pending ON applications(channel, address) WHERE status = 'pending';
+CREATE TABLE IF NOT EXISTS outbox (
+    id INTEGER PRIMARY KEY,
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    sent_at TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT
+);
+CREATE TABLE IF NOT EXISTS inbound_events (
+    channel TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    address TEXT NOT NULL,
+    reply TEXT,
+    handled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (channel, event_id)
+);
+"""
+
 def connect_db(path=None):
     con = sqlite3.connect(path or DB_PATH, timeout=10)
     con.row_factory = sqlite3.Row
@@ -218,6 +256,7 @@ def migrate(con):
     con.executescript(MIGRATION_8)
     con.executescript(MIGRATION_9)
     con.executescript(MIGRATION_11)
+    con.executescript(MIGRATION_12)
     # Mechanic tags (src/preparation/mechanics.py): similar ideas, not just equal titles.
     for table in ("games", "reserve_games"):
         if "mechanic_tag" not in columns(con, table):

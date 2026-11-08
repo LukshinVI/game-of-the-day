@@ -7,6 +7,21 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+### Added
+- VK self-service onboarding with owner approval. Whoever writes to the community fills
+  the questionnaire in the chat (name, birth date, confirmation — the Telegram bot's
+  rules); the owner gets the application in the ops bot with "approve" / "reject"
+  buttons, and only an approval creates the child and its VK recipient. Subscribed VK
+  families get text commands: «пауза», «продолжить», «мои дети», «добавить ребёнка»,
+  «помощь». Asking for Telegram notifies the owner to send an invite. Schema 12
+  (`applications`, `outbox`, `inbound_events`); the module is `src/bot/vk_dialog.py`.
+
+### Fixed
+- The Worker passed on VK messages from two hard-coded dialogs only, so the feedback of
+  any other VK family was dropped. It now passes every private dialog with the sender's
+  peer id, and feedback is attached to the newest unanswered game delivered to that
+  sender, so two VK families never answer each other's games.
+
 ### Changed
 - The Sunday digest no longer lists typical milestones for the age: "what children
   usually do by N months" reads as a test and worries parents whose child is not there

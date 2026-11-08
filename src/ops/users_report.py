@@ -41,7 +41,7 @@ def pending_events(db_path=DB_PATH):
         if not has_table(con, "user_events"):
             return []
         return [dict(r) for r in con.execute(
-            "SELECT id, at, text FROM user_events WHERE notified_at IS NULL ORDER BY id LIMIT ?",
+            "SELECT id, at, kind, text FROM user_events WHERE notified_at IS NULL ORDER BY id LIMIT ?",
             (MAX_EVENTS_PER_BATCH,),
         )]
     finally:

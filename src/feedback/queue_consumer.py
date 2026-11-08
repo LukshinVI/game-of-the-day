@@ -15,7 +15,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.feedback.storage import StorageError, save_analysis, save_raw
+from src.db import children as ch
+from src.delivery import game_delivery
+from src.feedback import vk_inbound
+from src.feedback.storage import DB_PATH, StorageError, save_analysis, save_raw
 
 
 LOG = logging.getLogger("game-feedback-consumer")
@@ -230,11 +233,17 @@ def validate_envelope(payload):
     if analysis is not None and not isinstance(analysis, dict):
         raise ValueError("analysis is invalid")
 
+    # The sender (VK peer id), sent by the Worker since VK self-service onboarding.
+    address = payload.get("address")
+    if address is not None and not (isinstance(address, str) and address.isdigit()):
+        raise ValueError("address is invalid")
+
     return {
         "event_id": event_id,
         "channel": channel,
         "raw_text": raw_text,
         **({"analysis": analysis} if analysis is not None else {}),
+        **({"address": address} if address is not None else {}),
     }
 
 
@@ -244,6 +253,7 @@ def persist(payload):
             "event_id": payload["event_id"],
             "channel": payload["channel"],
             "raw_text": payload["raw_text"],
+            **({"address": payload["address"]} if "address" in payload else {}),
         }
     )
 
@@ -284,6 +294,14 @@ def process_message(message):
     payload = validate_envelope(
         decode_message(message)
     )
+
+    # A VK message with its sender: onboarding and commands are answered here and
+    # never become feedback. Analysis envelopes skip this (their raw event is stored).
+    if "address" in payload and "analysis" not in payload:
+        if vk_inbound.route(payload["event_id"], payload["address"], payload["raw_text"], vk_reply) == "handled":
+            ack(lease_id)
+            LOG.info("VK dialog message handled event_id=%s", payload["event_id"])
+            return
 
     raw_result, analysis_result = persist(payload)
 
@@ -330,13 +348,34 @@ def process_message(message):
     )
 
 
+def vk_reply(peer, text, random_id):
+    """A reply in the VK community chat (VK_TOKEN from game.env)."""
+    game_delivery.vk_send(text, random_id, peer_id=peer)
+
+
+def send_outbox():
+    try:
+        sent = vk_inbound.drain_outbox(vk_reply)
+    except Exception:  # noqa: BLE001 - the outbox must not stop feedback storage
+        LOG.exception("Outbox send failed")
+        return
+    if sent:
+        LOG.info("Outbox messages sent count=%s", sent)
+
+
 def run():
     LOG.info(
         "Feedback storage consumer started"
     )
+    con = ch.connect_db(DB_PATH)
+    try:
+        ch.migrate(con)  # additive and idempotent: tables for the VK dialog and outbox
+    finally:
+        con.close()
 
     while True:
         try:
+            send_outbox()
             messages = pull()
 
             if not messages:

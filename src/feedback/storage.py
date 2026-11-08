@@ -139,16 +139,17 @@ def not_test_clause(con):
     return "NOT EXISTS (SELECT 1 FROM children AS c WHERE c.id = g.child_id AND c.is_test = 1)"
 
 
-def resolve_feedback_target(con, channel="vk"):
+def resolve_feedback_target(con, channel="vk", address=None):
     """
     Resolve feedback without an explicit game to the newest successfully
     sent game that has no feedback yet (the legacy Google Sheets rule),
     among games delivered on the channel the feedback came from.
 
     With several children, games for a child reached only on another channel
-    must not absorb this feedback. This is exact while each channel serves one
-    child; a channel shared by several children needs the sender address in the
-    event (not yet sent by the Worker).
+    must not absorb this feedback. With the sender address (the VK peer id, sent
+    by the Worker) only games delivered to that address are candidates, so two
+    families in one channel never answer each other's games. Events without an
+    address (sent before the Worker passed it) keep the channel-wide rule.
 
     Explicit game identity is handled by resolve_game().
     """
@@ -161,7 +162,8 @@ def resolve_feedback_target(con, channel="vk"):
           ON d.game_id = g.id
         WHERE d.status = 'sent'
           AND d.channel = ?
-          AND {not_test}
+          AND (? IS NULL OR d.recipient = ?)
+          AND ({not_test} OR ? IS NOT NULL)
           AND NOT EXISTS (
               SELECT 1
               FROM feedback AS f
@@ -172,7 +174,7 @@ def resolve_feedback_target(con, channel="vk"):
             g.id DESC
         LIMIT 1
         """.format(not_test=not_test_clause(con)),
-        (channel,),
+        (channel, address, address, address),
     ).fetchone()
 
     if row is None:
@@ -271,7 +273,10 @@ def save_raw(data):
             game = resolve_game(con, data)
             game_id = game["id"]
         else:
-            game_id = resolve_feedback_target(con, channel)
+            address = data.get("address")
+            if address is not None and not (isinstance(address, str) and address.isdigit()):
+                raise StorageError(400, "invalid_request", "address must be a numeric string")
+            game_id = resolve_feedback_target(con, channel, address)
 
         game_context = con.execute(
             """
