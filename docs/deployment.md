@@ -40,6 +40,27 @@ what it needs. Variable names are listed in [`.env.example`](../.env.example).
 | `feedback.env` | feedback consumer | `CF_ACCOUNT_ID`, `CF_STORAGE_QUEUE_ID`, `CF_ENRICHED_QUEUE_ID`, `CF_QUEUE_API_TOKEN` |
 | `ops-bot.env` | alerts, ops bot | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 
+### Children and recipients
+
+With no children configured the service runs in single-child mode
+(`CHILD_BIRTH_DATE`, `VK_PEER_ID`). To serve several children or the Telegram
+channel, migrate once and describe them in the database:
+
+```bash
+cd /srv/game-of-the-day
+sudo -u gotd python3 src/db/children.py migrate
+sudo -u gotd python3 src/db/children.py add --name "Старший" --birth-date 2025-09-01 --adopt-existing
+sudo -u gotd python3 src/db/children.py add-recipient --child 1 --channel vk --address <peer_id>
+sudo -u gotd python3 src/db/children.py add --name "Младший" --birth-date <YYYY-MM-DD>
+sudo -u gotd python3 src/db/children.py add-recipient --child 2 --channel telegram --address <chat_id>
+sudo -u gotd python3 src/db/children.py list
+```
+
+Each child gets its own game every day (own age, own history); each recipient
+gets its own delivery with its own state. Telegram delivery needs
+`GAME_TELEGRAM_BOT_TOKEN` in `game.env`: a separate product bot, not the ops bot.
+Feedback is currently received from VK only.
+
 ### Model CLI
 
 Preparation calls `claude` (default backend) or `codex` from `PATH`. Install the

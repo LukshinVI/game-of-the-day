@@ -12,6 +12,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from src.db.children import active_children  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 PROMPT_PATH = ROOT / "src" / "preparation" / "prompts" / "game_selector.md"
@@ -63,10 +66,13 @@ def connect_db():
     return con
 
 
-def load_history():
+def load_history(child_id=None):
+    """Games already given to this child (all games in single-child mode)."""
+    where = "WHERE child_id = ?" if child_id is not None else ""
+    params = (child_id,) if child_id is not None else ()
     with connect_db() as con:
         rows = con.execute(
-            """
+            f"""
             SELECT
                 legacy_id,
                 game_date,
@@ -77,8 +83,10 @@ def load_history():
                 source_name,
                 source_url
             FROM games
+            {where}
             ORDER BY game_date, id
-            """
+            """,
+            params,
         ).fetchall()
 
     return [dict(row) for row in rows]
@@ -531,9 +539,11 @@ def send_preparation_success_alert(
     target_date,
     candidate,
     attempts,
+    child_name=None,
 ):
     details = (
-        f"ID: {legacy_id}\n"
+        (f"Ребёнок: {child_name}\n" if child_name else "")
+        + f"ID: {legacy_id}\n"
         f"Дата: {target_date}\n"
         f"Название: {candidate['title']}\n"
         f"Навык: {candidate['skill']}\n"
@@ -594,10 +604,12 @@ def validate_target_date(value):
         ) from exc
 
 
-def game_for_date(target_date):
+def game_for_date(target_date, child_id=None):
+    child_filter = "AND g.child_id = ?" if child_id is not None else ""
+    params = (target_date, child_id) if child_id is not None else (target_date,)
     with connect_db() as con:
         return con.execute(
-            """
+            f"""
             SELECT
                 g.id,
                 g.legacy_id,
@@ -607,12 +619,12 @@ def game_for_date(target_date):
             FROM games g
             LEFT JOIN deliveries d
                 ON d.game_id = g.id
-                AND d.channel = 'vk'
             WHERE g.game_date = ?
-            ORDER BY g.id
+              {child_filter}
+            ORDER BY g.id, d.id
             LIMIT 1
             """,
-            (target_date,),
+            params,
         ).fetchone()
 
 
@@ -627,19 +639,25 @@ def next_game_identity(con):
     return game_id, legacy_id
 
 
-def persist_candidate(candidate, target_date):
+def persist_candidate(candidate, target_date, child=None):
+    """Store the game and one pending delivery per recipient, atomically.
+
+    child=None is single-child mode: one VK delivery to VK_PEER_ID, as before.
+    """
+    child_id = child["id"] if child else None
     with connect_db() as con:
         con.execute("BEGIN IMMEDIATE")
 
         existing = con.execute(
-            """
+            f"""
             SELECT legacy_id, title
             FROM games
             WHERE game_date = ?
+              {"AND child_id = ?" if child else ""}
             ORDER BY id
             LIMIT 1
             """,
-            (target_date,),
+            (target_date, child_id) if child else (target_date,),
         ).fetchone()
 
         if existing:
@@ -652,7 +670,7 @@ def persist_candidate(candidate, target_date):
         game_id, legacy_id = next_game_identity(con)
 
         con.execute(
-            """
+            f"""
             INSERT INTO games (
                 id,
                 legacy_id,
@@ -663,9 +681,9 @@ def persist_candidate(candidate, target_date):
                 mechanics,
                 source_name,
                 source_url,
-                message_text
+                message_text{", child_id" if child else ""}
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?{", ?" if child else ""})
             """,
             (
                 game_id,
@@ -678,33 +696,43 @@ def persist_candidate(candidate, target_date):
                 candidate["source_name"].strip(),
                 candidate["source_url"].strip(),
                 candidate["message_text"].strip(),
-            ),
+            ) + ((child_id,) if child else ()),
         )
 
-        con.execute(
-            """
-            INSERT INTO deliveries (
-                game_id,
-                channel,
-                status,
-                attempts,
-                idempotency_key
+        if child is None:
+            targets = [("vk", None, f"vk-{target_date}-{legacy_id}")]
+        else:
+            if not child["recipients"]:
+                con.rollback()
+                raise RuntimeError(f"У ребёнка {child['name']} нет получателей")
+            targets = [
+                (r["channel"], r["address"], f"{r['channel']}-{target_date}-{legacy_id}-{r['address']}")
+                for r in child["recipients"]
+            ]
+
+        for channel, recipient, key in targets:
+            con.execute(
+                """
+                INSERT INTO deliveries (
+                    game_id,
+                    channel,
+                    recipient,
+                    status,
+                    attempts,
+                    idempotency_key
+                )
+                VALUES (?, ?, ?, 'pending', 0, ?)
+                """,
+                (game_id, channel, recipient, key),
             )
-            VALUES (?, 'vk', 'pending', 0, ?)
-            """,
-            (
-                game_id,
-                f"vk-{target_date}-{legacy_id}",
-            ),
-        )
 
         con.commit()
 
     return game_id, legacy_id
 
 
-def select_candidate(history, target_date):
-    age_months = child_age_months(target_date)
+def select_candidate(history, target_date, birth_date=None):
+    age_months = child_age_months(target_date, birth_date)
     original_prompt = build_prompt(history, age_months, today=str(target_date))
     prompt = original_prompt
     last_errors = []
@@ -752,10 +780,38 @@ def select_candidate(history, target_date):
 
 
 def prepare_run(target_date, dry_run=False):
+    """Prepare today's game for every active child (or the single child).
+
+    Children are independent: a failure for one is reported and does not stop
+    the others; the run fails at the end if any child failed.
+    """
     target_date = validate_target_date(target_date)
 
+    with connect_db() as con:
+        children = active_children(con)
+
+    plan = children or [None]
+    failures = []
+
+    for child in plan:
+        label = f"{child['name']} (id {child['id']})" if child else "single-child mode"
+        print()
+        print(f"##### {label} #####")
+        try:
+            prepare_for_child(target_date, child, dry_run)
+        except Exception as exc:  # noqa: BLE001 - reported per child, re-raised below
+            print(f"ERROR: {exc}", file=sys.stderr)
+            failures.append(f"{label}: {exc}")
+
+    if failures:
+        raise RuntimeError("; ".join(failures))
+
+
+def prepare_for_child(target_date, child, dry_run=False):
+    child_id = child["id"] if child else None
+
     # Проверяем ДО вызова модели — повторный запуск ничего не тратит.
-    existing = game_for_date(target_date)
+    existing = game_for_date(target_date, child_id)
 
     if existing:
         print("=== ИГРА УЖЕ ПОДГОТОВЛЕНА ===")
@@ -766,10 +822,10 @@ def prepare_run(target_date, dry_run=False):
         print()
         print("Модель: НЕ ЗАПУСКАЛАСЬ")
         print("SQLite: НЕ ИЗМЕНЁН")
-        print("VK: ОТПРАВКА НЕ ВЫПОЛНЯЛАСЬ")
+        print("ОТПРАВКА НЕ ВЫПОЛНЯЛАСЬ")
         return
 
-    history = load_history()
+    history = load_history(child_id)
 
     print(f"Исторических игр: {len(history)}")
     print(f"Целевая дата: {target_date}")
@@ -777,7 +833,10 @@ def prepare_run(target_date, dry_run=False):
     candidate, attempts = select_candidate(
         history,
         target_date,
+        child["birth_date"] if child else None,
     )
+
+    channels = ", ".join(r["channel"] for r in child["recipients"]) if child else "vk"
 
     print()
     print("=== ПЛАН ЗАПИСИ ===")
@@ -785,19 +844,20 @@ def prepare_run(target_date, dry_run=False):
     print(f"Название:  {candidate['title']}")
     print(f"Возраст:   {candidate['age_months']} мес.")
     print(f"Навык:     {candidate['skill']}")
-    print("Delivery:  vk / pending")
+    print(f"Delivery:  {channels} / pending")
 
     if dry_run:
         print()
         print("=== DRY RUN ===")
         print(f"Попыток модели: {attempts}")
         print("Production SQLite: НЕ ИЗМЕНЁН")
-        print("VK: ОТПРАВКА НЕ ВЫПОЛНЯЛАСЬ")
+        print("ОТПРАВКА НЕ ВЫПОЛНЯЛАСЬ")
         return
 
     game_id, legacy_id = persist_candidate(
         candidate,
         target_date,
+        child,
     )
 
     print()
@@ -807,13 +867,14 @@ def prepare_run(target_date, dry_run=False):
     print(f"Дата:      {target_date}")
     print(f"Название:  {candidate['title']}")
     print("Delivery:  pending")
-    print("VK: ОТПРАВКА НЕ ВЫПОЛНЯЛАСЬ")
+    print("ОТПРАВКА НЕ ВЫПОЛНЯЛАСЬ")
 
     send_preparation_success_alert(
         legacy_id,
         target_date,
         candidate,
         attempts,
+        child["name"] if child else None,
     )
 
 

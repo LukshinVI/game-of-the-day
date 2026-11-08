@@ -7,6 +7,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -40,7 +41,36 @@ def deterministic_random_id(idempotency_key: str) -> int:
 
 def today_deliveries(con):
     today = datetime.now(MOSCOW).date().isoformat()
+    # Databases created before multi-child support have no games.child_id.
+    has_child = any(row[1] == "child_id" for row in con.execute("PRAGMA table_info(games)"))
+    child_column = "g.child_id" if has_child else "NULL"
 
+    return con.execute(
+        f"""
+        SELECT
+            g.id AS game_id,
+            g.legacy_id,
+            g.game_date,
+            g.title,
+            g.message_text,
+            d.id AS delivery_id,
+            d.status,
+            d.attempts,
+            d.idempotency_key,
+            d.updated_at,
+            d.channel,
+            d.recipient,
+            {child_column} AS child_id
+        FROM games g
+        JOIN deliveries d ON d.game_id = g.id
+        WHERE g.game_date = ?
+        ORDER BY g.id, d.id
+        """,
+        (today,)
+    ).fetchall()
+
+
+def delivery_by_id(con, delivery_id):
     return con.execute(
         """
         SELECT
@@ -53,15 +83,18 @@ def today_deliveries(con):
             d.status,
             d.attempts,
             d.idempotency_key,
-            d.updated_at
-        FROM games g
-        JOIN deliveries d ON d.game_id = g.id
-        WHERE d.channel = 'vk'
-          AND g.game_date = ?
-        ORDER BY g.id
+            d.updated_at,
+            d.channel,
+            d.recipient
+        FROM deliveries d
+        JOIN games g ON g.id = d.game_id
+        WHERE d.id = ?
         """,
-        (today,)
-    ).fetchall()
+        (delivery_id,)
+    ).fetchone()
+
+
+CHANNEL_LABELS = {"vk": "VK", "telegram": "Telegram"}
 
 
 def send_ops_notification(level, title, details):
@@ -106,8 +139,8 @@ def send_delivery_success_alert(game, external_id):
         f"ID: {game['legacy_id']}\n"
         f"Дата: {game['game_date']}\n"
         f"Название: {game['title']}\n"
-        "Канал: VK\n"
-        f"VK message_id: {external_id}\n"
+        f"Канал: {CHANNEL_LABELS.get(game['channel'], game['channel'])}\n"
+        f"message_id: {external_id}\n"
         f"Попыток отправки: {game['attempts'] + 1}"
     )
 
@@ -123,7 +156,7 @@ def send_delivery_failure_alert(game, error):
         f"ID: {game['legacy_id']}\n"
         f"Дата: {game['game_date']}\n"
         f"Название: {game['title']}\n"
-        "Канал: VK\n"
+        f"Канал: {CHANNEL_LABELS.get(game['channel'], game['channel'])}\n"
         f"Попыток отправки: {game['attempts'] + 1}\n"
         f"Ошибка: {error}"
     )
@@ -136,22 +169,36 @@ def send_delivery_failure_alert(game, error):
 
 
 def send_today(retry_failed=False):
+    """Run every delivery of today independently (one per child and recipient).
+
+    A problem with one delivery does not block the others; the run fails at the
+    end if any of them did.
+    """
     with connect_db() as con:
-        con.execute("BEGIN IMMEDIATE")
         rows = today_deliveries(con)
 
-        if not rows:
-            con.rollback()
-            print("No game for today. Nothing sent.")
-            return
+    if not rows:
+        print("No game for today. Nothing sent.")
+        return
 
-        if len(rows) != 1:
-            con.rollback()
-            raise RuntimeError(
-                f"Expected exactly one delivery for today, found {len(rows)}"
-            )
+    if len(rows) == 1:
+        deliver_one(rows[0]["delivery_id"], retry_failed)
+        return
 
-        game = rows[0]
+    errors = []
+    for row in rows:
+        try:
+            deliver_one(row["delivery_id"], retry_failed)
+        except Exception as exc:  # noqa: BLE001 - collected, raised below
+            errors.append(f"{row['legacy_id']}/{row['channel']}: {exc}")
+    if errors:
+        raise RuntimeError("; ".join(errors))
+
+
+def deliver_one(delivery_id, retry_failed=False):
+    with connect_db() as con:
+        con.execute("BEGIN IMMEDIATE")
+        game = delivery_by_id(con, delivery_id)
 
         if game["status"] == "sent":
             con.rollback()
@@ -204,7 +251,7 @@ def send_today(retry_failed=False):
             raise RuntimeError("Today's delivery has no idempotency_key")
 
         print("=== ABOUT TO SEND TODAY ===")
-        print(f"ID:    {game['legacy_id']}")
+        print(f"ID:    {game['legacy_id']} ({game['channel']})")
         print(f"Date:  {game['game_date']}")
         print(f"Title: {game['title']}")
 
@@ -230,7 +277,7 @@ def send_today(retry_failed=False):
         con.commit()
 
     try:
-        external_id = vk_send(game["message_text"], random_id)
+        external_id = send_message(game, random_id)
     except Exception as exc:
         with connect_db() as fail_con:
             fail_con.execute(
@@ -278,7 +325,7 @@ def send_today(retry_failed=False):
 
         success_con.commit()
 
-    print(f"VK send successful. message_id={external_id}")
+    print(f"{CHANNEL_LABELS.get(game['channel'], game['channel'])} send successful. message_id={external_id}")
 
     send_delivery_success_alert(
         game,
@@ -309,8 +356,15 @@ def recover_stuck_sending(game, now=None):
     if not is_stale(game["updated_at"], now):
         return "in-flight"
 
-    random_id = deterministic_random_id(game["idempotency_key"])
-    message_id = vk_find_sent(random_id)
+    if game["channel"] == "vk":
+        random_id = deterministic_random_id(game["idempotency_key"])
+        message_id = vk_find_sent(random_id, game["recipient"])
+        not_found_reason = "interrupted while sending; not found in VK history"
+    else:
+        # A bot cannot read its own sent history in Telegram, so an interrupted
+        # send cannot be verified: report it and leave the resend to a human.
+        message_id = None
+        not_found_reason = f"interrupted while sending; {game['channel']} delivery cannot be verified"
 
     with connect_db() as con:
         if message_id is not None:
@@ -336,7 +390,7 @@ def recover_stuck_sending(game, now=None):
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND status = 'sending'
                 """,
-                ("interrupted while sending; not found in VK history", game["delivery_id"]),
+                (not_found_reason, game["delivery_id"]),
             ).rowcount
             outcome = "failed"
         con.commit()
@@ -354,9 +408,9 @@ def recover_stuck_sending(game, now=None):
     else:
         send_ops_notification(
             "critical",
-            "Зависшая отправка: сообщения нет в VK",
-            f"ID: {game['legacy_id']}\nДата: {game['game_date']}\n"
-            "Отправка прервалась, в VK сообщения нет. Статус: failed. "
+            "Зависшая отправка не подтверждена",
+            f"ID: {game['legacy_id']}\nДата: {game['game_date']}\nКанал: {game['channel']}\n"
+            f"{not_found_reason}. Статус: failed. "
             "Повторить: /retry в ops-боте.",
         )
     return outcome
@@ -379,12 +433,34 @@ def print_state():
     with connect_db() as con:
         rows = today_deliveries(con)
 
-    if not rows:
-        print("none")
-    elif len(rows) != 1:
+    if duplicate_games(rows):
         print("ambiguous")
-    else:
-        print(rows[0]["status"])
+        return
+    print(aggregate_state([row["status"] for row in rows]))
+
+
+def duplicate_games(rows):
+    """True when one child has more than one game today: a data error, not a fan-out."""
+    seen = {}
+    for row in rows:
+        seen.setdefault(row["child_id"], set()).add(row["game_id"])
+    return any(len(games) > 1 for games in seen.values())
+
+
+def aggregate_state(statuses):
+    """One word for all of today's deliveries; the bot acts on it.
+
+    Precedence: anything in flight or failed needs attention first; 'sent' only
+    when every delivery is sent.
+    """
+    if not statuses:
+        return "none"
+    for state in ("sending", "failed", "pending"):
+        if state in statuses:
+            return state
+    if all(status == "sent" for status in statuses):
+        return "sent"
+    return "ambiguous"
 
 
 def print_status():
@@ -397,15 +473,15 @@ def print_status():
                 g.legacy_id,
                 g.game_date,
                 g.title,
+                d.channel,
                 d.status,
                 d.attempts,
                 d.sent_at,
                 d.last_error
             FROM games g
             JOIN deliveries d ON d.game_id = g.id
-            WHERE d.channel = 'vk'
-              AND g.game_date = ?
-            ORDER BY g.id
+            WHERE g.game_date = ?
+            ORDER BY g.id, d.id
             """,
             (today,)
         ).fetchall()
@@ -418,8 +494,7 @@ def print_status():
                 g.title
             FROM games g
             JOIN deliveries d ON d.game_id = g.id
-            WHERE d.channel = 'vk'
-              AND d.status = 'pending'
+            WHERE d.status = 'pending'
               AND g.game_date < ?
             ORDER BY g.game_date, g.id
             """,
@@ -435,6 +510,7 @@ def print_status():
                 print(f"ID:       {row['legacy_id']}")
                 print(f"Date:     {row['game_date']}")
                 print(f"Title:    {row['title']}")
+                print(f"Channel:  {row['channel']}")
                 print(f"Status:   {row['status']}")
                 print(f"Attempts: {row['attempts']}")
                 print(f"Sent at:  {row['sent_at'] or '-'}")
@@ -454,9 +530,9 @@ def print_status():
 
 
 
-def vk_send(message: str, random_id: int):
+def vk_send(message: str, random_id: int, peer_id=None):
     token = os.environ.get("VK_TOKEN")
-    peer_id = os.environ.get("VK_PEER_ID")
+    peer_id = peer_id or os.environ.get("VK_PEER_ID")
 
     if not token or not peer_id:
         raise RuntimeError("VK_TOKEN or VK_PEER_ID is missing")
@@ -493,10 +569,55 @@ def vk_send(message: str, random_id: int):
     return data["response"]
 
 
-def vk_find_sent(random_id):
+def send_message(game, random_id):
+    if game["channel"] == "vk":
+        if game["recipient"]:
+            return vk_send(game["message_text"], random_id, peer_id=game["recipient"])
+        return vk_send(game["message_text"], random_id)
+    if game["channel"] == "telegram":
+        return telegram_send(game["message_text"], game["recipient"])
+    raise RuntimeError(f"Unknown channel: {game['channel']}")
+
+
+def telegram_send(message, chat_id):
+    """Send through the product bot (GAME_TELEGRAM_BOT_TOKEN), not the ops bot."""
+    token = os.environ.get("GAME_TELEGRAM_BOT_TOKEN")
+    if not token or not chat_id:
+        raise RuntimeError("GAME_TELEGRAM_BOT_TOKEN or the Telegram chat id is missing")
+
+    payload = urllib.parse.urlencode({
+        "chat_id": chat_id,
+        "text": message,
+        "link_preview_options": json.dumps({"is_disabled": True}),
+    }).encode("utf-8")
+
+    request = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data=payload,
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            data = json.loads(exc.read().decode("utf-8"))
+        except Exception:  # noqa: BLE001
+            raise RuntimeError(f"Telegram HTTP {exc.code}") from None
+
+    if not data.get("ok"):
+        raise RuntimeError(
+            f"Telegram error {data.get('error_code')}: {data.get('description')}"
+        )
+
+    return data["result"]["message_id"]
+
+
+def vk_find_sent(random_id, peer_id=None):
     """Return the VK message id of our message with this random_id, or None."""
     token = os.environ.get("VK_TOKEN")
-    peer_id = os.environ.get("VK_PEER_ID")
+    peer_id = peer_id or os.environ.get("VK_PEER_ID")
 
     if not token or not peer_id:
         raise RuntimeError("VK_TOKEN or VK_PEER_ID is missing")

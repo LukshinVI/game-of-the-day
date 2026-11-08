@@ -117,6 +117,8 @@ channel connection
 
 #20 defines the cross-cutting constraint: transport must not define product identity or product logic.
 
+Implemented (branch `feat/multi-child`): `children` and `recipients` tables; each child gets its own daily game for its own age and history; each recipient (VK peer or Telegram chat) gets its own delivery with its own state, retry and recovery. Single-child mode stays the default until a child is added. Telegram feedback ingestion is the remaining part of #21.
+
 ## Engineering track
 
 The current P0 priority is the controlled runtime migration (#27): move delivery and durable state to the VPS/SQLite contour while preserving rollback and feedback reliability.

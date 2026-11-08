@@ -189,7 +189,7 @@ class StuckSending(unittest.TestCase):
         finder, vk, error = self.run_with_history(77)
         self.assertIsNone(error)
         vk.assert_not_called()
-        finder.assert_called_once_with(gd.deterministic_random_id("key-1"))
+        finder.assert_called_once_with(gd.deterministic_random_id("key-1"), None)
         row = self.row()
         self.assertEqual((row["status"], row["external_message_id"]), ("sent", "77"))
 
