@@ -324,3 +324,28 @@ class PausedChildren(TempDb):
             gp.prepare_run(self.today)
         select.assert_not_called()  # in particular, no single-child (env) game either
         self.assertEqual(self.query("SELECT count(*) FROM games"), [(0,)])
+
+
+class Greetings(TempDb):
+    def test_a_birthday_is_put_before_the_game_once_and_not_stored(self):
+        today = datetime.now(gd.MOSCOW).date()
+        if (today.month, today.day) == (2, 29):
+            self.skipTest("no 29 February a year ago")
+        con = self.con()
+        child = ch.add_child(con, "Маша", today.replace(year=today.year - 1).isoformat())
+        ch.add_recipient(con, child, "telegram", "555")
+        with contextlib.redirect_stdout(io.StringIO()), \
+                mock.patch.object(gp, "select_candidate", return_value=(candidate(12), 1)), \
+                mock.patch.object(gp, "send_preparation_success_alert"):
+            gp.prepare_run(self.today)
+        telegram = mock.Mock(return_value=201)
+        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gd, "telegram_send", telegram), \
+                mock.patch.object(gd, "send_ops_notification"):
+            gd.send_today()
+            gd.send_today()
+        telegram.assert_called_once()
+        text = telegram.call_args.args[0]
+        self.assertTrue(text.startswith("🎂 "), text[:40])
+        self.assertIn("Маша", text.split("\n")[0])
+        self.assertIn("🎲", text)
+        self.assertFalse(any(t.startswith("🎂") for (t,) in self.query("SELECT message_text FROM games")))

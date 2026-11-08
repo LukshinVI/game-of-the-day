@@ -14,6 +14,10 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from datetime import datetime, timedelta, timezone
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from src.delivery import greetings  # noqa: E402
+
 DB_PATH = Path(__file__).resolve().parents[2] / "data" / "game-of-the-day.db"
 MOSCOW = ZoneInfo("Europe/Moscow")
 VK_API_VERSION = "5.199"
@@ -572,27 +576,35 @@ def vk_send(message: str, random_id: int, peer_id=None):
 
 
 def child_header(con, game):
-    """'👶 <name>' when this address receives games for more than one child.
+    """Text put before the game: whose game it is and, on the day, a greeting.
 
-    Without it a family with two children gets two games a day and cannot tell
-    which is whose. Single-child chats (and the legacy VK dialog) are unchanged.
+    - '👶 <name>' when this address receives games for more than one child:
+      otherwise a family with two children cannot tell which game is whose;
+    - a birthday / month-birthday greeting on the game's date (greetings.py).
+    Single-child chats on ordinary days (and the legacy mode) are unchanged.
     """
-    if not game["recipient"] or "child_id" not in {r[1] for r in con.execute("PRAGMA table_info(games)")}:
+    if "child_id" not in {r[1] for r in con.execute("PRAGMA table_info(games)")}:
         return ""
     row = con.execute(
         """
-        SELECT c.name,
+        SELECT c.name, c.birth_date, g.game_date,
                (SELECT count(DISTINCT r.child_id) FROM recipients r
                 JOIN children c2 ON c2.id = r.child_id AND c2.active = 1
                 WHERE r.channel = ? AND r.address = ? AND r.active = 1) AS siblings
         FROM games g JOIN children c ON c.id = g.child_id
         WHERE g.id = ?
         """,
-        (game["channel"], game["recipient"], game["game_id"]),
+        (game["channel"], game["recipient"] or "", game["game_id"]),
     ).fetchone()
-    if row is None or row["siblings"] < 2:
+    if row is None:
         return ""
-    return f"👶 {row['name']}\n\n"
+    parts = []
+    if row["siblings"] >= 2:
+        parts.append(f"👶 {row['name']}")
+    greeting = greetings.greeting(row["name"], row["birth_date"], row["game_date"])
+    if greeting:
+        parts.append(greeting)
+    return "".join(f"{part}\n\n" for part in parts)
 
 
 def send_message(game, random_id):

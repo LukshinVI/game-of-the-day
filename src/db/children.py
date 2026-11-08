@@ -12,6 +12,7 @@ before: CHILD_BIRTH_DATE and VK_PEER_ID from the environment.
     python3 src/db/children.py add --name "Старший" --birth-date 2025-09-01 --adopt-existing
     python3 src/db/children.py add-recipient --child 1 --channel vk --address 2488584
     python3 src/db/children.py add-recipient --child 2 --channel telegram --address 123456789
+    python3 src/db/children.py rename --child 1 --name "Миша"
     python3 src/db/children.py list
 """
 
@@ -181,6 +182,9 @@ def main(argv=None):
         "--adopt-existing", action="store_true",
         help="attach games recorded before children existed to this child",
     )
+    ren = sub.add_parser("rename")
+    ren.add_argument("--child", type=int, required=True)
+    ren.add_argument("--name", required=True)
     rec = sub.add_parser("add-recipient")
     rec.add_argument("--child", type=int, required=True)
     rec.add_argument("--channel", choices=CHANNELS, required=True)
@@ -196,6 +200,13 @@ def main(argv=None):
             raise SystemExit("run 'migrate' first")
         if args.command == "add":
             print(add_child(con, args.name, args.birth_date, args.adopt_existing))
+        elif args.command == "rename":
+            if not args.name.strip():
+                raise ValueError("name must not be empty")
+            if con.execute("UPDATE children SET name = ? WHERE id = ?", (args.name.strip(), args.child)).rowcount != 1:
+                raise ValueError(f"no child with id {args.child}")
+            con.commit()
+            print("ok")
         elif args.command == "add-recipient":
             add_recipient(con, args.child, args.channel, args.address)
             print("ok")
