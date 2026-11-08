@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.db.children import active_children, has_children  # noqa: E402
 from src.feedback import profile as child_profile  # noqa: E402
-from src.preparation import fallback, skills  # noqa: E402
+from src.preparation import fallback, review, skills  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
@@ -843,6 +843,14 @@ def select_candidate(history, target_date, birth_date=None, age_months=None):
             raise
         errors = validate_candidate(candidate, history, age_months)
         record_attempt(attempt, "rejected" if errors else "pass", errors, started)
+        if not errors:
+            problems, meta = review.review(candidate, age_months)
+            if meta is not None:
+                RUN_LOG.append({**meta, "attempt": attempt, "outcome": "rejected" if problems else
+                                ("error" if meta["error"] else "pass"),
+                                "errors": [f"safety review: {p}" for p in problems] or
+                                ([meta["error"]] if meta["error"] else [])})
+            errors = [f"safety review: {p}" for p in problems]
 
         print()
         print("=== КАНДИДАТ ===")
