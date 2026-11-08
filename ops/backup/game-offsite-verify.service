@@ -7,17 +7,21 @@ ConditionPathExists=/etc/game-of-the-day/offsite.env
 
 [Service]
 Type=oneshot
-User=gotd
-Group=gotd
+User=root
 EnvironmentFile=/etc/game-of-the-day/offsite.env
-Environment=HOME=/var/lib/game-of-the-day
-# A backup that was never restored is a hope, not a backup.
-ExecStart=/srv/game-of-the-day/ops/backup/offsite-git.sh verify
-TimeoutStartSec=10min
 UMask=0077
 Nice=10
 NoNewPrivileges=yes
 ProtectSystem=strict
-ProtectHome=yes
+# Read-only access to root's SSH key; nothing else under /root is needed.
+ProtectHome=read-only
 PrivateTmp=yes
-ReadOnlyPaths=/var/lib/game-of-the-day/offsite
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+ReadOnlyPaths=/var/backups/game-of-the-day /var/lib/game-of-the-day/offsite
+# A backup that was never restored is a hope, not a backup.
+ExecStart=/srv/game-of-the-day/ops/backup/offsite-git.sh verify
+TimeoutStartSec=10min

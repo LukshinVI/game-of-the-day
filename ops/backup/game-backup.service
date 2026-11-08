@@ -8,10 +8,6 @@ Type=oneshot
 # (issue #39) run this under a dedicated identity with read-only access to data/.
 User=gotd
 Group=gotd
-# Optional encrypted off-site copy (ops/backup/offsite-git.sh); without the file the
-# backup stays local only.
-EnvironmentFile=-/etc/game-of-the-day/offsite.env
-Environment=HOME=/var/lib/game-of-the-day
 ExecStart=/srv/game-of-the-day/ops/backup/game-backup.sh run
 TimeoutStartSec=5min
 UMask=0077
@@ -22,4 +18,4 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 # SQLite needs write access next to the source database for its -shm file.
-ReadWritePaths=/var/backups/game-of-the-day /srv/game-of-the-day/data -/var/lib/game-of-the-day/offsite
+ReadWritePaths=/var/backups/game-of-the-day /srv/game-of-the-day/data

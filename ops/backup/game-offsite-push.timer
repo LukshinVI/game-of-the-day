@@ -1,0 +1,9 @@
+[Unit]
+Description=Game of the Day - nightly encrypted off-site backup (after the 03:30 local one)
+
+[Timer]
+OnCalendar=*-*-* 03:45:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target

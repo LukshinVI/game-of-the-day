@@ -41,8 +41,8 @@ class OffsiteGit(unittest.TestCase):
             path.write_bytes(gzip.compress(db.read_bytes()))
             self.backups.append(path)
 
-    def sh(self, *args):
-        env = {
+    def sh(self, *args, **extra):
+        env = {**extra, 
             "PATH": os.environ["PATH"], "HOME": str(self.root), "TMPDIR": str(self.root),
             "GAME_OFFSITE_REPO": f"file://{self.remote}", "GAME_OFFSITE_DIR": str(self.state),
             "GAME_OFFSITE_KEEP": "2",
@@ -67,6 +67,18 @@ class OffsiteGit(unittest.TestCase):
                 content = self.git("show", f"{rev}:{name}")
                 self.assertNotIn("СекретноеНазвание".encode(), content)
                 self.assertNotIn(b"SQLite format", content)
+
+    def test_push_latest_follows_the_local_manifest(self):
+        local = self.root / "local"
+        local.mkdir()
+        latest = self.backups[1]
+        shutil.copy(latest, local / latest.name)
+        (local / ".last-local-ok").write_text(f"1700000000 {latest.name}\n")
+        result = self.sh("push-latest", GAME_BACKUP_DIR=str(local))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        tip = self.git("ls-tree", "-r", "--name-only", "db-backups").decode().split()
+        self.assertIn(f"backups/{latest.name}.age", tip)
+        self.assertNotEqual(self.sh("push-latest", GAME_BACKUP_DIR=str(self.root / "none")).returncode, 0)
 
     def test_verify_and_restore(self):
         self.sh(str(self.backups[0]))
