@@ -5,7 +5,7 @@
 
 A small production service that sends a caregiver one safe, age-appropriate developmental activity for a young child every day, collects free-form feedback in a messenger, and turns it into structured observations for future personalization.
 
-It runs in production for real families (VK and a Telegram bot, invite-only). It is also an engineering sandbox for one question: **how do you put LLMs into a production workflow without letting them own state, side effects, or safety?**
+It runs in production for real families (VK and a Telegram bot, invite-only). It is also a worked answer to one question: **how do you put LLMs into a production workflow without letting them own state, side effects, or safety?**
 
 > Not a medical or diagnostic product.
 
@@ -50,7 +50,7 @@ flowchart TD
 - **Edge** (Cloudflare Workers + Queues): callback validation, durable hand-off to the host, and the semantic feedback agent on Workers AI.
 - Feedback goes through three separate queues (ingress, storage, enrichment). The storage queue carries both the raw event and, later, its analysis.
 
-Details: [Deployment](docs/deployment.md) · [Architecture](docs/architecture.md) · [Reliability model](docs/reliability.md) · [AI design](docs/ai-design.md) · [Product roadmap](docs/product-roadmap.md)
+Details: [Deployment](docs/deployment.md) · [Architecture](docs/architecture.md) · [Decisions (ADR)](docs/adr/) · [Reliability model](docs/reliability.md) · [SLOs](docs/slo.md) · [Scaling](docs/scaling.md) · [AI design](docs/ai-design.md) · [Product roadmap](docs/product-roadmap.md)
 
 ## Where AI is used, and where it is not
 
@@ -131,7 +131,16 @@ Runbooks: [database backup](ops/backup/README.md) · [manual delivery control](o
 
 - Done and next: [roadmap](docs/product-roadmap.md). Known gaps are documented, not hidden: [reliability model](docs/reliability.md).
 
-Changes are released as tagged versions with notes from the [changelog](CHANGELOG.md). Development is done through small PRs against an issue tracker. Issue numbers like `#27` in the docs and commit history refer to that tracker, which stays private because it contains production operational details.
+Changes are released as tagged versions with notes from the [changelog](CHANGELOG.md). Issue numbers like `#27` in older docs and commits refer to a private tracker (it contains production operational details).
+
+## How this is built
+
+One maintainer and an AI coding agent (Claude Code). The maintainer owns the product, the
+architecture, the trade-offs and every production deploy; the agent implements under
+narrow permissions, CI, evals and a deploy script with rollback. This is why parts of the
+history move at minutes per commit. The same rule as in the product applies: the
+probabilistic part proposes, deterministic checks and a human decide.
+[Development process](docs/development-process.md) · [ADRs](docs/adr/)
 
 ## Engineering principles
 

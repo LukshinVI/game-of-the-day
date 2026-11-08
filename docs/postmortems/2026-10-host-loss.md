@@ -1,4 +1,4 @@
-# Postmortem: production host lost, 25 days without delivery
+# Postmortem: production host lost, 24 days without delivery
 
 **Status:** resolved 2026-11-08 · **Severity:** full outage of the daily product loop · blameless
 
@@ -12,7 +12,7 @@ recovered from the messenger itself; no caregiver feedback was lost.
 
 ## Impact
 
-- 25 days without a daily activity for the child.
+- 24 days without a daily activity for the child.
 - The SQLite database (games, deliveries, feedback) was lost with the host.
 - Feedback: none lost. The edge (Cloudflare Worker + queues) stayed up, but the
   storage queue keeps messages for 1 day only; the impact was nil because no

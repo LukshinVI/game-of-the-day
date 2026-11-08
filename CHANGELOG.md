@@ -8,10 +8,18 @@ on the commit that completed each milestone.
 ## [Unreleased]
 
 ### Added
+- Engineering docs: service level objectives with the measured history
+  ([docs/slo.md](docs/slo.md)), a scaling plan with today's ceilings
+  ([docs/scaling.md](docs/scaling.md)), four architecture decision records
+  ([docs/adr](docs/adr/)) and how the project is built with an AI coding agent
+  ([docs/development-process.md](docs/development-process.md)).
 - Product metrics (`/metrics` in the ops bot, and the top of the Monday report): games
   delivered, the share with a written answer or a reaction, liked, difficulty (too easy /
   right / too hard), pauses, wishes, reserve days and reviewer rejections, each against the
   previous period, test children excluded.
+
+### Fixed
+- The host-loss postmortem counted 25 days without delivery; it was 24 (2026-10-15 … 11-07).
 
 ## [1.5.0] - 2026-11-08 — Not the same game twice
 
