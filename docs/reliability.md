@@ -80,8 +80,9 @@ host is restored with `ops/backup/offsite-git.sh restore`.
 - **Queue retention is one day.** A host outage longer than that loses queued VK feedback.
 - **Queues have no dead-letter destination.** A message that keeps failing is eventually
   dropped instead of quarantined.
-- **Duplicate detection is exact.** A game with a new title but the same idea passes; a
-  similarity rule (a mechanic tag with a no-repeat window) is planned.
+- **Similarity is by category.** A mechanic tag with a 7-game window catches "the same idea
+  under a new name", but two different games of one kind are also kept apart, and the tag
+  is the model's own label (checked against a fixed list, not against the text).
 - **Test and family VK dialogs share a channel.** A family's answer cannot land on a test
   game, but the reverse cannot be told apart until the Worker passes the peer id.
 - **Credentials handled in chat during the recovery have not all been rotated.**

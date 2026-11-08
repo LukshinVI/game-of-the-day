@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -204,6 +204,10 @@ def migrate(con):
     con.executescript(MIGRATION_7)
     con.executescript(MIGRATION_8)
     con.executescript(MIGRATION_9)
+    # Mechanic tags (src/preparation/mechanics.py): similar ideas, not just equal titles.
+    for table in ("games", "reserve_games"):
+        if "mechanic_tag" not in columns(con, table):
+            con.execute(f"ALTER TABLE {table} ADD COLUMN mechanic_tag TEXT")
     for column in ("insights_at", "insights_status", "reply_sent_at"):
         if column not in columns(con, "feedback"):
             con.execute(f"ALTER TABLE feedback ADD COLUMN {column} TEXT")

@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.db.children import active_children, has_children  # noqa: E402
 from src.feedback import profile as child_profile  # noqa: E402
 from src.preparation import fallback, review, skills  # noqa: E402
+from src.preparation import mechanics as mechanic_tags  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
@@ -77,9 +78,11 @@ def load_history(child_id=None):
     where = "WHERE child_id = ?" if child_id is not None else ""
     params = (child_id,) if child_id is not None else ()
     with connect_db() as con:
+        tag_column = "mechanic_tag" if "mechanic_tag" in {r[1] for r in con.execute("PRAGMA table_info(games)")} else "NULL AS mechanic_tag"
         rows = con.execute(
             f"""
             SELECT
+                {tag_column},
                 legacy_id,
                 game_date,
                 age_months,
@@ -139,6 +142,8 @@ def build_prompt(history, age_months, today=None):
         "today": today or datetime.now(MOSCOW).date().isoformat(),
         "child_age_months": age_months,
         **skills.prompt_context(age_months, history),
+        "mechanic_tags": {tag: label for tag, label in mechanic_tags.TAGS.items() if tag not in mechanic_tags.recent(history)},
+        "recent_mechanic_tags": mechanic_tags.recent(history),
         **({"child_profile": PROFILE_CONTEXT} if PROFILE_CONTEXT else {}),
         "previous_games": history,
     }
@@ -359,6 +364,7 @@ def validate_candidate(candidate, history, expected_age_months):
         )
 
     errors.extend(skills.violations(candidate.get("skill"), expected_age_months, history))
+    errors.extend(mechanic_tags.violations(candidate.get("mechanic_tag"), history))
 
     title = normalize(candidate.get("title", ""))
     mechanics = normalize(candidate.get("mechanics", ""))
@@ -749,8 +755,8 @@ def persist_candidate(candidate, target_date, child=None, origin="model", origin
 
         if "origin" in game_columns:
             con.execute(
-                "UPDATE games SET origin = ?, origin_reason = ?, candidate_json = ? WHERE id = ?",
-                (origin, origin_reason, fallback.candidate_json(candidate), game_id),
+                "UPDATE games SET origin = ?, origin_reason = ?, candidate_json = ?, mechanic_tag = ? WHERE id = ?",
+                (origin, origin_reason, fallback.candidate_json(candidate), candidate.get("mechanic_tag"), game_id),
             )
 
         if child is None:

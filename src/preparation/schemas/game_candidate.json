@@ -13,7 +13,8 @@
     "safety",
     "source_name",
     "source_url",
-    "message_text"
+    "message_text",
+    "mechanic_tag"
   ],
   "properties": {
     "title": {
@@ -80,6 +81,35 @@
     "message_text": {
       "type": "string",
       "minLength": 20
+    },
+    "mechanic_tag": {
+      "type": "string",
+      "enum": [
+        "hide_and_find",
+        "stacking_building",
+        "ball_throw_roll",
+        "push_pull",
+        "container_in_out",
+        "pour_transfer",
+        "sort_match",
+        "cause_effect",
+        "sound_imitation",
+        "turn_taking_talk",
+        "naming_pointing",
+        "songs_rhymes_gestures",
+        "book_pictures",
+        "pretend_care",
+        "role_play_dress_up",
+        "crawl_course",
+        "walk_balance",
+        "jump_dance_move",
+        "tummy_time",
+        "touch_textures",
+        "water_play",
+        "art_making",
+        "self_care_routine",
+        "faces_emotions"
+      ]
     }
   }
 }

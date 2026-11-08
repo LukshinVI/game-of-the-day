@@ -91,6 +91,7 @@ CREATE TABLE reserve_games (
     message_text TEXT NOT NULL,
     candidate_json TEXT,
     made_by TEXT,
+    mechanic_tag TEXT,
     UNIQUE(title, age_months)
 );
 
@@ -109,7 +110,8 @@ CREATE TABLE games (
     child_id INTEGER REFERENCES children(id),
     origin TEXT NOT NULL DEFAULT 'model',
     origin_reason TEXT,
-    candidate_json TEXT
+    candidate_json TEXT,
+    mechanic_tag TEXT
 );
 
 CREATE INDEX idx_games_date ON games(game_date);
@@ -199,4 +201,4 @@ CREATE TABLE migration_meta (
     value TEXT
 );
 
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '9');
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '10');
