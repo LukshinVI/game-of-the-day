@@ -47,7 +47,7 @@ state:    legacy store → SQLite                    [source of truth in practic
 ingress:  none for feedback (queue pull/push only)   [HTTP API removed]
 ```
 
-Concrete production hostnames, origin addresses, recipient identities, and internal ports are intentionally excluded from the public repository. Two known exceptions are tracked, not hidden: the ops unit files (`ops/backup`, `ops/bot`, `ops/day-outcome`, `ops/delivery`) name the actual host service user and its `/srv/...` path, and two legacy-path identifiers (a messaging group id, a spreadsheet id) are still hardcoded in source. Both are pre-publication work, not committed by oversight (#34).
+Concrete production hostnames, origin addresses, recipient identities, and internal ports are intentionally excluded from the public repository. The ops unit files use a generic service user (`gotd`) and `/srv/game-of-the-day`; deployment-specific identifiers (messaging community id, spreadsheet id) come from configuration, not source (#34, resolved before publication).
 
 ## 2. Application runtime
 
@@ -263,7 +263,7 @@ Logs must not contain credentials, secret headers, infrastructure secrets, or un
 - only required public paths are exposed;
 - test and production state are isolated;
 - SQLite is never directly exposed;
-- production infrastructure identifiers should not be part of the repository; the service-user name and its deployment path in the `ops/*` unit files, and two legacy identifiers in source, are a known, tracked exception (#34), not yet fixed;
+- production infrastructure identifiers are not part of the repository; unit files use a generic service user and path, and deployment-specific ids come from configuration (#34);
 - monitoring uses a diagnostic boundary separate from application ownership where practical.
 
 See [`../SECURITY.md`](../SECURITY.md) for repository security policy.
