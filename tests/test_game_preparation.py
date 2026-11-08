@@ -6,6 +6,7 @@ network or the notifier.
 
 import contextlib
 import io
+import json
 import os
 import sys
 import unittest
@@ -127,7 +128,7 @@ class AttemptLoop(unittest.TestCase):
 
     def run_select(self, candidates):
         with contextlib.redirect_stdout(io.StringIO()), \
-                mock.patch.object(gp, "run_codex", side_effect=candidates) as codex, \
+                mock.patch.object(gp, "run_model", side_effect=candidates) as codex, \
                 mock.patch.object(gp, "send_failure_alert") as alert:
             try:
                 result = gp.select_candidate([], "2026-09-21")
@@ -163,10 +164,53 @@ class AttemptLoop(unittest.TestCase):
             prompts.append(prompt)
             return candidate(message_text="без ссылки") if len(prompts) == 1 else candidate()
 
-        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gp, "run_codex", side_effect=fake):
+        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gp, "run_model", side_effect=fake):
             gp.select_candidate([], "2026-09-21")
         self.assertNotIn("deterministic_validation_errors", prompts[0])
         self.assertIn("deterministic_validation_errors", prompts[1])
+
+
+class ModelBackend(unittest.TestCase):
+    def envelope(self, **overrides):
+        data = {"type": "result", "subtype": "success", "is_error": False,
+                "result": "{}", "structured_output": candidate()}
+        data.update(overrides)
+        return mock.Mock(returncode=0, stdout=json.dumps(data), stderr="")
+
+    def run_claude(self, completed):
+        with contextlib.redirect_stderr(io.StringIO()), \
+                mock.patch.object(gp.subprocess, "run", return_value=completed) as run:
+            return gp.run_claude("prompt"), run
+
+    def test_claude_structured_output_is_the_candidate(self):
+        result, run = self.run_claude(self.envelope())
+        self.assertEqual(result, candidate())
+        cmd = run.call_args.args[0]
+        self.assertIn("--json-schema", cmd)
+        self.assertEqual(cmd[cmd.index("--tools") + 1], "WebSearch,WebFetch")
+        self.assertIn("--strict-mcp-config", cmd)
+
+    def test_claude_errors_are_failures_not_candidates(self):
+        for completed in (
+            self.envelope(is_error=True, subtype="error_max_turns"),
+            self.envelope(structured_output=None),
+            mock.Mock(returncode=0, stdout="not json", stderr=""),
+            mock.Mock(returncode=1, stdout="", stderr="auth"),
+        ):
+            with self.subTest(completed=completed), self.assertRaises(RuntimeError):
+                self.run_claude(completed)
+
+    def test_backend_is_selected_by_environment(self):
+        with mock.patch.object(gp, "run_claude", return_value="c") as claude, \
+                mock.patch.object(gp, "run_codex", return_value="x") as codex:
+            with mock.patch.dict(os.environ, {"PREPARATION_BACKEND": "codex"}):
+                self.assertEqual(gp.run_model("p"), "x")
+            with mock.patch.dict(os.environ, {"PREPARATION_BACKEND": "claude"}):
+                self.assertEqual(gp.run_model("p"), "c")
+            with mock.patch.dict(os.environ, {"PREPARATION_BACKEND": "gpt"}), self.assertRaises(ValueError):
+                gp.run_model("p")
+        claude.assert_called_once()
+        codex.assert_called_once()
 
 
 class ChildAge(unittest.TestCase):

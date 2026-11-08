@@ -46,6 +46,10 @@ LEG_WORDS = re.compile(r"нож(?:к\w*|ек|онк\w*|еньк\w*)")
 # rejections used to exhaust the daily run. One more bounded corrective attempt is allowed.
 MAX_ATTEMPTS = 3
 
+# Web research makes a single model call slow; one attempt must still fit well
+# inside the preparation unit's TimeoutStartSec.
+MODEL_TIMEOUT_SECONDS = int(os.environ.get("PREPARATION_MODEL_TIMEOUT", "600"))
+
 
 def connect_db():
     con = sqlite3.connect(DB_PATH)
@@ -125,6 +129,80 @@ def build_prompt(history, age_months, today=None):
     )
 
 
+def run_model(prompt):
+    """Ask the configured model backend for one candidate (a dict).
+
+    The backend only proposes; validate_candidate() decides. PREPARATION_BACKEND
+    selects `claude` (Claude Code headless, the default) or `codex` (Codex CLI).
+    """
+    backend = os.environ.get("PREPARATION_BACKEND", "claude").strip().lower()
+    if backend == "claude":
+        return run_claude(prompt)
+    if backend == "codex":
+        return run_codex(prompt)
+    raise ValueError(f"unknown PREPARATION_BACKEND: {backend!r} (expected claude or codex)")
+
+
+def claude_command(schema):
+    model = os.environ.get("PREPARATION_CLAUDE_MODEL", "opus")
+    return [
+        os.environ.get("CLAUDE_BIN", "claude"),
+        "--print",
+        "--output-format", "json",
+        "--json-schema", schema,
+        "--model", model,
+        # Web research only: no shell, no file access, no MCP servers, no plugins.
+        "--tools", "WebSearch,WebFetch",
+        "--allowedTools", "WebSearch,WebFetch",
+        "--strict-mcp-config",
+        "--disable-slash-commands",
+        "--no-session-persistence",
+    ]
+
+
+def run_claude(prompt):
+    schema = SCHEMA_PATH.read_text(encoding="utf-8")
+
+    print("Starting Claude candidate selection...", file=sys.stderr)
+
+    result = subprocess.run(
+        claude_command(schema),
+        input=prompt,
+        text=True,
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=MODEL_TIMEOUT_SECONDS,
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            "Claude failed.\n"
+            f"exit={result.returncode}\n"
+            f"stdout={result.stdout[-4000:]}\n"
+            f"stderr={result.stderr[-4000:]}"
+        )
+
+    try:
+        envelope = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"Claude output is not valid JSON: {exc}\n{result.stdout[-4000:]}"
+        ) from None
+
+    if envelope.get("is_error") or envelope.get("subtype") != "success":
+        raise RuntimeError(
+            "Claude run did not succeed: "
+            f"subtype={envelope.get('subtype')} result={str(envelope.get('result'))[:2000]}"
+        )
+
+    candidate = envelope.get("structured_output")
+    if not isinstance(candidate, dict):
+        raise RuntimeError("Claude returned no structured_output object")
+
+    return candidate
+
+
 def run_codex(prompt):
     SHADOW_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -158,7 +236,7 @@ def run_codex(prompt):
         cwd=ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        timeout=300,
+        timeout=MODEL_TIMEOUT_SECONDS,
     )
 
     if result.returncode != 0:
@@ -561,7 +639,7 @@ def select_candidate(history, target_date):
         print()
         print(f"=== ПОПЫТКА {attempt}/{MAX_ATTEMPTS} ===")
 
-        candidate = run_codex(prompt)
+        candidate = run_model(prompt)
         errors = validate_candidate(candidate, history, age_months)
 
         print()
@@ -602,7 +680,7 @@ def select_candidate(history, target_date):
 def prepare_run(target_date, dry_run=False):
     target_date = validate_target_date(target_date)
 
-    # Проверяем ДО Codex — повторный запуск ничего не тратит.
+    # Проверяем ДО вызова модели — повторный запуск ничего не тратит.
     existing = game_for_date(target_date)
 
     if existing:
@@ -612,7 +690,7 @@ def prepare_run(target_date, dry_run=False):
         print(f"Название:  {existing['title']}")
         print(f"Delivery:  {existing['status']}")
         print()
-        print("Codex: НЕ ЗАПУСКАЛСЯ")
+        print("Модель: НЕ ЗАПУСКАЛАСЬ")
         print("SQLite: НЕ ИЗМЕНЁН")
         print("VK: ОТПРАВКА НЕ ВЫПОЛНЯЛАСЬ")
         return
@@ -679,7 +757,7 @@ def shadow_run():
         print()
         print(f"=== ATTEMPT {attempt}/{MAX_ATTEMPTS} ===")
 
-        candidate = run_codex(prompt)
+        candidate = run_model(prompt)
         errors = validate_candidate(candidate, history, age_months)
 
         print()
@@ -764,7 +842,7 @@ if __name__ == "__main__":
         main()
     except subprocess.TimeoutExpired:
         print(
-            "ERROR: Codex timed out after 300 seconds",
+            f"ERROR: model call timed out after {MODEL_TIMEOUT_SECONDS} seconds",
             file=sys.stderr,
         )
         sys.exit(1)
