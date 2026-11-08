@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -171,6 +171,19 @@ CREATE TABLE IF NOT EXISTS wishes (
 """
 
 
+# Sunday digests already sent (src/ops/weekly_digest.py), one per child, recipient, week.
+MIGRATION_9 = """
+CREATE TABLE IF NOT EXISTS digests (
+    child_id INTEGER NOT NULL,
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    week TEXT NOT NULL,
+    sent_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (child_id, channel, address, week)
+);
+"""
+
+
 def connect_db(path=None):
     con = sqlite3.connect(path or DB_PATH, timeout=10)
     con.row_factory = sqlite3.Row
@@ -190,6 +203,7 @@ def migrate(con):
     con.executescript(MIGRATION_6)
     con.executescript(MIGRATION_7)
     con.executescript(MIGRATION_8)
+    con.executescript(MIGRATION_9)
     for column in ("insights_at", "insights_status", "reply_sent_at"):
         if column not in columns(con, "feedback"):
             con.execute(f"ALTER TABLE feedback ADD COLUMN {column} TEXT")

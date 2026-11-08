@@ -8,6 +8,14 @@ on the commit that completed each milestone.
 ## [Unreleased]
 
 ### Added
+- A second safety line: with `PREPARATION_REVIEW_MODEL` set, a small model reviews every
+  candidate that passed the gate against an age checklist and reports only serious,
+  concrete problems; a finding rejects like a gate error; a reviewer outage never blocks.
+- "Too easy" (or "too hard") on the child's latest game makes the next game train the
+  same skill one step harder (easier), as a gate rule; the rotation rule still wins.
+- A Sunday digest for parents: the week's games and skills, what was liked and went well,
+  typical milestones for the age (CDC, marked as a guide), and once a month one question
+  about what the service is missing. Deterministic, idempotent per week.
 - Wishes about the service: the feedback analysis separates requests about the service
   ("more outdoor games") from observations about the child; families can also send
   `/idea` in the product bot. Each wish reaches the owner at once through the ops bot;
@@ -39,7 +47,7 @@ on the commit that completed each milestone.
 - `game_preparation.py prepare --child ID` limits a manual run to one child.
 
 ### Changed
-- Schema version 8 (additive).
+- Schema version 9 (additive).
 
 ## [1.3.0] - 2026-11-08 — Measured, then cheaper
 

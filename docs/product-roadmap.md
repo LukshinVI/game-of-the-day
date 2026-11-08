@@ -37,23 +37,19 @@ quotes; a code-built profile per child (difficulty direction per skill, what wen
 likes, dislikes); the selection prompt follows it; the parent sees what was taken into
 account.
 
-**Quality and reliability of selection.** Eight age-banded skills; safety by design in the
+**Parents' week.** A Sunday digest with the week's games, what went well, typical
+milestones for the age, and a monthly question about what is missing.
+
+**Quality and reliability of selection.** A second safety line (a model reviewer after the
+gate); "too easy" means the same skill, harder. Eight age-banded skills; safety by design in the
 prompt; selection evals that chose Sonnet over Opus on evidence; per-attempt metrics and a
 weekly report; a fallback chain (fallback model → library and warm reserve) so a model
 problem never costs a day.
 
 ## Next
 
-- **Second safety line.** After the gate, a cheap model reviews the activity against a
-  safety checklist; a finding triggers one corrective attempt, then the library. Its
-  precision is measured by the evals.
-- **Weekly digest for parents.** Sundays: the week's games and skills, what went well
-  from feedback, what typically appears at this age (marked "not a medical assessment");
-  once a month one question: "what is missing?".
 - **Similarity, not just exact duplicates.** A mechanic tag set by the model and a
   deterministic no-repeat window.
-- **"Too easy" means the same skill, harder.** Make the difficulty direction a rule
-  instead of a preference the model may route around.
 - **One feedback path for both channels.** The Worker passes the VK peer id (test and
   family dialogs told apart) and reaction labels; Telegram feedback joins the semantic
   agent.
