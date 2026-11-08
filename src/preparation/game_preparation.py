@@ -801,8 +801,11 @@ def persist_runs(target_date, child_id, dry_run):
         print(f"WARN: model run metrics not saved: {exc}", file=sys.stderr)
 
 
-def select_candidate(history, target_date, birth_date=None):
-    age_months = child_age_months(target_date, birth_date)
+def select_candidate(history, target_date, birth_date=None, age_months=None):
+    """Propose, validate and retry. age_months overrides the birth-date computation
+    (used by the selection evals, which describe cases by age)."""
+    if age_months is None:
+        age_months = child_age_months(target_date, birth_date)
     original_prompt = build_prompt(history, age_months, today=str(target_date))
     prompt = original_prompt
     last_errors = []

@@ -13,6 +13,9 @@ on the commit that completed each milestone.
   the validator's rejection reasons), also when the day fails. A weekly report per model
   goes to the owner on Mondays, and `/llm` in the ops bot shows it on demand.
 
+- Selection evals (`evals/preparation`): synthetic cases run through the real selection
+  path and scored by the production gate, deterministic lint and an optional model judge,
+  with a Markdown report per model.
 - An external host watcher: the private backup repository checks every 6 hours that a
   backup arrived within 26 hours, and GitHub emails the owner otherwise.
 
