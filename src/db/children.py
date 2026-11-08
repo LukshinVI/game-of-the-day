@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS recipients (
 
 # Self-service onboarding in the product Telegram bot (src/bot/product_bot.py):
 # one-time invites (only the hash is stored), members (a chat that joined with an
-# invite) and the in-progress questionnaire, so a bot restart loses nothing.
+# invite), the in-progress questionnaire (a bot restart loses nothing) and
+# owner-facing events.
 MIGRATION_3 = """
 CREATE TABLE IF NOT EXISTS invites (
     id INTEGER PRIMARY KEY,
@@ -71,6 +72,16 @@ CREATE TABLE IF NOT EXISTS onboarding (
     name TEXT,
     birth_date TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- Owner-facing events (joins, subscriptions, pauses, limits). The product bot only
+-- writes them; the ops bot forwards them, so the public bot holds no ops credentials.
+CREATE TABLE IF NOT EXISTS user_events (
+    id INTEGER PRIMARY KEY,
+    at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    chat_id TEXT,
+    kind TEXT NOT NULL,
+    text TEXT NOT NULL,
+    notified_at TEXT
 );
 """
 

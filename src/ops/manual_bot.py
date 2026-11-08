@@ -7,6 +7,11 @@ Commands, accepted only from the owner's private chat:
   /send <code>     start the normal delivery unit
   /retry           when today's delivery failed: show a one-time code
   /retry <code>    start the explicit-retry delivery unit
+  /users           product-bot families: children, subscription, last game, feedback
+
+It also forwards owner-facing events the product bot records in SQLite (new member,
+new child, pause, limit, block) within one polling cycle, so the public product bot
+never holds this bot's token.
 
 The bot holds only the Telegram credentials. It never sends game messages and never sees
 the messaging credentials: it asks systemd to start one of two fixed delivery units, which
@@ -24,6 +29,10 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+from src.ops import users_report  # noqa: E402
+
 DELIVERY = ROOT / "src" / "delivery" / "game_delivery.py"
 API = "https://api.telegram.org"
 
@@ -45,7 +54,8 @@ HELP = (
     "Команды:\n"
     "/status - состояние сегодняшней доставки\n"
     "/send - отправить сегодняшнюю игру (нужен код подтверждения)\n"
-    "/retry - повторить отправку после ошибки (нужен код подтверждения)"
+    "/retry - повторить отправку после ошибки (нужен код подтверждения)\n"
+    "/users - семьи в продуктовом боте"
 )
 
 EXPLANATIONS = {
@@ -97,8 +107,10 @@ def start_unit(unit):
 
 
 class Controller:
-    def __init__(self, owner_id, run=run_delivery, start=start_unit, now=time.time, new_code=None):
+    def __init__(self, owner_id, run=run_delivery, start=start_unit, now=time.time, new_code=None,
+                 users=users_report.report):
         self.owner_id = owner_id
+        self.users = users
         self.run = run
         self.start = start
         self.now = now
@@ -130,6 +142,12 @@ class Controller:
 
         if command == "/status":
             return "Доставка сегодня:\n" + self.run("status")
+
+        if command == "/users":
+            try:
+                return "Пользователи:\n\n" + self.users()
+            except Exception as exc:  # noqa: BLE001
+                return f"Не удалось построить отчёт: {type(exc).__name__}"
 
         if command in ("/send", "/retry"):
             return self.request(command[1:], parts[1:])
@@ -193,6 +211,24 @@ def telegram(token, method, payload, timeout):
         return json.loads(response.read())
 
 
+def forward_user_events(reply, pending=users_report.pending_events, mark=users_report.mark_notified):
+    """Send the product bot's pending events to the owner, then mark them.
+
+    Marked only after Telegram accepted the message: a failed send is retried on
+    the next cycle (at-least-once; a duplicate notice is harmless, a lost one is not).
+    """
+    try:
+        events = pending()
+    except Exception as exc:  # noqa: BLE001 - monitoring must not stop the manual control
+        print(f"user events unavailable: {type(exc).__name__}", flush=True)
+        return
+    if not events:
+        return
+    text = "\n".join(f"{e['text']}" for e in events)
+    reply("Продуктовый бот:\n" + text)
+    mark([e["id"] for e in events])
+
+
 def main():
     token = os.environ["TELEGRAM_BOT_TOKEN"]
     owner_id = int(os.environ["TELEGRAM_CHAT_ID"])
@@ -238,6 +274,8 @@ def main():
                 if text:
                     print(f"owner command handled update_id={update['update_id']}", flush=True)
                     reply(text)
+
+            forward_user_events(reply)
 
         except Exception as exc:  # noqa: BLE001 - log the type only, never URLs or tokens
             print(f"poll error: {type(exc).__name__}", flush=True)

@@ -44,6 +44,15 @@ CREATE TABLE onboarding (
     birth_date TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+-- Owner-facing events; written by the product bot, forwarded by the ops bot.
+CREATE TABLE user_events (
+    id INTEGER PRIMARY KEY,
+    at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    chat_id TEXT,
+    kind TEXT NOT NULL,
+    text TEXT NOT NULL,
+    notified_at TEXT
+);
 
 CREATE TABLE games (
     id INTEGER PRIMARY KEY,

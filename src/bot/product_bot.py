@@ -152,7 +152,6 @@ class ProductBot:
         self.username = username
         self.now = now or (lambda: datetime.now(MOSCOW))
         self.new_code = new_code or (lambda: secrets.token_urlsafe(12))
-        self.outbox = []  # (chat_id, text) to send to someone other than the sender
         self.stranger_replies = {}  # chat_id -> time of the last "closed" notice (memory only)
 
     # --- storage -------------------------------------------------------------
@@ -210,7 +209,6 @@ class ProductBot:
             con.commit()
         except Exception:
             con.rollback()
-            self.outbox.clear()
             raise
         finally:
             con.close()
@@ -322,11 +320,14 @@ class ProductBot:
         )
         self.set_step(con, chat_id, "name")
         if chat_id != self.owner_id:
-            self.notify_owner(f"Новый участник по приглашению: {display or chat_id}")
+            self.notify_owner(f"👋 Новый участник: {display or '—'} (chat {chat_id})", con, chat_id, "join")
 
-    def notify_owner(self, text):
-        if self.owner_id:
-            self.outbox.append((self.owner_id, text))
+    @staticmethod
+    def notify_owner(text, con, chat_id, kind):
+        """Record an owner-facing event; the ops bot forwards it (src/ops/manual_bot.py)."""
+        con.execute(
+            "INSERT INTO user_events(chat_id, kind, text) VALUES (?, ?, ?)", (chat_id, kind, text)
+        )
 
     # --- questionnaire -------------------------------------------------------
 
@@ -375,7 +376,8 @@ class ProductBot:
         )
         con.execute("DELETE FROM onboarding WHERE chat_id = ?", (chat_id,))
         self.notify_owner(
-            f"Подписан ребёнок: {current['name']}, {describe_age(current['birth_date'], today)} (chat {chat_id})"
+            f"👶 Подписан ребёнок: {current['name']}, {describe_age(current['birth_date'], today)} (chat {chat_id})",
+            con, chat_id, "child",
         )
         when = "сегодня" if self.now().hour < PREPARATION_HOUR_MSK else "завтра"
         return (
@@ -402,7 +404,8 @@ class ProductBot:
         if total >= MAX_ACTIVE_CHILDREN:
             self.notify_owner(
                 f"⚠️ Достигнут лимит детей ({MAX_ACTIVE_CHILDREN}): chat {chat_id} не смог подписаться. "
-                "Поднять: GAME_MAX_ACTIVE_CHILDREN в product-bot.env."
+                "Поднять: GAME_MAX_ACTIVE_CHILDREN в product-bot.env.",
+                con, chat_id, "limit",
             )
             return "Сейчас мест нет — я сообщил владельцу. Попробуйте позже."
         return None
@@ -425,6 +428,7 @@ class ProductBot:
             "WHERE r.child_id = children.id AND r.active = 1)",
             (target,),
         )
+        self.notify_owner(f"⛔ chat {target} заблокирован", con, target, "block")
         return f"Участник {target} заблокирован, его игры остановлены."
 
     # --- member commands -----------------------------------------------------
@@ -446,7 +450,10 @@ class ProductBot:
         ).rowcount
         if not changed:
             return "Игры уже идут." if active else "Игры уже на паузе (или ещё не подписаны)."
-        self.notify_owner(f"chat {chat_id}: {'возобновил' if active else 'поставил на паузу'} игры")
+        self.notify_owner(
+            f"{'▶️' if active else '⏸'} chat {chat_id}: {'возобновил' if active else 'поставил на паузу'} игры",
+            con, chat_id, "resume" if active else "pause",
+        )
         if active:
             return "Игры возобновлены с ближайшего утра."
         return "Пауза. Уже подготовленная на сегодня игра может прийти, дальше — тишина. /resume — вернуть."
@@ -569,8 +576,6 @@ def main():
                 chat_id = ((update.get("message") or {}).get("chat") or {}).get("id")
                 if reply and chat_id is not None:
                     send(chat_id, reply)
-                while bot.outbox:
-                    send(*bot.outbox.pop(0))
         except Exception as exc:  # noqa: BLE001
             print(f"poll error: {type(exc).__name__}", flush=True)
             if time.time() - last_success > EXIT_AFTER_FAILING_SECONDS:

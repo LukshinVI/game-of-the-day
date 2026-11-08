@@ -39,8 +39,10 @@ the chat has one child (with siblings the bot asks for a reply). One family's an
 cannot attach to another family's game.
 
 A chat with several children gets each game headed `👶 <name>`; a second child with the
-same name in one chat is questioned during the questionnaire. The owner gets a message
-on every join, subscription and pause.
+same name in one chat is questioned during the questionnaire. Owner monitoring lives in the ops bot, not here: the product bot records each join,
+subscription, pause, limit and block in `user_events`, the ops bot forwards them within a
+polling cycle and answers `/users` (`src/ops/users_report.py`). The public bot never holds
+the ops token.
 
 Strangers without an invite only get a "closed bot" notice; nothing is stored for them.
 
