@@ -349,3 +349,15 @@ class Greetings(TempDb):
         self.assertIn("Маша", text.split("\n")[0])
         self.assertIn("🎲", text)
         self.assertFalse(any(t.startswith("🎂") for (t,) in self.query("SELECT message_text FROM games")))
+
+
+class GrownUp(TempDb):
+    def test_a_child_older_than_the_supported_range_is_skipped_not_failed(self):
+        con = self.con()
+        child = ch.add_child(con, "Большой", "2020-01-01")
+        ch.add_recipient(con, child, "telegram", "555")
+        select = mock.Mock()
+        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gp, "select_candidate", select):
+            gp.prepare_run(self.today)
+        select.assert_not_called()
+        self.assertEqual(gp.MAX_AGE_MONTHS_SUPPORTED, 36)

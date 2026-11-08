@@ -57,7 +57,8 @@ MOSCOW = ZoneInfo("Europe/Moscow")
 
 INVITE_TTL_DAYS = 7
 MAX_NAME_CHARS = 40
-MAX_AGE_MONTHS = 72
+# Matches the candidate schema (age_months <= 36): the games are designed for 0-3 years.
+MAX_AGE_MONTHS = 36
 MAX_FEEDBACK_CHARS = 4000
 PREPARATION_HOUR_MSK = 7
 DELIVERY_TIME_MSK = "10:00"
@@ -121,7 +122,7 @@ def parse_birth_date(text, today):
     if value > today:
         raise ValueError("Дата рождения в будущем — проверьте, пожалуйста.")
     if age_months(value, today) > MAX_AGE_MONTHS:
-        raise ValueError("Игры рассчитаны на детей до 6 лет.")
+        raise ValueError("Игры рассчитаны на детей до 3 лет.")
     return value.isoformat()
 
 

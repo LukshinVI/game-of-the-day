@@ -114,7 +114,7 @@ class Questionnaire(BotTest):
         self.say("42", "Петя")
         self.assertIn("разобрать", self.say("42", "весной"))
         self.assertIn("будущем", self.say("42", "01.01.2027"))
-        self.assertIn("до 6 лет", self.say("42", "01.01.2015"))
+        self.assertIn("до 3 лет", self.say("42", "01.01.2023"))
         self.assertIn("31.12.2025", self.say("42", "2025-12-31"))
 
     def test_no_restarts_and_nothing_is_written_until_yes(self):
