@@ -8,6 +8,10 @@ on the commit that completed each milestone.
 ## [Unreleased]
 
 ### Added
+- Wishes about the service: the feedback analysis separates requests about the service
+  ("more outdoor games") from observations about the child; families can also send
+  `/idea` in the product bot. Each wish reaches the owner at once through the ops bot;
+  `/ideas` lists them. They never enter the child's profile.
 - Stickers, photos, videos and voice messages as feedback: labelled by the channel
   adapters (the Worker for VK, the product bot for Telegram), never downloaded or stored;
   a reaction alone gets one request per game to write a few words and costs no model call;
@@ -35,7 +39,7 @@ on the commit that completed each milestone.
 - `game_preparation.py prepare --child ID` limits a manual run to one child.
 
 ### Changed
-- Schema version 7 (additive).
+- Schema version 8 (additive).
 
 ## [1.3.0] - 2026-11-08 — Measured, then cheaper
 

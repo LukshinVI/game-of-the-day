@@ -8,6 +8,7 @@ Commands, accepted only from the owner's private chat:
   /retry           when today's delivery failed: show a one-time code
   /retry <code>    start the explicit-retry delivery unit
   /users           product-bot families: children, subscription, last game, feedback
+  /ideas           wishes about the service, from feedback and /idea
   /llm             the last 7 days of game selection: attempts, latency, tokens, cost, rejections
 
 It also forwards owner-facing events the product bot records in SQLite (new member,
@@ -57,7 +58,8 @@ HELP = (
     "/send - отправить сегодняшнюю игру (нужен код подтверждения)\n"
     "/retry - повторить отправку после ошибки (нужен код подтверждения)\n"
     "/users - семьи в продуктовом боте\n"
-    "/llm - подбор игр за неделю: попытки, время, токены, стоимость"
+    "/llm - подбор игр за неделю: попытки, время, токены, стоимость\n"
+    "/ideas - пожелания пользователей"
 )
 
 EXPLANATIONS = {
@@ -151,6 +153,12 @@ class Controller:
                 return "Пользователи:\n\n" + self.users()
             except Exception as exc:  # noqa: BLE001
                 return f"Не удалось построить отчёт: {type(exc).__name__}"
+
+        if command == "/ideas":
+            try:
+                return users_report.wishes()
+            except Exception as exc:  # noqa: BLE001
+                return f"Не удалось построить список: {type(exc).__name__}"
 
         if command == "/llm":
             try:

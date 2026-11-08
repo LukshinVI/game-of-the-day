@@ -140,3 +140,21 @@ def report(db_path=DB_PATH, now=None):
 
 if __name__ == "__main__":
     print(report(sys.argv[1] if len(sys.argv) > 1 else DB_PATH))
+
+
+def wishes(db_path=DB_PATH, limit=20):
+    con = connect(db_path)
+    try:
+        if not has_table(con, "wishes"):
+            return "Пожеланий пока нет."
+        rows = con.execute(
+            "SELECT w.created_at, w.source, w.text, c.name FROM wishes w "
+            "LEFT JOIN children c ON c.id = w.child_id ORDER BY w.id DESC LIMIT ?", (limit,)
+        ).fetchall()
+    finally:
+        con.close()
+    if not rows:
+        return "Пожеланий пока нет. Они приходят из отзывов и команды /idea в продуктовом боте."
+    return "💡 Пожелания (новые сверху):\n" + "\n".join(
+        f"• {r['created_at'][:10]} {'/idea' if r['source'] == 'command' else 'отзыв'}"
+        f"{', ' + r['name'] if r['name'] else ''}: {r['text']}" for r in rows)

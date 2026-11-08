@@ -344,3 +344,13 @@ class Reactions(BotTest):
         self.say("42", "/start " + link.split("start=")[1].split()[0])
         self.assertIn("текстом", self.media("42", sticker={"emoji": "😊"}))
         self.assertEqual(self.rows("SELECT step FROM onboarding"), [("name",)])
+
+
+class Ideas(BotTest):
+    def test_idea_command(self):
+        self.onboard("42")
+        self.assertIn("например", self.say("42", "/idea"))
+        self.assertIn("Передал пожелание", self.say("42", "/idea видео к играм"))
+        self.assertEqual(self.rows("SELECT source, chat_id, text FROM wishes"), [("command", "42", "видео к играм")])
+        self.assertIn("💡 Пожелание", self.rows("SELECT text FROM user_events WHERE kind='wish'")[0][0])
+        self.assertEqual(self.say("99", "/idea спам"), pb.CLOSED)  # strangers cannot
