@@ -130,6 +130,15 @@ def resolve_game(con, data):
 
 
 
+def not_test_clause(con):
+    """Games of test children never absorb feedback without an explicit game: in VK the
+    test dialog and the family dialog share one channel, and the family's answer must
+    not land on a test game (nor the reverse guess be made silently)."""
+    if "is_test" not in {r[1] for r in con.execute("PRAGMA table_info(children)")}:
+        return "1 = 1"
+    return "NOT EXISTS (SELECT 1 FROM children AS c WHERE c.id = g.child_id AND c.is_test = 1)"
+
+
 def resolve_feedback_target(con, channel="vk"):
     """
     Resolve feedback without an explicit game to the newest successfully
@@ -152,6 +161,7 @@ def resolve_feedback_target(con, channel="vk"):
           ON d.game_id = g.id
         WHERE d.status = 'sent'
           AND d.channel = ?
+          AND {not_test}
           AND NOT EXISTS (
               SELECT 1
               FROM feedback AS f
@@ -161,7 +171,7 @@ def resolve_feedback_target(con, channel="vk"):
             g.game_date DESC,
             g.id DESC
         LIMIT 1
-        """,
+        """.format(not_test=not_test_clause(con)),
         (channel,),
     ).fetchone()
 

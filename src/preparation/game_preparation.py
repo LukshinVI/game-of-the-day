@@ -855,8 +855,11 @@ def select_candidate(history, target_date, birth_date=None, age_months=None):
     )
 
 
-def prepare_run(target_date, dry_run=False):
+def prepare_run(target_date, dry_run=False, only_child=None):
     """Prepare today's game for every active child (or the single child).
+
+    only_child limits the run to one child id (a manual run for a new or test child
+    must not prepare, and then deliver early, everyone else's game).
 
     Children are independent: a failure for one is reported and does not stop
     the others; the run fails at the end if any child failed.
@@ -868,6 +871,10 @@ def prepare_run(target_date, dry_run=False):
         # A child nobody receives games for (all recipients paused) costs a model
         # call for nothing: skip it.
         children = [c for c in active_children(con) if c["recipients"]]
+    if only_child is not None:
+        children = [c for c in children if c["id"] == only_child]
+        if not children:
+            raise RuntimeError(f"no active child with recipients and id {only_child}")
 
     # The games (and the candidate schema) cover 0-36 months; an older child would
     # fail every attempt and alert daily. Skip with a note instead.
@@ -1049,6 +1056,7 @@ def main():
         default=datetime.now(MOSCOW).date().isoformat(),
         help="Целевая дата YYYY-MM-DD",
     )
+    prepare.add_argument("--child", type=int, help="only this child id (manual runs)")
     prepare.add_argument(
         "--dry-run",
         action="store_true",
@@ -1063,6 +1071,7 @@ def main():
         prepare_run(
             target_date=args.date,
             dry_run=args.dry_run,
+            only_child=args.child,
         )
 
 
