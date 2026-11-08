@@ -30,6 +30,9 @@ from src.preparation import skills  # noqa: E402
 
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 MOSCOW = ZoneInfo("Europe/Moscow")
+# A digest of one or two games (a family that just joined, a week after an outage)
+# says nothing useful; wait for a real week.
+MIN_GAMES = 3
 
 # Typical milestones by age, after CDC "Learn the Signs. Act Early." (2022 revision):
 # what most children (about three in four) do by that age.
@@ -75,7 +78,7 @@ def compose(con, child, today):
         "SELECT id, title, skill FROM games WHERE child_id = ? AND game_date BETWEEN ? AND ? ORDER BY game_date",
         (child["id"], week_start.isoformat(), today.isoformat()),
     ).fetchall()
-    if not games:
+    if len(games) < MIN_GAMES:
         return None
     ids = [g["id"] for g in games]
     marks = ",".join("?" * len(ids))
