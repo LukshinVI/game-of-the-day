@@ -39,3 +39,20 @@ Recommendation
 The infant cases (2 and 6 months) are now clean; the remaining concerns are second-order
 (sharing a cup with a toy, a basket a child could climb into). Daily selection switched to
 Sonnet with this prompt on 2026-11-08.
+
+## Follow-up: the safety reviewer (Haiku after the gate, 011e200)
+
+Seven cases (the six above and the profile case), Sonnet with the reviewer, Opus judging.
+
+- The reviewer flagged 2 of 7 cases, 5 findings, all concrete and valid on reading: pillows
+  around a baby who cannot sit steadily, a cloth that can cover a 9-month-old's face, a
+  board book left to chew, real food entering a pretend tea party, small lids on a toy tea
+  set. After the corrective retries the judge found **no** safety concerns in those cases.
+- No false alarms seen: the 5 cases it passed went through on the first attempt.
+- It does not replace the judge: 4 of 7 cases still had judge concerns, mostly missing
+  advice (sleep on the floor, drinking upright, furniture corners) rather than hazards.
+- Cost: attempts per case 1.43 (from 1.00); about $0.07 per game instead of $0.05.
+  Side effect: retries tend to add steps (lint "7 steps" twice).
+
+Recommendation: enable in production (`PREPARATION_REVIEW_MODEL=haiku`) and watch the
+review rate in the weekly report.
