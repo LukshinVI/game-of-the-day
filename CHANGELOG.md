@@ -17,6 +17,8 @@ on the commit that completed each milestone.
   (`applications`, `outbox`, `inbound_events`); the module is `src/bot/vk_dialog.py`.
 
 ### Fixed
+- `ops/deploy.sh` failed its test step when started from a directory the application
+  user cannot enter (e.g. `/root`): it now changes into the application directory first.
 - The Worker passed on VK messages from two hard-coded dialogs only, so the feedback of
   any other VK family was dropped. It now passes every private dialog with the sender's
   peer id, and feedback is attached to the newest unanswered game delivered to that
