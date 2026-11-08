@@ -5,7 +5,7 @@ versions follow [Semantic Versioning](https://semver.org/). Every version is wha
 running in production at that point. Versions before 1.0.0 were tagged retroactively,
 on the commit that completed each milestone.
 
-## [Unreleased]
+## [1.5.0] - 2026-11-08 — Not the same game twice
 
 ### Added
 - Similar games are caught, not only identical titles: every activity carries a mechanic tag
@@ -194,6 +194,7 @@ messenger and nothing re-sent ([postmortem](https://github.com/LukshinVI/game-of
 - Daily delivery to VK from Google Sheets + Apps Script, with a retry window.
 - The first feedback agent and its eval harness.
 
+[1.5.0]: ../../compare/v1.4.0...v1.5.0
 [1.4.0]: ../../compare/v1.3.0...v1.4.0
 [1.3.0]: ../../compare/v1.2.0...v1.3.0
 [1.2.0]: ../../compare/v1.1.0...v1.2.0
