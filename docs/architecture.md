@@ -1,287 +1,191 @@
 # Architecture — Game of the Day
 
-This document is the architectural source of truth for the project. The README provides the public overview; GitHub Issues track implementation and migration state.
+The system as it runs in production. What can fail and how it is noticed and recovered
+is in [reliability.md](reliability.md). How the models are used and kept in bounds is in
+[ai-design.md](ai-design.md). Installing it is covered in [deployment.md](deployment.md).
 
-> Delivery and feedback persistence run entirely on the VPS/SQLite application runtime; delivery has been production since 2026-09-18. The legacy Google path stays enabled as an unverified rollback until the exit criteria in #32 are met — that is a deliberate hedge, not evidence that either boundary is still mid-move.
-
-## 1. Architecture overview
+## 1. Overview
 
 ```mermaid
 flowchart LR
-    subgraph LEGACY[Legacy path: rollback, kept enabled until the cutover criteria are met]
-        AUTO[Daily automation] --> STORE[Legacy data store]
-        STORE --> SCRIPT[Legacy delivery runtime]
-        SCRIPT --> CH[Messaging channel]
+    subgraph Host["Host (systemd, SQLite in WAL mode)"]
+        PREP[Preparation 07:00<br/>model → gate → fallback → library]
+        DEL[Delivery 10:00<br/>state machine per recipient]
+        CHK[Outcome check<br/>10:15 · 11:15 · 13:15 · 17:15]
+        INS[Feedback insights<br/>every 15 min]
+        PB[Product bot<br/>families · invites · feedback]
+        OB[Ops bot<br/>owner · alerts · /users · /llm]
+        CON[Queue consumer]
+        BK[Backups 03:30<br/>off-site 03:45]
+        DB[(SQLite)]
     end
-
-    subgraph CF[Cloudflare feedback contour]
-        CH -->|event| W[Worker: ingress + validation]
-        W --> QA[[Queue: ingress]]
-        QA --> W2[Worker: forward to host]
-        W2 --> QB[[Queue: storage]]
-        QC[[Queue: enrichment]] --> FA[Feedback Agent]
-        FA --> AI[Workers AI]
-        AI --> FA
-        FA --> QB
+    subgraph Edge["Cloudflare"]
+        W[Worker: VK callback]
+        Q[[Queues: ingress · storage · enrichment]]
+        AI[Workers AI: feedback agent]
     end
+    CC[Claude Code headless<br/>Sonnet · Haiku]
+    VK[VK]
+    TG[Telegram]
+    GH[(Private GitHub repo<br/>encrypted backups · watcher)]
 
-    subgraph APP[Application runtime]
-        STORAGE[Feedback storage] --> DB[(SQLite)]
-        DELIVERY[Delivery service] --> DB
-        TIMER[Scheduler] --> DELIVERY
-    end
-
-    QB --> STORAGE
-    STORAGE -. raw persisted, not yet analysed .-> QC
-    DELIVERY --> CH
+    PREP <--> CC
+    PREP --> DB
+    DB --> DEL --> VK & TG
+    VK -->|reply| W --> Q --> CON --> DB
+    Q <--> AI
+    TG <-->|reply, /commands| PB --> DB
+    INS <--> CC
+    INS --> DB
+    INS -->|"«Учли: …»"| VK & TG
+    CHK --> DB
+    OB --> TG
+    BK --> GH
 ```
 
-Three separate Cloudflare Queues carry feedback, not one: an ingress queue, a storage queue used twice (raw, then analysis — this is the "storage" queue crossing into `APP` above), and an enrichment queue that sends a raw event back out to the Worker for AI classification. The host crosses the Cloudflare boundary twice per feedback event: once to persist the raw event and request enrichment, once to persist the resulting analysis. This round trip is why an ambiguous publish can duplicate enrichment (see [Reliability model](reliability.md)).
+Two Telegram bots on purpose: the **product bot** faces families and runs as its own
+unprivileged user; the **ops bot** belongs to the owner and carries alerts and manual
+controls. They share nothing but the database.
 
-Current migration boundary:
+## 2. Components
+
+| component | code | runs | does |
+|---|---|---|---|
+| Preparation | `src/preparation` | 07:00, retries 08:00 and 09:00 MSK | one game per active child: prompt with age-banded skills and the child's profile → model → deterministic gate → corrective retries → fallback model → library |
+| Delivery | `src/delivery` | 10:00, catch-up 10:12 | one delivery per recipient (VK or Telegram); idempotent; recovers an interrupted send from the messenger history; adds the child's name for a shared chat, birthday greetings and the invitation to reply |
+| Outcome check | `src/ops/day_outcome_check.py` | 10:15, 11:15, 13:15, 17:15 | independently verifies that every delivery of the day is `sent` |
+| Feedback ingress (VK) | `worker/` + `src/feedback/queue_consumer.py` | always | Worker validates the callback and queues the event; the host stores the raw text before any model call; stickers and photos become labels |
+| Feedback ingress (Telegram) | `src/bot/product_bot.py` | always | stores the text with an explicit game id (reply-to message or the chat's latest game) |
+| Feedback insights | `src/feedback/insights.py` | every 15 minutes | merges messages sent together, extracts observations with verbatim quotes, rebuilds the child's profile, separates wishes about the service, replies once |
+| Product bot | `src/bot` | always | invite-only onboarding, FAQ, `/children`, `/add_child`, `/pause`, `/resume`, `/idea` |
+| Ops bot | `src/ops/manual_bot.py` | always | `/status`, `/send`, `/retry` with one-time codes; `/users`, `/llm`, `/ideas`; forwards product events |
+| Reports | `src/ops/llm_report.py`, `users_report.py` | Mondays 10:30; on demand | model quality, latency, tokens, cost, reserve days; families |
+| Warm reserve | `src/preparation/fallback.py` | Sundays 04:30 | keeps at least three validated games for each child's next two months |
+| Backups | `ops/backup` | 03:30 local, 03:45 off-site, Sundays restore test | SQLite online backup → age-encrypted copy in a private repository → weekly restore into a sandbox |
+| Deploy | `ops/deploy.sh` | by hand | backup → fast-forward → tests → migrate → units → restart → health |
+
+## 3. Data model
+
+Product state belongs to a **child**, not to a messenger dialog.
 
 ```text
-delivery: host scheduler → messaging channel        [production since 2026-09-18; legacy path kept as rollback]
-feedback: channel → Cloudflare queues → host consumer → SQLite  [cut over]
-state:    legacy store → SQLite                    [source of truth in practice; legacy retirement gated on #32]
-ingress:  none for feedback (queue pull/push only)   [HTTP API removed]
+children ──< recipients (channel, address, active)
+   │
+   ├──< games (date, age, skill, origin: model | fallback_model | library, candidate_json)
+   │       └──< deliveries (channel, recipient, status, idempotency_key, external_message_id)
+   │       └──< feedback (raw text, channel event id, insights status)
+   │                └──< observations (kind, value, skill, verbatim evidence)
+   ├── child_profiles (built by code from observations)
+   └── (is_test: gets games only from a manual run)
+
+members ── invites (hash only) · onboarding (questionnaire state)
+reserve_games · model_runs · user_events · wishes
 ```
 
-Concrete production hostnames, origin addresses, recipient identities, and internal ports are intentionally excluded from the public repository. The ops unit files use a generic service user (`gotd`) and `/srv/game-of-the-day`; deployment-specific identifiers (messaging community id, spreadsheet id) come from configuration, not source (#34, resolved before publication).
+All migrations are additive (`src/db/children.py migrate`, schema version 8): the
+previous code keeps working on a migrated database, which is what makes a code rollback
+safe. A database with no children runs in the original single-child mode from the
+environment.
 
-## 2. Application runtime
-
-The application host contains the durable production runtime.
-
-Verified capabilities include:
-
-- historical activity, delivery, and feedback data imported into SQLite;
-- database integrity checks;
-- a queue consumer on the host that persists raw feedback and its analysis through an idempotent storage module (unique by channel and event id);
-- isolated regression tests for create, duplicate/retry, conflict, concurrent writers, analysis persistence, and the consumer's acknowledge-only-after-persist rule;
-- a delivery state machine run by a host timer: idempotent sends (same idempotency identity on retry), explicit retry of failed deliveries, a machine-readable state for tooling, and an owner-only chat control for manual send/retry;
-- daily preparation on the host with deterministic validation of every candidate (the model proposes, code enforces safety and format);
-- a nightly online backup of the database with an integrity check, a freshness check and failure alerts.
-
-SQLite is not directly exposed to the network.
-
-## 3. Ingress
-
-Feedback reaches the host only through Cloudflare Queues: the Worker publishes, and the host consumer pulls and pushes over the queue API. There is no inbound application route.
-
-The HTTP Feedback API that existed during the migration was removed after a traffic check found no callers (three rejected requests during cutover testing, none since). A future channel that needs inbound HTTP defines its own adapter and route; adapters normalise input into the same feedback envelope and do not define the domain model. A tunnel connector, where present, is transport infrastructure and not an application router.
-
-The repository does not publish environment-specific tunnel identifiers or origin details.
-
-## 4. Target production architecture
-
-```mermaid
-flowchart TD
-    P[Game preparation / product workflow] --> DB[(SQLite)]
-    DB --> D[Delivery service + scheduler]
-    D --> CH[Messaging channel]
-    CH -->|feedback event| W[Cloudflare Worker: ingress]
-    W --> QA[[Queue: ingress]]
-    QA --> W2[Cloudflare Worker: forward to host]
-    W2 --> QB[[Queue: storage]]
-    QC[[Queue: enrichment]] --> F[Feedback Agent]
-    F --> AI[Cloudflare Workers AI]
-    AI --> F
-    F --> QB
-    QB --> STORE[Feedback storage] --> DB
-    STORE -. raw persisted, not yet analysed .-> QC
-```
-
-| Component | Responsibility |
-|---|---|
-| SQLite | durable product state, activities, delivery state, feedback, analysis |
-| Delivery service | select the current activity, own delivery state transitions, perform channel send |
-| Scheduler | trigger safe delivery attempts |
-| Cloudflare Tunnel | optional secure origin transport; no application route behind it at present |
-| Messaging channel | user-facing delivery and feedback transport |
-| Cloudflare Worker | callback ingress, validation, environment routing, queue producer/consumer |
-| Cloudflare Queues | three durable boundaries for feedback: ingress, storage (used for both raw and analysis), enrichment |
-| Workers AI | semantic feedback classification |
-| Feedback storage | idempotent persistence boundary, called in-process by the queue consumer |
-| Monitoring agent | runtime health collection, diagnosis, and alerting |
-| Legacy runtime | rollback-only after cutover, then retirement |
-
-## 5. Migration strategy
-
-The migration is intentionally decomposed into independently verifiable boundaries:
+## 4. A day
 
 ```text
-production-safe delivery state machine
-        ↓
-reproducible scheduler
-
-Feedback storage + persistence contract
-        ↓
-Cloudflare downstream switch
-        ↓
-real feedback acceptance
-
-all migration gates + observability
-        ↓
-final source-of-truth / scheduler cutover
-        ↓
-stability period
-        ↓
-legacy runtime retirement
+03:30  local backup (integrity check, retention)      03:45  encrypted off-site copy
+07:00  preparation for every active child (08:00, 09:00 retry only what is missing)
+10:00  delivery to every recipient                    10:12  catch-up and reconciliation
+10:15  outcome check (again 11:15, 13:15, 17:15)
+*/15   feedback insights                              */5    host health (infra repository)
+Mon    LLM report                                     Sun    reserve top-up, off-site restore test
 ```
 
-The final cutover is the only point at which the new scheduler becomes the sole production delivery owner. Structural refactoring is postponed until migration stability is established.
-
-## 6. Delivery invariants
+## 5. Delivery invariants
 
 - only the activity for the intended local date is eligible for scheduled delivery;
 - an empty message is never sent;
 - a confirmed `sent` delivery is not sent again;
-- external side effects have stable idempotency identities;
+- external side effects have stable idempotency identities (VK `random_id` is derived
+  from the delivery's idempotency key);
 - delivery states are explicit: `pending`, `sending`, `sent`, `failed`;
-- `failed` deliveries are recoverable through an explicit retry that reuses the same idempotency identity, and the retry refuses any other state;
-- a stale `sending` state is reconciled against the messenger history by the stable message id (`game_delivery.py recover`, also run by the 10:12 delivery pass): delivered → `sent`, not delivered → `failed` awaiting an explicit retry;
+- `failed` is recovered only by an explicit retry that reuses the same identity;
+- a stale `sending` is reconciled against the messenger history: delivered → `sent`, not
+  delivered → `failed` awaiting an explicit retry; Telegram, which cannot be queried, is
+  reported, not guessed;
+- each recipient has its own delivery, so one channel failing does not block another;
 - `sent_at` is recorded only after confirmed success;
-- absence of an activity for the current date is a valid no-op, not data corruption;
-- repeated scheduler executions must not create uncontrolled duplicate delivery.
+- repeated scheduler runs never create a second delivery.
 
-## 7. Feedback invariants
-
-```text
-channel callback
-→ validate
-→ durable queue
-→ persist raw feedback
-→ semantic processing
-→ persist validated analysis
-```
-
-- raw feedback becomes durable before AI processing;
-- an external event identity is used for idempotency;
-- duplicate events do not create duplicate feedback records;
-- retries resolve the existing event/record rather than retargeting a newer activity;
-- analysis is linked to the same durable feedback record;
-- AI failure leaves feedback recoverable as received/unprocessed;
-- queue retries are bounded;
-- test and production environments remain isolated;
-- storage migration must not silently change the semantic feedback contract.
-
-## 8. Deterministic / AI boundary
-
-### Deterministic application code
-
-Owns:
-
-- security and routing validation;
-- dates and delivery windows;
-- idempotency, retry, and recovery;
-- workflow state;
-- persistence and record linking;
-- segmentation and provenance;
-- schema and business validation;
-- policy decisions;
-- external side effects.
-
-### AI / LLM
-
-May perform:
-
-- semantic classification of free-form feedback;
-- interpretation of ambiguous reactions;
-- constrained semantic target resolution;
-- future recommendation steps where deterministic ranking is insufficient.
-
-The LLM is not the application's memory, workflow engine, or source of truth.
-
-## 9. Feedback Agent contract
+## 6. Feedback invariants
 
 ```text
-feedback text
-→ deterministic segmentation + provenance
-→ AI classification of existing segments
-→ deterministic validation
-→ deterministic policy
-→ guarded target linking
+channel event → validate → durable queue (VK) / direct (Telegram)
+→ persist raw feedback → insights (observations, profile, wish) → one reply
+                       ↘ semantic feedback agent (VK, Workers AI)
 ```
 
-Key invariants:
+- raw feedback is durable before any model call; a model failure leaves it pending;
+- an external event identity makes ingestion idempotent;
+- a retry resolves the existing record, never a newer activity;
+- feedback attaches to an explicit game when the channel allows it (Telegram reply,
+  chat-scoped lookup); a test child's games never absorb unattributed feedback;
+- an observation is kept only if its quote is verbatim in the feedback;
+- wishes about the service never enter the child's profile;
+- stickers, photos and voice messages are labels, never stored media.
 
-- the model does not create evidence spans;
-- metadata is context, not user evidence;
-- unresolved targets remain `UNSPECIFIED` rather than guessed;
-- semantic extraction does not directly create durable preferences;
-- clarification and product decisions belong to the application layer.
+## 7. Deterministic / AI boundary
 
-The current production model is `@cf/google/gemma-4-26b-a4b-it`.
+Deterministic code owns: authentication and routing, invitations, dates and windows,
+workflow state, idempotency, retries and recovery, persistence and record linking, the
+skills offered at each age, the safety gate, the fallback chain and the library choice,
+the child's profile, budgets and caps, and every external side effect.
 
-## 10. Multi-user and multi-channel boundary
+Models are used for exactly three things, each behind a schema and a deterministic check:
 
-The current MVP does not require a full multi-tenant rewrite, but new code should avoid introducing irreversible single-user or single-channel assumptions.
+1. proposing the day's activity (Claude Sonnet; Haiku as fallback);
+2. extracting observations and wishes from feedback (Claude Haiku);
+3. classifying VK feedback in the semantic feedback agent (Gemma on Workers AI).
 
-```text
-context = {
-  tenantId,
-  childId,
-  recipientId,
-  connectionId,
-  channel,
-  environment
-}
-```
+A fourth, offline use is the evals judge (Opus), which never touches production state.
+The model is never the application's memory, workflow engine or source of truth.
 
-The channel is transport, not product identity. Child-specific state belongs to the child/product context and should remain reusable across delivery channels.
+## 8. Families and channels
 
-## 11. Observability
+- a child has any number of recipients; a recipient is a channel plus an address;
+- channels today: VK (a community dialog) and Telegram (the product bot);
+- a chat with several children gets each game headed with the child's name; feedback in
+  such a chat must reply to the game it is about;
+- families join only through one-time invites; limits cap children per chat, active
+  children in total and feedback per day;
+- the owner's VK dialog is a test recipient, used only for manual runs.
 
-The project favors lightweight, explicit operational observability over a large monitoring stack at its current scale.
+## 9. Security boundaries
 
-The intended chain is:
+- secrets live in root-owned `0600` files read by systemd, never in the repository;
+- the application runs as `gotd`; the public product bot runs as `gotd-bot` with
+  `ProtectProc=invisible`, so it cannot read other services' environment, and shares only
+  the database through a group;
+- the repository key for off-site backups is used only by root units;
+- the ops bot never holds messaging credentials: it starts two fixed units through a
+  polkit rule;
+- the Worker validates the VK callback secret and community id before anything else;
+  the community id is deployment configuration;
+- no inbound port on the host: both bots use outbound long polling;
+- the child's name and birth date never reach a model, only the age in months;
+- invites are stored as hashes; strangers get one notice a day and nothing is stored.
 
-```text
-application events
-→ structured service logs
-→ deterministic health checks
-→ monitoring agent
-→ diagnosis on state change
-→ alert / recovery notification
-```
+See [`../SECURITY.md`](../SECURITY.md).
 
-The intended health checks cover database integrity, abnormal delivery states, scheduler/service health, feedback persistence state, and expected delivery freshness. Healthy polling should remain inexpensive and should not require an LLM call.
+## 10. Cost boundary
 
-Implemented today: failure alerts to the owner from preparation, delivery and failed systemd units (Telegram, in Russian); the nightly backup with its own freshness check; a bounded-liveness rule for the manual-control bot; an independent daily-outcome check (`ops/day-outcome`) that reads today's delivery state on its own, several times after the delivery window, and alerts if the outcome was not met — this is what process alerts alone missed on 2026-09-20/21 (two days unnoticed). **Not implemented yet:** an external heartbeat that would notice the whole host being down, which none of the above can see (#50).
+The service runs on an existing Claude subscription and the free Cloudflare tier.
+Nothing switches on paid overage. Each model use has a ceiling: a daily preparation
+budget (then the library), at most a few feedback analyses per child and per day, a
+weekly cap on reserve generation. Running out of quota degrades to the library and an
+owner alert; it never costs the family a day.
 
-Logs must not contain credentials, secret headers, infrastructure secrets, or unnecessary raw user feedback.
+## 11. Change and rollback
 
-## 12. Security boundaries
-
-- secrets are never committed to Git;
-- runtime credentials remain outside the repository;
-- callback and API authentication material is runtime configuration;
-- ingress callbacks are validated before business processing;
-- persistence endpoints require authentication;
-- the application API is isolated behind the ingress layer;
-- only required public paths are exposed;
-- test and production state are isolated;
-- SQLite is never directly exposed;
-- production infrastructure identifiers are not part of the repository; unit files use a generic service user and path, and deployment-specific ids come from configuration (#34);
-- monitoring uses a diagnostic boundary separate from application ownership where practical.
-
-See [`../SECURITY.md`](../SECURITY.md) for repository security policy.
-
-## 13. Failure model and rollback
-
-Migration steps are designed so failure does not require destructive rollback.
-
-Before final cutover, the legacy delivery runtime remains available. During cutover it is disabled rather than immediately deleted. Data and code are retained for a stability window.
-
-The feedback persistence cutover is complete. The previous persistence path and the intermediate HTTP API no longer exist (the API had no callers and was removed); rolling back feedback means reverting the change and redeploying, with the queues as the durable buffer in between.
-
-The delivery rollback path is the legacy runtime, kept enabled by decision until measurable exit criteria are met (tracked in #32). Whether the legacy sender still delivers has not been verified, so it must not be relied on as a safety net without a drill.
-
-Physical removal of legacy runtime code happens only after stable production operation on the new contour.
-
-## 14. Cost boundary
-
-The project currently follows a strict no-unplanned-spend policy. Free-tier services and quotas are acceptable; automatic paid escalation is not.
-
-Quota exhaustion or model unavailability must degrade into a recoverable application state rather than silently enabling paid consumption or breaking daily delivery.
+Every change ships through `ops/deploy.sh`: database backup, fast-forward only, the
+test suite on the new code before the migration (a failure rolls the code back with the
+database untouched), additive migration, changed units, service health. Releases are
+tagged from [CHANGELOG.md](../CHANGELOG.md). The original Google Sheets + Apps Script
+sender is kept in `legacy/` for reference; it is not a live fallback.
