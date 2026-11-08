@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The backup tests drive the real sqlite3 CLI and are skipped without it.
+      - name: Install sqlite3 CLI
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+  worker:
+    name: Worker — deterministic evals
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+      - name: Feedback segmentation evals (no model calls)
+        run: npm test
+
+  shell:
+    name: ShellCheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint shell scripts
+        run: shellcheck --severity=warning ops/backup/game-backup.sh
