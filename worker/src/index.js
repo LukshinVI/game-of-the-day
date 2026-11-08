@@ -1,6 +1,7 @@
 import { analyzeFeedback } from './agents/feedbackAgent.js';
 
-const VK_GROUP_ID = 123456789;
+// Community ID is deployment-specific: set with `wrangler secret put VK_GROUP_ID`.
+// If it is missing, Number(undefined) is NaN and every callback is rejected (fail closed).
 
 export default {
     async fetch(request, env) {
@@ -41,7 +42,7 @@ export default {
             event.secret !==
                 env.VK_CALLBACK_SECRET ||
             event.group_id !==
-                VK_GROUP_ID
+                Number(env.VK_GROUP_ID)
         ) {
             console.log(
                 'Rejected callback'
