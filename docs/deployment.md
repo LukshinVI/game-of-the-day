@@ -58,8 +58,12 @@ sudo -u gotd python3 src/db/children.py list
 
 Each child gets its own game every day (own age, own history); each recipient
 gets its own delivery with its own state. Telegram delivery needs
-`GAME_TELEGRAM_BOT_TOKEN` in `game.env`: a separate product bot, not the ops bot.
-Feedback is currently received from VK only.
+`GAME_TELEGRAM_BOT_TOKEN` in `product-bot.env`: a separate product bot, not the ops bot.
+
+Telegram families normally register themselves: the owner sends `/invite` to the
+product bot and forwards the one-time link; the family enters the child's name and
+birth date and confirms the age. See [the product bot runbook](../ops/product-bot/README.md).
+The commands above remain for VK recipients and manual fixes.
 
 ### Model CLI
 
@@ -73,16 +77,17 @@ preparation depends on its `--json-schema` structured output.
 | unit | schedule |
 |---|---|
 | `ops/preparation/game-preparation.{service,timer}` | 07:00, retries 08:00 and 09:00 MSK (idempotent) |
-| `ops/delivery/game-delivery.{service,timer}` | 10:00 MSK |
+| `ops/delivery/game-delivery.{service,timer}` | 10:00 MSK, catch-up 10:12 |
 | `ops/delivery/game-delivery-retry.service` | manual, via the bot |
 | `ops/feedback/game-feedback-consumer.service` | always on |
 | `ops/day-outcome/game-day-outcome.{service,timer}` | 10:15, 11:15, 13:15, 17:15 MSK |
 | `ops/backup/game-backup*.{service,timer}` | 03:30 backup, 12:00 freshness check |
-| `ops/bot/game-bot.service` | always on |
+| `ops/bot/game-bot.service` | always on (owner only) |
+| `ops/product-bot/game-product-bot.service` | always on (families; optional) |
 
 Then install the units following each runbook:
 [backup](../ops/backup/README.md), [manual delivery bot](../ops/bot/README.md),
-[daily outcome check](../ops/day-outcome/README.md).
+[daily outcome check](../ops/day-outcome/README.md), [product bot](../ops/product-bot/README.md).
 
 ### Using a different service user
 

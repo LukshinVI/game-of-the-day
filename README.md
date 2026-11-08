@@ -18,6 +18,7 @@ It runs in production for a real family. It is also an engineering sandbox for o
 | The model must not invent evidence | Feedback is segmented deterministically first. The model classifies the application's segments; it cannot create its own evidence spans. Unresolved references stay unresolved instead of being guessed. |
 | Prompt and model changes regress silently | Eval suites: deterministic segmentation evals on every push, LLM evals against real Workers AI models on demand, with side-by-side model comparison. |
 | "It ran" is not "the user got the game" | An independent daily-outcome check verifies that today's activity actually exists and was delivered, separately from the per-process alerts. |
+| Onboarding without the operator | Families join through a one-time invite link in a Telegram bot and enter the child's birth date themselves; the age is computed, confirmed and stored, the next run picks the child up. No model is involved. |
 | Ops for a one-person service | systemd units with hardening, verified SQLite backups with retention and alerting, an owner-only Telegram bot for manual send/retry. |
 
 ## Architecture
@@ -65,7 +66,7 @@ feedback text
 
 | Suite | What it covers | Runs |
 |---|---|---|
-| `tests/` (Python, 135 tests) | delivery state machine, feedback storage idempotency, preparation validation and message layout, child age, model backends, backup script, outcome check, ops bot | every push (CI) |
+| `tests/` (Python, 173 tests) | delivery state machine, feedback storage idempotency, preparation validation and message layout, child age, model backends, backup script, outcome check, ops bot, multi-child, product bot onboarding | every push (CI) |
 | `worker/evals/runSegmentationEvals.js` | deterministic segmentation and relation detection | every push (CI) |
 | `worker/evals/feedbackCases.js` (16 cases) | end-to-end semantic feedback analysis against a real model; compares `baseline` / `gemma` / `glm` | manual workflow ([LLM evals](.github/workflows/llm-evals.yml)) |
 | ShellCheck | backup script | every push (CI) |
@@ -98,6 +99,7 @@ src/
   delivery/      delivery state machine and messenger sender
   feedback/      queue consumer and idempotent feedback storage
   ops/           daily outcome check, owner-only Telegram bot, alert notifier
+  bot/           product Telegram bot: invites, onboarding, feedback
   db/            schema and one-off import/sync from the legacy sheet
 worker/
   src/           Cloudflare Worker: callback ingress and the feedback agent
@@ -107,7 +109,7 @@ docs/            architecture, reliability, AI design, deployment, roadmap, post
 legacy/          the original Google Apps Script sender (rollback path)
 ```
 
-Runbooks: [database backup](ops/backup/README.md) · [manual delivery control](ops/bot/README.md) · [daily outcome check](ops/day-outcome/README.md)
+Runbooks: [database backup](ops/backup/README.md) · [manual delivery control](ops/bot/README.md) · [daily outcome check](ops/day-outcome/README.md) · [product bot](ops/product-bot/README.md)
 
 ## In production
 

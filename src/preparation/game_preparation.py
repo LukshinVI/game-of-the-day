@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from src.db.children import active_children  # noqa: E402
+from src.db.children import active_children, has_children  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
@@ -788,9 +788,16 @@ def prepare_run(target_date, dry_run=False):
     target_date = validate_target_date(target_date)
 
     with connect_db() as con:
-        children = active_children(con)
+        multi_child = has_children(con)
+        # A child nobody receives games for (all recipients paused) costs a model
+        # call for nothing: skip it.
+        children = [c for c in active_children(con) if c["recipients"]]
 
-    plan = children or [None]
+    # Single-child mode only before the first child exists; once children are
+    # configured, "nobody to prepare for" means nothing to do, not the env child.
+    plan = children if multi_child else [None]
+    if not plan:
+        print("Нет активных детей с получателями: готовить нечего.")
     failures = []
 
     for child in plan:
