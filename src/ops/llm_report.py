@@ -25,6 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 NOTIFIER = ROOT / "src" / "ops" / "notifier.py"
+sys.path.insert(0, str(ROOT))
 
 
 def percentile(values, q):
@@ -130,6 +131,11 @@ def main(argv=None):
     parser.add_argument("--send", action="store_true", help="send to the owner via the ops notifier")
     args = parser.parse_args(argv)
     text = report(days=args.days)
+    try:
+        from src.ops import product_metrics
+        text = product_metrics.report(days=args.days) + "\n\n" + text
+    except Exception as exc:  # noqa: BLE001 - the model report still goes out
+        print(f"product metrics unavailable: {type(exc).__name__}", file=sys.stderr)
     print(text)
     if args.send:
         title, _, details = text.partition("\n")

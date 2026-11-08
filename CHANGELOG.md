@@ -5,6 +5,14 @@ versions follow [Semantic Versioning](https://semver.org/). Every version is wha
 running in production at that point. Versions before 1.0.0 were tagged retroactively,
 on the commit that completed each milestone.
 
+## [Unreleased]
+
+### Added
+- Product metrics (`/metrics` in the ops bot, and the top of the Monday report): games
+  delivered, the share with a written answer or a reaction, liked, difficulty (too easy /
+  right / too hard), pauses, wishes, reserve days and reviewer rejections, each against the
+  previous period, test children excluded.
+
 ## [1.5.0] - 2026-11-08 — Not the same game twice
 
 ### Added
