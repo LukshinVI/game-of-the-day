@@ -50,4 +50,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Lint shell scripts
-        run: shellcheck --severity=warning ops/backup/game-backup.sh ops/backup/offsite-git.sh
+        run: shellcheck --severity=warning ops/backup/game-backup.sh ops/backup/offsite-git.sh ops/deploy.sh
