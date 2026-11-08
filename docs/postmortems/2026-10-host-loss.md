@@ -60,6 +60,6 @@ recovered from the messenger itself; no caregiver feedback was lost.
 | Child age computed from a birth date on the delivery date | done |
 | History import from the messenger, delivery rows marked `sent` so nothing is re-sent | done |
 | Off-site backup: nightly age-encrypted copy in a private repository, weekly automatic restore check ([runbook](../../ops/backup/README.md#off-site-copy-encrypted-private-git-repository)) | done (2026-11-08) |
-| Watcher outside the host: an external heartbeat that alerts when the daily outcome check stops reporting | open |
+| Watcher outside the host: a scheduled GitHub Actions check in the private backup repository fails (and emails the owner) when no nightly backup arrived for 26 hours | done (2026-11-08) |
 | Storage-queue retention from 1 day to the maximum, so a host outage does not lose feedback | open |
 | Rotate credentials that were handled in chat during the recovery | open |

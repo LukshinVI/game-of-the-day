@@ -13,6 +13,9 @@ on the commit that completed each milestone.
   the validator's rejection reasons), also when the day fails. A weekly report per model
   goes to the owner on Mondays, and `/llm` in the ops bot shows it on demand.
 
+- An external host watcher: the private backup repository checks every 6 hours that a
+  backup arrived within 26 hours, and GitHub emails the owner otherwise.
+
 ### Changed
 - Schema version 4 (additive).
 

@@ -130,3 +130,7 @@ chown gotd:gotd /srv/game-of-the-day/data/game-of-the-day.db
 ```
 
 `restore` never overwrites an existing database.
+
+The backup repository also hosts the external watcher: a scheduled workflow (every 6 hours)
+fails, and GitHub emails the owner, when the newest copy is older than 26 hours. A host that
+is down, unreachable or not backing up is noticed from outside the host.
