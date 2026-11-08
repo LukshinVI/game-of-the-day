@@ -66,7 +66,7 @@ feedback text
 
 | Suite | What it covers | Runs |
 |---|---|---|
-| `tests/` (Python, 173 tests) | delivery state machine, feedback storage idempotency, preparation validation and message layout, child age, model backends, backup script, outcome check, ops bot, multi-child, product bot onboarding | every push (CI) |
+| `tests/` (Python, 175 tests) | delivery state machine, feedback storage idempotency, preparation validation and message layout, child age, model backends, backup script, outcome check, ops bot, multi-child, product bot onboarding | every push (CI) |
 | `worker/evals/runSegmentationEvals.js` | deterministic segmentation and relation detection | every push (CI) |
 | `worker/evals/feedbackCases.js` (16 cases) | end-to-end semantic feedback analysis against a real model; compares `baseline` / `gemma` / `glm` | manual workflow ([LLM evals](.github/workflows/llm-evals.yml)) |
 | ShellCheck | backup script | every push (CI) |
