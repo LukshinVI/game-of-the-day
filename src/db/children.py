@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -130,6 +130,10 @@ def migrate(con):
     con.executescript(MIGRATION_2)
     con.executescript(MIGRATION_3)
     con.executescript(MIGRATION_4)
+    if "is_test" not in columns(con, "children"):
+        # A test child (e.g. the VK test dialog) gets real games and deliveries, but its
+        # games never absorb feedback that arrives without an explicit game.
+        con.execute("ALTER TABLE children ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0")
     if "child_id" not in columns(con, "games"):
         con.execute("ALTER TABLE games ADD COLUMN child_id INTEGER REFERENCES children(id)")
     con.execute(
@@ -158,7 +162,7 @@ def active_children(con):
     if not is_migrated(con):
         return []
     children = [dict(row) for row in con.execute(
-        "SELECT id, name, birth_date FROM children WHERE active = 1 ORDER BY id"
+        "SELECT id, name, birth_date, is_test FROM children WHERE active = 1 ORDER BY id"
     )]
     for child in children:
         child["recipients"] = [dict(row) for row in con.execute(
@@ -169,13 +173,13 @@ def active_children(con):
     return children
 
 
-def add_child(con, name, birth_date, adopt_existing=False):
+def add_child(con, name, birth_date, adopt_existing=False, is_test=False):
     date.fromisoformat(birth_date)  # validates YYYY-MM-DD
     if not name.strip():
         raise ValueError("name must not be empty")
     child_id = con.execute(
-        "INSERT INTO children(name, birth_date) VALUES (?, ?)",
-        (name.strip(), birth_date),
+        "INSERT INTO children(name, birth_date, is_test) VALUES (?, ?, ?)",
+        (name.strip(), birth_date, int(is_test)),
     ).lastrowid
     if adopt_existing:
         con.execute("UPDATE games SET child_id = ? WHERE child_id IS NULL", (child_id,))
@@ -213,6 +217,8 @@ def main(argv=None):
     ren = sub.add_parser("rename")
     ren.add_argument("--child", type=int, required=True)
     ren.add_argument("--name", required=True)
+    add.add_argument("--test", action="store_true",
+                     help="a test child: real deliveries, never a target for unattributed feedback")
     rec = sub.add_parser("add-recipient")
     rec.add_argument("--child", type=int, required=True)
     rec.add_argument("--channel", choices=CHANNELS, required=True)
@@ -227,7 +233,7 @@ def main(argv=None):
         if not is_migrated(con):
             raise SystemExit("run 'migrate' first")
         if args.command == "add":
-            print(add_child(con, args.name, args.birth_date, args.adopt_existing))
+            print(add_child(con, args.name, args.birth_date, args.adopt_existing, args.test))
         elif args.command == "rename":
             if not args.name.strip():
                 raise ValueError("name must not be empty")
@@ -244,7 +250,8 @@ def main(argv=None):
                 print("no children: single-child mode (CHILD_BIRTH_DATE, VK_PEER_ID)")
             for child in children:
                 targets = ", ".join(f"{r['channel']}:{r['address']}" for r in child["recipients"]) or "-"
-                print(f"{child['id']}  {child['name']}  {child['birth_date']}  -> {targets}")
+                test = "  [test]" if child.get("is_test") else ""
+                print(f"{child['id']}  {child['name']}  {child['birth_date']}{test}  -> {targets}")
 
 
 if __name__ == "__main__":

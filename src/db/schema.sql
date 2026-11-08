@@ -9,7 +9,8 @@ CREATE TABLE children (
     name TEXT NOT NULL,
     birth_date TEXT NOT NULL,
     active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_test INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE recipients (
     id INTEGER PRIMARY KEY,
@@ -135,4 +136,4 @@ CREATE TABLE migration_meta (
     value TEXT
 );
 
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '4');
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '5');

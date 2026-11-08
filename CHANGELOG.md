@@ -5,6 +5,17 @@ versions follow [Semantic Versioning](https://semver.org/). Every version is wha
 running in production at that point. Versions before 1.0.0 were tagged retroactively,
 on the commit that completed each milestone.
 
+## [Unreleased]
+
+### Added
+- Test children (`children.py add --test`): real games and deliveries (a canary in the VK
+  test dialog), but never the target of feedback that arrives without an explicit game, so
+  a family's VK answer cannot land on a test game.
+- `game_preparation.py prepare --child ID` limits a manual run to one child.
+
+### Changed
+- Schema version 5 (additive).
+
 ## [1.3.0] - 2026-11-08 — Measured, then cheaper
 
 ### Added

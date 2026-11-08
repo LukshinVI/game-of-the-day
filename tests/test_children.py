@@ -186,6 +186,20 @@ class TwoChildren(TempDb):
         self.prepare(capture)
         self.assertEqual(seen, {"2025-09-01": ["Старая"], "2026-03-01": []})
 
+    def test_a_manual_run_can_be_limited_to_one_child(self):
+        calls = []
+
+        def counting(history, target_date, birth_date):
+            calls.append(birth_date)
+            return self.by_age(history, target_date, birth_date)
+
+        with contextlib.redirect_stdout(io.StringIO()), \
+                mock.patch.object(gp, "select_candidate", side_effect=counting):
+            gp.prepare_run(self.today, only_child=self.younger)
+            with self.assertRaises(RuntimeError):
+                gp.prepare_run(self.today, only_child=999)
+        self.assertEqual(calls, ["2026-03-01"])
+
     def test_a_rerun_is_free_and_one_failing_child_does_not_block_the_other(self):
         def younger_fails(history, target_date, birth_date):
             if birth_date == "2026-03-01":
@@ -361,3 +375,23 @@ class GrownUp(TempDb):
             gp.prepare_run(self.today)
         select.assert_not_called()
         self.assertEqual(gp.MAX_AGE_MONTHS_SUPPORTED, 36)
+
+
+class TestChild(TempDb):
+    def test_unattributed_vk_feedback_skips_the_test_childs_newer_game(self):
+        from src.feedback import storage
+        con = self.con()
+        family = ch.add_child(con, "Всеволод", "2025-09-03")
+        test = ch.add_child(con, "Тест", "2025-09-03", is_test=True)
+        for child, peer, title in ((family, "2488584", "Семейная"), (test, "154808451", "Тестовая")):
+            ch.add_recipient(con, child, "vk", peer)
+            game = con.execute(
+                "INSERT INTO games(legacy_id, game_date, title, child_id) VALUES (?, ?, ?, ?)",
+                (title, self.today, title, child),
+            ).lastrowid
+            con.execute("INSERT INTO deliveries(game_id, channel, recipient, idempotency_key, status) "
+                        "VALUES (?, 'vk', ?, ?, 'sent')", (game, peer, f"k-{title}"))
+        con.commit()
+        target = storage.resolve_feedback_target(con, "vk")
+        self.assertEqual(con.execute("SELECT title FROM games WHERE id = ?", (target,)).fetchone()[0], "Семейная")
+        self.assertEqual([c["is_test"] for c in ch.active_children(con)], [0, 1])
