@@ -1,0 +1,282 @@
+[
+  {
+    "id": "newborn-2m",
+    "age_months": 2,
+    "passed": true,
+    "attempts": 1,
+    "candidate": {
+      "title": "Разговор лицом к лицу: улыбка и пауза",
+      "age_months": 2,
+      "duration_minutes": 5,
+      "goal": "Поддержать зрительный контакт и первые «диалоги» со взрослым: малыш смотрит на лицо, улыбается и отвечает звуками.",
+      "skill": "social_emotional",
+      "mechanics": "Взрослый на расстоянии 20–30 см от лица малыша тихо говорит или улыбается, затем делает паузу и ждёт ответа малыша; так чередуются реплики взрослого и малыша.",
+      "materials": [
+        "Плотный ровный коврик на полу"
+      ],
+      "steps": [
+        "Положите коврик на пол в тихом месте, выключите телевизор и уберите телефон.",
+        "Уложите малыша на спину на коврик на полу, убедитесь, что вокруг головы нет посторонних предметов.",
+        "Ложитесь или садитесь рядом так, чтобы ваше лицо было на расстоянии 20–30 см от его лица.",
+        "Улыбнитесь, назовите малыша по имени и тихо скажите короткую фразу или спойте строчку.",
+        "Сделайте паузу на 5–10 секунд и подождите: малыш может посмотреть, улыбнуться или издать звук.",
+        "Ответьте на любой его отклик улыбкой и теми же звуками, затем повторите. Если малыш отвёл взгляд, подождите, не привлекая внимание силой."
+      ],
+      "safety": "Всё время оставайтесь рядом с малышом, он лежит только на твёрдом ровном полу. Не наклоняйтесь слишком близко и не закрывайте ему лицо. Закончите игру, если малыш отворачивается, капризничает или устал.",
+      "source_name": "Zero to Three: Two-Month-Old Milestones",
+      "source_url": "https://www.zerotothree.org/resource/two-month-old-milestones-what-to-expect-in-month-2/",
+      "message_text": "🎲 Игра дня: «Разговор лицом к лицу: улыбка и пауза»\n⏱ 5 минут\n🎯 Цель: Поддержать зрительный контакт и первые «диалоги» со взрослым: малыш смотрит на лицо, улыбается и отвечает звуками.\n🤲 Навык: эмоции и общение.\n🧸 Нужно: Плотный ровный коврик на полу.\n\nКак играть:\n1. Положите коврик на пол в тихом месте, выключите телевизор и уберите телефон.\n2. Уложите малыша на спину на коврик на полу, убедитесь, что вокруг головы нет посторонних предметов.\n3. Ложитесь или садитесь рядом так, чтобы ваше лицо было на расстоянии 20–30 см от его лица.\n4. Улыбнитесь, назовите малыша по имени и тихо скажите короткую фразу или спойте строчку.\n5. Сделайте паузу на 5–10 секунд и подождите: малыш может посмотреть, улыбнуться или издать звук.\n6. Ответьте на любой его отклик улыбкой и теми же звуками, затем повторите. Если малыш отвёл взгляд, подождите, не привлекая внимание силой.\n\n✅ Безопасность: Всё время оставайтесь рядом с малышом, он лежит только на твёрдом ровном полу. Не наклоняйтесь слишком близко и не закрывайте ему лицо. Закончите игру, если малыш отворачивается, капризничает или устал.\n\nИсточник: Zero to Three: Two-Month-Old Milestones\nhttps://www.zerotothree.org/resource/two-month-old-milestones-what-to-expect-in-month-2/"
+    },
+    "lint": [],
+    "judge": {
+      "age_fit": 5,
+      "clarity": 5,
+      "developmental_value": 5,
+      "safety_concerns": [],
+      "notes": "This is classic serve-and-return at the right level for 2 months. The 20–30 cm face distance matches the baby's focusing range, social smiling and cooing are just starting at this age, and the 5–10 second pause allows for an infant's slow response time. The baby lies on the back on a firm floor, there are no toys or objects near the face, the adult stays close the whole time, and the stop cues (turning away, fussing) build in reading the baby's signals, so I found no safety concerns.",
+      "cost_usd": 0.0314256
+    },
+    "rejections": [],
+    "wall_ms": 22553,
+    "cost_usd": 0.0515,
+    "model": "claude-sonnet-5-5,claude-haiku-5-5"
+  },
+  {
+    "id": "infant-6m-fine-motor-heavy",
+    "age_months": 6,
+    "passed": true,
+    "attempts": 1,
+    "candidate": {
+      "title": "Разговор-эхо",
+      "age_months": 6,
+      "duration_minutes": 6,
+      "goal": "Научить малыша «разговаривать по очереди»: слушать звуки взрослого и отвечать своими гласными звуками.",
+      "skill": "speech",
+      "mechanics": "Взрослый повторяет за малышом звуки гулюканья и добавляет новые, делая паузы, чтобы малыш ответил.",
+      "materials": [
+        "Мягкий коврик на полу"
+      ],
+      "steps": [
+        "Постелите коврик на полу в спокойной комнате и выключите телевизор и музыку.",
+        "Посадите малыша к себе на колени с опорой или уложите на спину на коврик так, чтобы он видел ваше лицо на расстоянии 25–30 см.",
+        "Улыбнитесь и дождитесь, пока малыш издаст звук («а-а», «агу», «ба»).",
+        "Повторите его звук тем же голосом и замолчите на 3–5 секунд, глядя на малыша.",
+        "Когда малыш ответит, снова повторите звук. Иногда добавляйте новые: шёпот, «му-му», «ма-ма», хлопок в ладоши.",
+        "Заметьте, какие звуки нравятся малышу, и чаще используйте их. Закончите, когда малыш отвернётся или устанет."
+      ],
+      "safety": "Играйте рядом с малышом, не оставляя его одного. Если малыш на коврике, он лежит на твёрдой ровной поверхности пола, а не на диване. Не играйте, если малыш устал, капризничает или перевозбудился.",
+      "source_name": "CDC — Milestones by 6 Months",
+      "source_url": "https://cdc.gov/act-early/milestones/6-months.html",
+      "message_text": "🎲 Игра дня: «Разговор-эхо»\n⏱ 6 минут\n🎯 Цель: Научить малыша «разговаривать по очереди»: слушать звуки взрослого и отвечать своими гласными звуками.\n🤲 Навык: речь.\n🧸 Нужно: Мягкий коврик на полу.\n\nКак играть:\n1. Постелите коврик на полу в спокойной комнате и выключите телевизор и музыку.\n2. Посадите малыша к себе на колени с опорой или уложите на спину на коврик так, чтобы он видел ваше лицо на расстоянии 25–30 см.\n3. Улыбнитесь и дождитесь, пока малыш издаст звук («а-а», «агу», «ба»).\n4. Повторите его звук тем же голосом и замолчите на 3–5 секунд, глядя на малыша.\n5. Когда малыш ответит, снова повторите звук. Иногда добавляйте новые: шёпот, «му-му», «ма-ма», хлопок в ладоши.\n6. Заметьте, какие звуки нравятся малышу, и чаще используйте их. Закончите, когда малыш отвернётся или устанет.\n\n✅ Безопасность: Играйте рядом с малышом, не оставляя его одного. Если малыш на коврике, он лежит на твёрдой ровной поверхности пола, а не на диване. Не играйте, если малыш устал, капризничает или перевозбудился.\n\nИсточник: CDC — Milestones by 6 Months\nhttps://cdc.gov/act-early/milestones/6-months.html"
+    },
+    "lint": [],
+    "judge": {
+      "age_fit": 5,
+      "clarity": 4,
+      "developmental_value": 5,
+      "safety_concerns": [],
+      "notes": "This is a good serve-and-return activity for speech. It matches the CDC 6-month milestone \"takes turns making sounds with you\", and it switches away from fine motor as the case intends. Clarity loses one point because the steps never say what to do if the baby stays quiet (for example, start with a sound yourself). The hand clap in step 5 is also non-vocal and adds little to speech practice.",
+      "cost_usd": 0.030717599999999998
+    },
+    "rejections": [],
+    "wall_ms": 23832,
+    "cost_usd": 0.0518,
+    "model": "claude-sonnet-5-5,claude-haiku-5-5"
+  },
+  {
+    "id": "mouthing-age-9m",
+    "age_months": 9,
+    "passed": true,
+    "attempts": 1,
+    "candidate": {
+      "title": "Где спряталась игрушка?",
+      "age_months": 9,
+      "duration_minutes": 7,
+      "goal": "Помочь малышу понять, что предмет существует, даже когда его не видно, и научиться его искать.",
+      "skill": "cognitive",
+      "mechanics": "Взрослый на глазах у малыша прячет мягкую игрушку под тканевую пелёнку, малыш сдвигает ткань и находит игрушку.",
+      "materials": [
+        "Мягкая игрушка с вышитыми глазами и носом",
+        "Тканевая пелёнка без бахромы и кисточек",
+        "Нескользкий коврик"
+      ],
+      "steps": [
+        "Осмотрите игрушку: швы целые, ничего не отрывается. Убедитесь, что у пелёнки нет бахромы и торчащих ниток.",
+        "Посадите малыша на коврик на полу, рядом сидите вы. Если он сидит неуверенно, подстрахуйте его рукой.",
+        "Покажите игрушку, покачайте ею и скажите: «Где мишка?».",
+        "Накройте игрушку пелёнкой на глазах у малыша, лицо малыша не накрывайте. Подождите несколько секунд.",
+        "Если малыш не тянется к ткани, приподнимите уголок, чтобы игрушка частично виднелась. Похвалите, когда он найдёт её: «Нашли!».",
+        "Повторите 4–5 раз. Затем спрячьте игрушку под одну из двух пелёнок, если малыш справляется."
+      ],
+      "safety": "Играйте рядом с малышом, не накрывайте ему лицо тканью. Пелёнка должна быть лёгкой и без бахромы, игрушка цельной, чтобы ничего не оторвалось и не попало в рот. Закончите, если малыш устал, капризничает или потерял интерес.",
+      "source_name": "CDC: Milestones by 9 Months",
+      "source_url": "https://www.cdc.gov/act-early/milestones/9-months.html",
+      "message_text": "🎲 Игра дня: «Где спряталась игрушка?»\n⏱ 7 минут\n🎯 Цель: Помочь малышу понять, что предмет существует, даже когда его не видно, и научиться его искать.\n🤲 Навык: мышление.\n🧸 Нужно: Мягкая игрушка с вышитыми глазами и носом; Тканевая пелёнка без бахромы и кисточек; Нескользкий коврик.\n\nКак играть:\n1. Осмотрите игрушку: швы целые, ничего не отрывается. Убедитесь, что у пелёнки нет бахромы и торчащих ниток.\n2. Посадите малыша на коврик на полу, рядом сидите вы. Если он сидит неуверенно, подстрахуйте его рукой.\n3. Покажите игрушку, покачайте ею и скажите: «Где мишка?».\n4. Накройте игрушку пелёнкой на глазах у малыша, лицо малыша не накрывайте. Подождите несколько секунд.\n5. Если малыш не тянется к ткани, приподнимите уголок, чтобы игрушка частично виднелась. Похвалите, когда он найдёт её: «Нашли!».\n6. Повторите 4–5 раз. Затем спрячьте игрушку под одну из двух пелёнок, если малыш справляется.\n\n✅ Безопасность: Играйте рядом с малышом, не накрывайте ему лицо тканью. Пелёнка должна быть лёгкой и без бахромы, игрушка цельной, чтобы ничего не оторвалось и не попало в рот. Закончите, если малыш устал, капризничает или потерял интерес.\n\nИсточник: CDC: Milestones by 9 Months\nhttps://www.cdc.gov/act-early/milestones/9-months.html"
+    },
+    "lint": [],
+    "judge": {
+      "age_fit": 5,
+      "clarity": 4,
+      "developmental_value": 5,
+      "safety_concerns": [
+        "Put the cloth away after the game. Don't leave it with the baby unsupervised or in the crib, because loose fabric is a suffocation risk at this age.",
+        "The toy will end up in the baby's mouth. Use a toy that is too big to fit in the mouth and has no detachable labels, ribbons or pompoms, and wash it beforehand."
+      ],
+      "notes": "This is a good object permanence task for 9 months. It matches the CDC milestone 'looks for objects when dropped out of sight', and the partly visible toy gives a good fallback. The small-parts risk is handled well with embroidered eyes, intact seams and no fringe. One point is unclear: step 6 doesn't say how to use the two cloths (for example, show which one you hide the toy under and lay them side by side). The 'Где мишка?' line also assumes the toy is a bear.",
+      "cost_usd": 0.035821599999999995
+    },
+    "rejections": [],
+    "wall_ms": 24725,
+    "cost_usd": 0.0521,
+    "model": "claude-sonnet-5-5,claude-haiku-5-5"
+  },
+  {
+    "id": "toddler-14m-long-history",
+    "age_months": 14,
+    "passed": true,
+    "attempts": 1,
+    "candidate": {
+      "title": "Напои мишку",
+      "age_months": 14,
+      "duration_minutes": 7,
+      "goal": "Учиться пить из открытой чашки самому: держать её двумя руками и делать маленькие глотки.",
+      "skill": "self_care",
+      "mechanics": "Малыш сидя поит мягкого мишку из маленькой чашки, затем пьёт сам, держа чашку двумя руками.",
+      "materials": [
+        "Невысокая устойчивая чашка из небьющегося материала",
+        "Питьевая вода комнатной температуры",
+        "Мягкий мишка с вышитыми глазами и носом",
+        "Детский стульчик со столиком",
+        "Тканевая салфетка",
+        "Слюнявчик"
+      ],
+      "steps": [
+        "Проверьте игрушку: глаза и нос вышиты, ничего не отрывается. Налейте в чашку воды на 2 пальца.",
+        "Посадите малыша в стульчик спиной прямо, чашку и мишку поставьте на столик. Сядьте рядом.",
+        "Скажите: «Мишка хочет пить!» Помогите малышу взять чашку двумя руками и поднести к рту мишки.",
+        "Поддерживайте дно чашки ладонью и говорите «Пей, мишка, буль-буль».",
+        "Предложите: «Теперь ты!» Малыш делает маленькие глотки сам, вы слегка придерживаете чашку.",
+        "Вытирайте капли салфеткой вместе с малышом и похвалите: «Ты сам попил!»"
+      ],
+      "safety": "Взрослый всё время рядом, рука у чашки; пить только сидя, чтобы не поперхнуться. Воды наливать совсем немного. Закончите, если малыш устал, капризничает или начал разбрасывать воду.",
+      "source_name": "CDC — 18 Month Milestone Checklist",
+      "source_url": "https://cdc.gov/act-early/digital-online-checklist/18-months.html",
+      "message_text": "🎲 Игра дня: «Напои мишку»\n⏱ 7 минут\n🎯 Цель: Учиться пить из открытой чашки самому: держать её двумя руками и делать маленькие глотки.\n🤲 Навык: самостоятельность.\n🧸 Нужно: Невысокая устойчивая чашка из небьющегося материала; Питьевая вода комнатной температуры; Мягкий мишка с вышитыми глазами и носом; Детский стульчик со столиком; Тканевая салфетка; Слюнявчик.\n\nКак играть:\n1. Проверьте игрушку: глаза и нос вышиты, ничего не отрывается. Налейте в чашку воды на 2 пальца.\n2. Посадите малыша в стульчик спиной прямо, чашку и мишку поставьте на столик. Сядьте рядом.\n3. Скажите: «Мишка хочет пить!» Помогите малышу взять чашку двумя руками и поднести к рту мишки.\n4. Поддерживайте дно чашки ладонью и говорите «Пей, мишка, буль-буль».\n5. Предложите: «Теперь ты!» Малыш делает маленькие глотки сам, вы слегка придерживаете чашку.\n6. Вытирайте капли салфеткой вместе с малышом и похвалите: «Ты сам попил!»\n\n✅ Безопасность: Взрослый всё время рядом, рука у чашки; пить только сидя, чтобы не поперхнуться. Воды наливать совсем немного. Закончите, если малыш устал, капризничает или начал разбрасывать воду.\n\nИсточник: CDC — 18 Month Milestone Checklist\nhttps://cdc.gov/act-early/digital-online-checklist/18-months.html"
+    },
+    "lint": [
+      "more than 5 materials"
+    ],
+    "judge": {
+      "age_fit": 5,
+      "clarity": 4,
+      "developmental_value": 5,
+      "safety_concerns": [
+        "Toy and child share one cup. If the bear's mouth touches the rim, the child then drinks after a toy that may be dirty. Say to bring the cup up to the bear without touching it, or rinse the cup before the child drinks.",
+        "Fastening the high chair straps isn't mentioned. A child reaching for the bear or the cup could slide or stand up.",
+        "In step 5 the adult 'slightly holds' the cup. A parent tipping it could pour water in faster than the child can swallow and cause choking. Say the child controls the tilt and the adult only steadies the bottom.",
+        "Water spilled on the bear leaves a wet plush toy. It should be dried or taken away and not put back in the crib wet."
+      ],
+      "notes": "This is a good fit for 14 months. With help it practices drinking from an open cup, an emerging skill the CDC lists at 18 months, and pretending to feed the bear gives the child a reason to try. Clarity could be better: 'на 2 пальца' is vague (say about 2–3 cm or a few sips), and the steps don't say whether the bear really gets water or only pretends. I couldn't check the case intent (no repeated title or mechanic) because I wasn't given the history.",
+      "cost_usd": 0.0420016
+    },
+    "rejections": [],
+    "wall_ms": 22852,
+    "cost_usd": 0.0522,
+    "model": "claude-sonnet-5-5,claude-haiku-5-5"
+  },
+  {
+    "id": "speech-24m",
+    "age_months": 24,
+    "passed": true,
+    "attempts": 1,
+    "candidate": {
+      "title": "Игрушки идут домой",
+      "age_months": 24,
+      "duration_minutes": 7,
+      "goal": "Научить ребёнка самостоятельно убирать игрушки на место и почувствовать себя помощником.",
+      "skill": "self_care",
+      "mechanics": "Ребёнок по одной относит крупные мягкие игрушки в корзину-«домик» под весёлую песенку уборки.",
+      "materials": [
+        "3-4 крупные мягкие игрушки с вышитыми глазами",
+        "широкая устойчивая корзина или коробка",
+        "картинка-наклейка на корзине (по желанию)"
+      ],
+      "steps": [
+        "Проверьте, что пол чистый и сухой, на нём нет лишних предметов, о которые можно споткнуться.",
+        "Разложите игрушки на полу рядом с корзиной и скажите: «Игрушкам пора домой!»",
+        "Дайте ребёнку одну игрушку и покажите, куда её отнести. Похвалите, когда она окажется в корзине.",
+        "Напевайте простую песенку уборки и по очереди называйте игрушки: «Где мишка? Неси мишку домой».",
+        "Когда все игрушки в корзине, помашите им «спокойной ночи» и обнимите ребёнка."
+      ],
+      "safety": "Взрослый рядом всё время. Корзина должна стоять устойчиво и быть неглубокой, чтобы ребёнок не лез в неё. Закончите игру, если ребёнок устал или капризничает.",
+      "source_name": "Pathways.org — What Chores Are Right For My Child?",
+      "source_url": "https://pathways.org/chores-right-child",
+      "message_text": "🎲 Игра дня: «Игрушки идут домой»\n⏱ 7 минут\n🎯 Цель: Научить ребёнка самостоятельно убирать игрушки на место и почувствовать себя помощником.\n🤲 Навык: самостоятельность.\n🧸 Нужно: 3-4 крупные мягкие игрушки с вышитыми глазами; широкая устойчивая корзина или коробка; картинка-наклейка на корзине (по желанию).\n\nКак играть:\n1. Проверьте, что пол чистый и сухой, на нём нет лишних предметов, о которые можно споткнуться.\n2. Разложите игрушки на полу рядом с корзиной и скажите: «Игрушкам пора домой!»\n3. Дайте ребёнку одну игрушку и покажите, куда её отнести. Похвалите, когда она окажется в корзине.\n4. Напевайте простую песенку уборки и по очереди называйте игрушки: «Где мишка? Неси мишку домой».\n5. Когда все игрушки в корзине, помашите им «спокойной ночи» и обнимите ребёнка.\n\n✅ Безопасность: Взрослый рядом всё время. Корзина должна стоять устойчиво и быть неглубокой, чтобы ребёнок не лез в неё. Закончите игру, если ребёнок устал или капризничает.\n\nИсточник: Pathways.org — What Chores Are Right For My Child?\nhttps://pathways.org/chores-right-child"
+    },
+    "lint": [],
+    "judge": {
+      "age_fit": 5,
+      "clarity": 4,
+      "developmental_value": 4,
+      "safety_concerns": [
+        "Use a basket or box without a hinged or heavy lid. A toy-chest lid can slam shut on fingers or the head of a child leaning in.",
+        "Don't line the basket with a plastic bag or film, as that is a suffocation risk."
+      ],
+      "notes": "Carrying big toys one at a time to a 'house' basket suits 24 months well: the child walks steadily while carrying things, follows one-step instructions, and the speech uses short phrases ('Неси мишку домой'), as the case intent asks. Two steps could be stronger. Step 3 has the adult hand the toy over, so a next step should have the child find and pick up the toys alone. Step 4 gives no example of the 'tidy-up song', so a tired parent has to make one up.",
+      "cost_usd": 0.0312656
+    },
+    "rejections": [],
+    "wall_ms": 22965,
+    "cost_usd": 0.0497,
+    "model": "claude-sonnet-5-5,claude-haiku-5-5"
+  },
+  {
+    "id": "upper-bound-36m",
+    "age_months": 36,
+    "passed": true,
+    "attempts": 1,
+    "candidate": {
+      "title": "Мячик в корзину",
+      "age_months": 36,
+      "duration_minutes": 7,
+      "goal": "Тренировать бросок мяча двумя руками и одной рукой в цель, глазомер и равновесие.",
+      "skill": "coordination",
+      "mechanics": "Ребёнок бросает мягкие мячики в большую корзину, постепенно отходя дальше от неё.",
+      "materials": [
+        "Большая корзина для белья",
+        " 4-5 мягких мячиков (тканевых или поролоновых, крупных)",
+        "Нескользящий коврик или чистый нескользящий пол"
+      ],
+      "steps": [
+        "Освободите площадку: уберите всё лишнее с пола, пол должен быть нескользким, ребёнок в устойчивой обуви или в нескользящих носках.",
+        "Проверьте мячики: они должны быть крупными, мягкими, без повреждений.",
+        "Поставьте корзину на пол и встаньте с ребёнком в одном шаге от неё. Покажите, как бросить мячик в корзину.",
+        "Дайте ребёнку по очереди бросать мячики, хвалите каждую попытку, даже если мячик не попал.",
+        "Когда получается, отойдите на шаг дальше; можно попробовать бросок снизу и бросок из-за головы.",
+        "Вместе соберите мячики и сложите их в корзину, посчитайте вслух."
+      ],
+      "safety": "Игра под присмотром взрослого. Мячики крупные и мягкие, пространство свободно, чтобы ребёнок не споткнулся. Закончите, если малыш устал или перевозбудился.",
+      "source_name": "Naître et grandir — 3–4 years old: Gross motor skill development",
+      "source_url": "https://naitreetgrandir.com/en/step/3-5-years/development/3-4-years/child-gross-motor-skill-development-3-4-years",
+      "message_text": "🎲 Игра дня: «Мячик в корзину»\n⏱ 7 минут\n🎯 Цель: Тренировать бросок мяча двумя руками и одной рукой в цель, глазомер и равновесие.\n🤲 Навык: движение и координация.\n🧸 Нужно: Большая корзина для белья; 4-5 мягких мячиков (тканевых или поролоновых, крупных); Нескользящий коврик или чистый нескользящий пол.\n\nКак играть:\n1. Освободите площадку: уберите всё лишнее с пола, пол должен быть нескользким, ребёнок в устойчивой обуви или в нескользящих носках.\n2. Проверьте мячики: они должны быть крупными, мягкими, без повреждений.\n3. Поставьте корзину на пол и встаньте с ребёнком в одном шаге от неё. Покажите, как бросить мячик в корзину.\n4. Дайте ребёнку по очереди бросать мячики, хвалите каждую попытку, даже если мячик не попал.\n5. Когда получается, отойдите на шаг дальше; можно попробовать бросок снизу и бросок из-за головы.\n6. Вместе соберите мячики и сложите их в корзину, посчитайте вслух.\n\n✅ Безопасность: Игра под присмотром взрослого. Мячики крупные и мягкие, пространство свободно, чтобы ребёнок не споткнулся. Закончите, если малыш устал или перевозбудился.\n\nИсточник: Naître et grandir — 3–4 years old: Gross motor skill development\nhttps://naitreetgrandir.com/en/step/3-5-years/development/3-4-years/child-gross-motor-skill-development-3-4-years"
+    },
+    "lint": [],
+    "judge": {
+      "age_fit": 5,
+      "clarity": 4,
+      "developmental_value": 4,
+      "safety_concerns": [
+        "A child may climb into the laundry basket or lean on it, tip it over and fall; say the basket is only for balls.",
+        "Overhand throws can hit someone's face, a pet, a lamp or a window; point the basket away from breakable things and tell the child to throw only at the basket.",
+        "Foam balls can be bitten and crumble into small pieces that are a choking risk; take away any ball with bite marks or chunks missing, not just visibly torn ones.",
+        "A mat on a smooth floor can slide under a running child; the mat needs a non-slip backing."
+      ],
+      "notes": "This is a real toddler throwing game. It fits 36 months well: aimed underhand and overhand throws from a short distance that slowly gets longer, plus counting together while cleaning up. Two small gaps: \"когда получается\" doesn't say how many hits before stepping back (for example, 2–3 of 5), and the goal claims balance, which this activity barely trains.",
+      "cost_usd": 0.0394096
+    },
+    "rejections": [],
+    "wall_ms": 24083,
+    "cost_usd": 0.0519,
+    "model": "claude-sonnet-5-5,claude-haiku-5-5"
+  }
+]

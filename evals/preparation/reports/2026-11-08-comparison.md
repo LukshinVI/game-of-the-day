@@ -26,3 +26,16 @@ Recommendation
 - Next: a concrete safety checklist in the prompt (detachable parts, surfaces and falls,
   head and sitting support by age, chewable materials), then re-run these evals.
 - The weekly `/llm` report watches the switch on real days.
+
+## Follow-up: Sonnet with the safety-by-design prompt (a54dc61)
+
+| | Sonnet, before | Sonnet, after |
+|---|---|---|
+| production gate | 6/6, first attempt | 6/6, first attempt |
+| judge: age fit / clarity / value | 4.7 / 4.0 / 4.7 | 5.0 / 4.2 / 4.7 |
+| cases with safety concerns | 6/6 | 4/6 |
+| clean lint | 4/6 | 5/6 |
+
+The infant cases (2 and 6 months) are now clean; the remaining concerns are second-order
+(sharing a cup with a toy, a basket a child could climb into). Daily selection switched to
+Sonnet with this prompt on 2026-11-08.
