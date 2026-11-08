@@ -261,7 +261,7 @@ def deliver_one(delivery_id, retry_failed=False):
 
         random_id = deterministic_random_id(game["idempotency_key"])
         game = dict(game)
-        game["message_text"] = child_header(con, game) + game["message_text"]
+        game["message_text"] = child_header(con, game) + game["message_text"] + feedback_footer(game["message_text"])
 
         changed = con.execute(
             """
@@ -573,6 +573,17 @@ def vk_send(message: str, random_id: int, peer_id=None):
         raise RuntimeError(f"Unexpected VK response: {data}")
 
     return data["response"]
+
+
+FEEDBACK_FOOTER = (
+    "💬 Ответьте на это сообщение: получилось? легко или сложно? "
+    "Следующие игры подстроятся под ребёнка."
+)
+
+
+def feedback_footer(text):
+    """Invite feedback under every game (added at send time, so library games get it too)."""
+    return "" if "💬" in (text or "") else "\n\n" + FEEDBACK_FOOTER
 
 
 def child_header(con, game):

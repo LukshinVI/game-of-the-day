@@ -143,8 +143,30 @@ CREATE TABLE feedback (
     analysis_json TEXT,
     processed INTEGER NOT NULL DEFAULT 0,
     analyzed_at TEXT,
+    insights_at TEXT,
+    insights_status TEXT,
+    reply_sent_at TEXT,
     FOREIGN KEY(game_id) REFERENCES games(id)
 );
+
+-- Feedback insights (src/feedback/insights.py).
+CREATE TABLE observations (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    feedback_id INTEGER NOT NULL REFERENCES feedback(id),
+    child_id INTEGER,
+    game_id INTEGER,
+    kind TEXT NOT NULL CHECK(kind IN ('outcome', 'difficulty', 'skill', 'like', 'dislike')),
+    value TEXT NOT NULL,
+    skill TEXT,
+    evidence TEXT NOT NULL
+);
+CREATE TABLE child_profiles (
+    child_id INTEGER PRIMARY KEY,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    profile_json TEXT NOT NULL
+);
+
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_feedback_channel_external_event_id
 ON feedback(channel, external_event_id)
@@ -155,4 +177,4 @@ CREATE TABLE migration_meta (
     value TEXT
 );
 
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '6');
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '7');

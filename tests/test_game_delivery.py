@@ -204,7 +204,7 @@ class StuckSending(unittest.TestCase):
         # the explicit retry then resends with the same random_id
         vk, error = self.run_send(retry_failed=True)
         self.assertIsNone(error)
-        vk.assert_called_once_with("text", gd.deterministic_random_id("key-1"))
+        vk.assert_called_once_with("text" + gd.feedback_footer("text"), gd.deterministic_random_id("key-1"))
 
     def test_retry_failed_does_not_resend_a_freshly_recovered_failure(self):
         self.make_stuck(30)
