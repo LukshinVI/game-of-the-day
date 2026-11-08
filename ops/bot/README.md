@@ -27,7 +27,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now game-bot.service
 systemctl is-active game-bot.service
 ```
-The bot sends "Бот ручной отправки запущен" to the owner when it starts. Then send `/status` from the private chat. Do not start `game-delivery-retry.service` by hand to test: it retries a real failed delivery.
+The bot sends "🟢 Ops-бот на связи …" to the owner when it starts (also after a package upgrade restarts it); it never means a send. Then send `/status` from the private chat. Do not start `game-delivery-retry.service` by hand to test: it retries a real failed delivery.
 
 ## Rollback
 ```bash

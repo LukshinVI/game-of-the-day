@@ -87,3 +87,41 @@ Existing backups stay in `/var/backups/game-of-the-day`.
 ## Tests
 
 `python3 -m unittest tests.test_backup_script` runs the script against temporary databases: consistency under a concurrent writer, corrupt source, missing database, low disk space, invalid configuration, stale temp files, a refused concurrent run (needs `flock`), retention (minimum count, ordering by name), a failing off-site step, and every `check` failure mode including a touched-old-file and a malformed manifest.
+
+## Off-site copy (encrypted, private Git repository)
+
+`offsite-git.sh` is the `GAME_BACKUP_OFFSITE_CMD` of the nightly backup. It encrypts the
+verified `.db.gz` with [age](https://age-encryption.org), proves the round trip, and pushes
+the ciphertext to a branch of a private repository. Only ciphertext leaves the host; access
+is a deploy key for that one repository; GitHub's host keys are pinned
+(`github_known_hosts`). The newest 30 copies stay in the branch tip.
+
+`game-offsite-verify.timer` (Sundays 05:00 MSK) clones the branch, decrypts the newest copy
+into a private temp dir and runs `integrity_check`; a failure alerts the owner.
+
+Setup (once, as root):
+
+```bash
+apt-get install -y age
+d=/var/lib/game-of-the-day/offsite; install -d -m 700 -o gotd -g gotd $d
+sudo -u gotd ssh-keygen -q -t ed25519 -N '' -C gotd-offsite-backup -f $d/deploy_key
+sudo -u gotd sh -c "umask 077; age-keygen -o $d/age.key"
+# add $d/deploy_key.pub as a deploy key with write access to the private backup repository
+# keep a copy of $d/age.key OFFLINE (password manager): without it nothing can be restored
+cat > /etc/game-of-the-day/offsite.env <<ENV
+GAME_BACKUP_OFFSITE_CMD=/srv/game-of-the-day/ops/backup/offsite-git.sh
+GAME_OFFSITE_REPO=git@github.com:<owner>/<private-backup-repo>.git
+ENV
+chmod 600 /etc/game-of-the-day/offsite.env
+install -m 644 ops/backup/game-offsite-verify.{service,timer} ops/backup/game-backup.service /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now game-offsite-verify.timer
+```
+
+Restore on a new host (after restoring `age.key` and the deploy key into the state dir):
+
+```bash
+sudo -u gotd env $(cat /etc/game-of-the-day/offsite.env) \
+  /srv/game-of-the-day/ops/backup/offsite-git.sh restore /srv/game-of-the-day/data/game-of-the-day.db
+```
+
+`restore` never overwrites an existing database.

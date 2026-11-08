@@ -1,0 +1,9 @@
+[Unit]
+Description=Game of the Day - weekly off-site restore check
+
+[Timer]
+OnCalendar=Sun *-*-* 05:00:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target

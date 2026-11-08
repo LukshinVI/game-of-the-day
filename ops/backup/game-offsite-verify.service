@@ -1,0 +1,23 @@
+[Unit]
+Description=Game of the Day - restore the newest off-site backup into a sandbox and check it
+After=network-online.target
+Wants=network-online.target
+OnFailure=game-backup-alert@%n.service
+ConditionPathExists=/etc/game-of-the-day/offsite.env
+
+[Service]
+Type=oneshot
+User=gotd
+Group=gotd
+EnvironmentFile=/etc/game-of-the-day/offsite.env
+Environment=HOME=/var/lib/game-of-the-day
+# A backup that was never restored is a hope, not a backup.
+ExecStart=/srv/game-of-the-day/ops/backup/offsite-git.sh verify
+TimeoutStartSec=10min
+UMask=0077
+Nice=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadOnlyPaths=/var/lib/game-of-the-day/offsite

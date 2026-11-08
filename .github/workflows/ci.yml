@@ -21,9 +21,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # The backup tests drive the real sqlite3 CLI and are skipped without it.
+      # The backup tests drive the real sqlite3 CLI and age; they are skipped without them.
       - name: Install sqlite3 CLI
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3 age
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 
@@ -50,4 +50,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Lint shell scripts
-        run: shellcheck --severity=warning ops/backup/game-backup.sh
+        run: shellcheck --severity=warning ops/backup/game-backup.sh ops/backup/offsite-git.sh

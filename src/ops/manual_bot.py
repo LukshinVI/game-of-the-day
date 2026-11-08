@@ -245,7 +245,7 @@ def main():
         )
 
     try:
-        reply("Бот ручной отправки запущен. /help")
+        reply("🟢 Ops-бот на связи (запуск или перезапуск службы). Ничего не отправлено. /help")
     except Exception as exc:  # noqa: BLE001 - the loop below reports real problems
         print(f"start message failed: {type(exc).__name__}", flush=True)
 
