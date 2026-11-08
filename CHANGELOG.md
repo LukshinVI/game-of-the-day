@@ -8,9 +8,9 @@ on the commit that completed each milestone.
 ## [Unreleased]
 
 ### Added
-- Test children (`children.py add --test`): real games and deliveries (a canary in the VK
-  test dialog), but never the target of feedback that arrives without an explicit game, so
-  a family's VK answer cannot land on a test game.
+- Test children (`children.py add --test`): games only from a manual run
+  (`prepare --child ID`), never from the daily schedule, and never the target of feedback
+  that arrives without an explicit game, so a family's VK answer cannot land on a test game.
 - `game_preparation.py prepare --child ID` limits a manual run to one child.
 
 ### Changed

@@ -157,12 +157,16 @@ def has_children(con):
     return is_migrated(con) and con.execute("SELECT 1 FROM children LIMIT 1").fetchone() is not None
 
 
-def active_children(con):
-    """Active children with their active recipients; [] means single-child mode."""
+def active_children(con, include_test=False):
+    """Active children with their active recipients; [] means single-child mode.
+
+    Test children are left out unless asked for: they get games only from a manual
+    run (game_preparation.py prepare --child ID), never from the daily schedule."""
     if not is_migrated(con):
         return []
+    test_filter = "" if include_test else " AND is_test = 0"
     children = [dict(row) for row in con.execute(
-        "SELECT id, name, birth_date, is_test FROM children WHERE active = 1 ORDER BY id"
+        f"SELECT id, name, birth_date, is_test FROM children WHERE active = 1{test_filter} ORDER BY id"
     )]
     for child in children:
         child["recipients"] = [dict(row) for row in con.execute(
@@ -245,7 +249,7 @@ def main(argv=None):
             add_recipient(con, args.child, args.channel, args.address)
             print("ok")
         elif args.command == "list":
-            children = active_children(con)
+            children = active_children(con, include_test=True)
             if not children:
                 print("no children: single-child mode (CHILD_BIRTH_DATE, VK_PEER_ID)")
             for child in children:

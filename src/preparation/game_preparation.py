@@ -870,7 +870,7 @@ def prepare_run(target_date, dry_run=False, only_child=None):
         multi_child = has_children(con)
         # A child nobody receives games for (all recipients paused) costs a model
         # call for nothing: skip it.
-        children = [c for c in active_children(con) if c["recipients"]]
+        children = [c for c in active_children(con, include_test=only_child is not None) if c["recipients"]]
     if only_child is not None:
         children = [c for c in children if c["id"] == only_child]
         if not children:
