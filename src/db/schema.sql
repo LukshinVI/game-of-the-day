@@ -1,6 +1,26 @@
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
+-- Children and their delivery recipients (src/db/children.py). Product state
+-- belongs to a child; a recipient is a channel address. No rows = single-child
+-- mode (CHILD_BIRTH_DATE, VK_PEER_ID from the environment).
+CREATE TABLE children (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    birth_date TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE recipients (
+    id INTEGER PRIMARY KEY,
+    child_id INTEGER NOT NULL REFERENCES children(id),
+    channel TEXT NOT NULL CHECK(channel IN ('vk', 'telegram')),
+    address TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(child_id, channel, address)
+);
+
 CREATE TABLE games (
     id INTEGER PRIMARY KEY,
     legacy_id TEXT UNIQUE,
@@ -12,10 +32,12 @@ CREATE TABLE games (
     source_name TEXT,
     source_url TEXT,
     message_text TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    child_id INTEGER REFERENCES children(id)
 );
 
 CREATE INDEX idx_games_date ON games(game_date);
+CREATE UNIQUE INDEX idx_games_child_date ON games(child_id, game_date) WHERE child_id IS NOT NULL;
 
 CREATE TABLE deliveries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,3 +78,5 @@ CREATE TABLE migration_meta (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '2');

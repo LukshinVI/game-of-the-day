@@ -130,10 +130,16 @@ def resolve_game(con, data):
 
 
 
-def resolve_feedback_target(con):
+def resolve_feedback_target(con, channel="vk"):
     """
     Resolve feedback without an explicit game to the newest successfully
-    sent game that has no feedback yet (the legacy Google Sheets rule).
+    sent game that has no feedback yet (the legacy Google Sheets rule),
+    among games delivered on the channel the feedback came from.
+
+    With several children, games for a child reached only on another channel
+    must not absorb this feedback. This is exact while each channel serves one
+    child; a channel shared by several children needs the sender address in the
+    event (not yet sent by the Worker).
 
     Explicit game identity is handled by resolve_game().
     """
@@ -145,6 +151,7 @@ def resolve_feedback_target(con):
         JOIN deliveries AS d
           ON d.game_id = g.id
         WHERE d.status = 'sent'
+          AND d.channel = ?
           AND NOT EXISTS (
               SELECT 1
               FROM feedback AS f
@@ -154,7 +161,8 @@ def resolve_feedback_target(con):
             g.game_date DESC,
             g.id DESC
         LIMIT 1
-        """
+        """,
+        (channel,),
     ).fetchone()
 
     if row is None:
@@ -253,7 +261,7 @@ def save_raw(data):
             game = resolve_game(con, data)
             game_id = game["id"]
         else:
-            game_id = resolve_feedback_target(con)
+            game_id = resolve_feedback_target(con, channel)
 
         game_context = con.execute(
             """

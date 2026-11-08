@@ -29,12 +29,12 @@ DEFAULT_NOT_BEFORE = "10:15"
 MAX_ERROR_CHARS = 200
 
 QUERY = """
-    SELECT g.legacy_id, g.title, d.status, d.attempts, d.external_message_id, d.last_error
+    SELECT g.legacy_id, g.title, {child_column} AS child_id,
+           d.channel, d.recipient, d.status, d.attempts, d.external_message_id, d.last_error
     FROM games AS g
     JOIN deliveries AS d ON d.game_id = g.id
-    WHERE d.channel = 'vk'
-      AND g.game_date = ?
-    ORDER BY g.id
+    WHERE g.game_date = ?
+    ORDER BY g.id, d.id
 """
 
 BOT_HINT = "Бот: /status, затем /send или /retry."
@@ -45,34 +45,56 @@ def todays_rows(db_path, today):
     try:
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA query_only = ON")
-        return con.execute(QUERY, (today,)).fetchall()
+        has_child = any(row[1] == "child_id" for row in con.execute("PRAGMA table_info(games)"))
+        query = QUERY.format(child_column="g.child_id" if has_child else "NULL")
+        return [dict(row) for row in con.execute(query, (today,)).fetchall()]
     finally:
         con.close()
 
 
 def evaluate(rows):
-    """Return None when the outcome is met, otherwise the alert details in Russian."""
+    """Return None when every delivery of today is confirmed, otherwise the alert in Russian.
+
+    With several children or recipients there is one row per delivery; each must
+    be sent with a message id. One child with two games, or the same delivery
+    twice, is a data error that needs a human.
+    """
     if not rows:
         return "На сегодня нет подготовленной игры.\nПодготовка не отработала или не записала игру.\n" + BOT_HINT
 
-    if len(rows) > 1:
+    games_per_child = {}
+    delivery_keys = set()
+    for row in rows:
+        games_per_child.setdefault(row.get("child_id"), set()).add(row["legacy_id"])
+        key = (row["legacy_id"], row.get("channel"), row.get("recipient"))
+        if key in delivery_keys:
+            return f"На сегодня найдено доставок: {len(rows)}. Нужен ручной разбор."
+        delivery_keys.add(key)
+    if any(len(games) > 1 for games in games_per_child.values()):
         return f"На сегодня найдено доставок: {len(rows)}. Нужен ручной разбор."
 
-    row = rows[0]
+    problems = [describe(row) for row in rows]
+    problems = [p for p in problems if p]
+    if not problems:
+        return None
+    return "\n\n".join(problems) + "\n" + BOT_HINT
+
+
+def describe(row):
+    channel = row.get("channel")
     game = f"ID: {row['legacy_id']}\nНазвание: {row['title']}"
+    if channel and channel != "vk":
+        game += f"\nКанал: {channel}"
 
     if row["status"] == "sent":
         if row["external_message_id"]:
             return None
-
-        return f"{game}\nСтатус sent, но нет номера сообщения VK. Состояние противоречиво."
+        return f"{game}\nСтатус sent, но нет номера сообщения. Состояние противоречиво."
 
     details = f"{game}\nСтатус: {row['status']}\nПопыток: {row['attempts']}"
-
     if row["last_error"]:
         details += f"\nОшибка: {str(row['last_error'])[:MAX_ERROR_CHARS]}"
-
-    return details + "\n" + BOT_HINT
+    return details
 
 
 def send_alert(details):
