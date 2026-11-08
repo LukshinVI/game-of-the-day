@@ -90,10 +90,19 @@ def report(db_path=DB_PATH, days=7, today=None):
         rows = [dict(r) for r in con.execute(
             "SELECT * FROM model_runs WHERE dry_run = 0 AND target_date > ? ORDER BY id", (since,)
         )]
+        origins = {}
+        if "origin" in {r[1] for r in con.execute("PRAGMA table_info(games)")}:
+            origins = dict(con.execute(
+                "SELECT origin, count(*) FROM games WHERE game_date > ? GROUP BY origin", (since,)
+            ).fetchall())
     finally:
         con.close()
+    reserve = ""
+    if origins.get("fallback_model") or origins.get("library"):
+        reserve = (f"\n🟠 Из резерва: резервной моделью {origins.get('fallback_model', 0)}, "
+                   f"из библиотеки {origins.get('library', 0)} (из {sum(origins.values())} игр)")
     if not rows:
-        return f"За {days} дн. запусков модели не было."
+        return f"За {days} дн. запусков модели не было." + reserve
 
     lines = [f"🤖 Подбор игр за {days} дн."]
     for model, s in summarise(rows).items():
@@ -112,7 +121,7 @@ def report(db_path=DB_PATH, days=7, today=None):
         ]
         if s["reasons"]:
             lines.append("• причины отказов валидатора: " + "; ".join(f"{r} ×{n}" for r, n in s["reasons"]))
-    return "\n".join(lines)
+    return "\n".join(lines) + reserve
 
 
 def main(argv=None):

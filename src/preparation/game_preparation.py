@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.db.children import active_children, has_children  # noqa: E402
-from src.preparation import skills  # noqa: E402
+from src.preparation import fallback, skills  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
@@ -171,8 +171,11 @@ def run_model(prompt):
     raise ValueError(f"unknown PREPARATION_BACKEND: {backend!r} (expected claude or codex)")
 
 
+MODEL_OVERRIDE = None  # set by obtain_candidate() for the fallback model
+
+
 def claude_command(schema):
-    model = os.environ.get("PREPARATION_CLAUDE_MODEL", "opus")
+    model = MODEL_OVERRIDE or os.environ.get("PREPARATION_CLAUDE_MODEL", "opus")
     return [
         os.environ.get("CLAUDE_BIN", "claude"),
         "--print",
@@ -239,7 +242,7 @@ def claude_meta(envelope):
     server = usage.get("server_tool_use") or {}
     models = list((envelope.get("modelUsage") or {}).keys())
     return {
-        "model": ",".join(models) or os.environ.get("PREPARATION_CLAUDE_MODEL", "opus"),
+        "model": ",".join(models) or MODEL_OVERRIDE or os.environ.get("PREPARATION_CLAUDE_MODEL", "opus"),
         "api_ms": envelope.get("duration_api_ms") or envelope.get("duration_ms"),
         "num_turns": envelope.get("num_turns"),
         "input_tokens": usage.get("input_tokens"),
@@ -570,6 +573,8 @@ def send_preparation_success_alert(
     candidate,
     attempts,
     child_name=None,
+    origin="model",
+    origin_reason=None,
 ):
     details = (
         (f"Ребёнок: {child_name}\n" if child_name else "")
@@ -577,13 +582,21 @@ def send_preparation_success_alert(
         f"Дата: {target_date}\n"
         f"Название: {candidate['title']}\n"
         f"Навык: {candidate['skill']}\n"
-        f"Попыток подбора: {attempts}\n"
-        "Статус: ожидает отправки"
+        + (f"Попыток подбора: {attempts}\n" if origin != "library" else
+           f"Из библиотеки: копия игры #{candidate.get('library_source_game_id')}\n")
+        + (f"Причина резерва: {origin_reason}\n" if origin != "model" else "")
+        + "Статус: ожидает отправки"
     )
+    titles = {
+        "model": ("info", "Игра подготовлена"),
+        "fallback_model": ("warning", "Игра подготовлена резервной моделью"),
+        "library": ("warning", "Игра из резерва (библиотека), а не подобрана"),
+    }
+    level, title = titles.get(origin, titles["model"])
 
     send_ops_notification(
-        "info",
-        "Игра подготовлена",
+        level,
+        title,
         details,
     )
 
@@ -669,7 +682,7 @@ def next_game_identity(con):
     return game_id, legacy_id
 
 
-def persist_candidate(candidate, target_date, child=None):
+def persist_candidate(candidate, target_date, child=None, origin="model", origin_reason=None):
     """Store the game and one pending delivery per recipient, atomically.
 
     child=None is single-child mode: one VK delivery to VK_PEER_ID, as before.
@@ -698,6 +711,7 @@ def persist_candidate(candidate, target_date, child=None):
             )
 
         game_id, legacy_id = next_game_identity(con)
+        game_columns = {r[1] for r in con.execute("PRAGMA table_info(games)")}
 
         con.execute(
             f"""
@@ -728,6 +742,12 @@ def persist_candidate(candidate, target_date, child=None):
                 candidate["message_text"].strip(),
             ) + ((child_id,) if child else ()),
         )
+
+        if "origin" in game_columns:
+            con.execute(
+                "UPDATE games SET origin = ?, origin_reason = ?, candidate_json = ? WHERE id = ?",
+                (origin, origin_reason, fallback.candidate_json(candidate), game_id),
+            )
 
         if child is None:
             targets = [("vk", None, f"vk-{target_date}-{legacy_id}")]
@@ -848,11 +868,68 @@ def select_candidate(history, target_date, birth_date=None, age_months=None):
                 errors,
             )
 
-    send_failure_alert(last_errors)
+    if ALERT_ON_EXHAUSTION:
+        send_failure_alert(last_errors)
 
     raise RuntimeError(
-        f"Подготовка игры не удалась после {MAX_ATTEMPTS} попыток"
+        f"Подготовка игры не удалась после {MAX_ATTEMPTS} попыток: "
+        + "; ".join(last_errors)[:300]
     )
+
+
+# obtain_candidate() alerts once for the whole chain instead.
+ALERT_ON_EXHAUSTION = True
+
+
+def obtain_candidate(history, target_date, child):
+    """Primary model -> fallback model -> library. Returns (candidate, attempts, origin, reason).
+
+    Raises (after one failure alert) only when nothing fits at all.
+    """
+    global ALERT_ON_EXHAUSTION, MODEL_OVERRIDE
+    birth_date = child["birth_date"] if child else None
+    child_id = child["id"] if child else None
+    reason = None
+
+    with connect_db() as con:
+        budget = fallback.daily_budget_usd()
+        spent = fallback.spent_today(con, target_date)
+    if budget is not None and spent >= budget:
+        reason = f"дневной бюджет модели исчерпан (${spent:.2f} из ${budget:.2f})"
+
+    saved = ALERT_ON_EXHAUSTION
+    ALERT_ON_EXHAUSTION = False
+    try:
+        if reason is None:
+            try:
+                candidate, attempts = select_candidate(history, target_date, birth_date)
+                return candidate, attempts, "model", None
+            except Exception as exc:  # noqa: BLE001 - every failure moves down the chain
+                quota = fallback.is_quota_error(exc)
+                reason = ("лимит подписки исчерпан" if quota else "основная модель не справилась") + f": {str(exc)[:200]}"
+                print(f"FALLBACK: {reason}", file=sys.stderr)
+
+            if not fallback.is_quota_error(reason) and fallback.fallback_model():
+                MODEL_OVERRIDE = fallback.fallback_model()
+                try:
+                    candidate, attempts = select_candidate(history, target_date, birth_date)
+                    return candidate, attempts, "fallback_model", f"{MODEL_OVERRIDE}; {reason}"
+                except Exception as exc:  # noqa: BLE001
+                    reason += f"; резервная модель {MODEL_OVERRIDE}: {str(exc)[:200]}"
+                    print(f"FALLBACK: {reason}", file=sys.stderr)
+                finally:
+                    MODEL_OVERRIDE = None
+    finally:
+        ALERT_ON_EXHAUSTION = saved
+
+    age = child_age_months(target_date, birth_date)
+    with connect_db() as con:
+        candidate = fallback.library_candidate(con, history, age, target_date, child_id)
+    if candidate is not None:
+        return candidate, 0, "library", reason
+
+    send_failure_alert([reason or "неизвестная причина", "в библиотеке нет подходящей игры"])
+    raise RuntimeError(f"Подготовка игры не удалась, резерва нет: {reason}")
 
 
 def prepare_run(target_date, dry_run=False, only_child=None):
@@ -929,13 +1006,10 @@ def prepare_for_child(target_date, child, dry_run=False):
 
     RUN_LOG.clear()
     try:
-        candidate, attempts = select_candidate(
-            history,
-            target_date,
-            child["birth_date"] if child else None,
-        )
+        candidate, attempts, origin, origin_reason = obtain_candidate(history, target_date, child)
     finally:
         persist_runs(target_date, child_id, dry_run)
+    print(f"Источник: {fallback.describe(origin, origin_reason)}")
 
     channels = ", ".join(r["channel"] for r in child["recipients"]) if child else "vk"
 
@@ -959,6 +1033,8 @@ def prepare_for_child(target_date, child, dry_run=False):
         candidate,
         target_date,
         child,
+        origin=origin,
+        origin_reason=origin_reason,
     )
 
     print()
@@ -976,6 +1052,8 @@ def prepare_for_child(target_date, child, dry_run=False):
         candidate,
         attempts,
         child["name"] if child else None,
+        origin=origin,
+        origin_reason=origin_reason,
     )
 
 
@@ -1036,11 +1114,68 @@ def shadow_run():
     print("Production database: NOT MODIFIED")
     print("VK delivery: NOT ATTEMPTED")
 
-    send_failure_alert(last_errors)
+    if ALERT_ON_EXHAUSTION:
+        send_failure_alert(last_errors)
 
     raise RuntimeError(
-        f"Подготовка игры не удалась после {MAX_ATTEMPTS} попыток"
+        f"Подготовка игры не удалась после {MAX_ATTEMPTS} попыток: "
+        + "; ".join(last_errors)[:300]
     )
+
+
+# obtain_candidate() alerts once for the whole chain instead.
+ALERT_ON_EXHAUSTION = True
+
+
+def obtain_candidate(history, target_date, child):
+    """Primary model -> fallback model -> library. Returns (candidate, attempts, origin, reason).
+
+    Raises (after one failure alert) only when nothing fits at all.
+    """
+    global ALERT_ON_EXHAUSTION, MODEL_OVERRIDE
+    birth_date = child["birth_date"] if child else None
+    child_id = child["id"] if child else None
+    reason = None
+
+    with connect_db() as con:
+        budget = fallback.daily_budget_usd()
+        spent = fallback.spent_today(con, target_date)
+    if budget is not None and spent >= budget:
+        reason = f"дневной бюджет модели исчерпан (${spent:.2f} из ${budget:.2f})"
+
+    saved = ALERT_ON_EXHAUSTION
+    ALERT_ON_EXHAUSTION = False
+    try:
+        if reason is None:
+            try:
+                candidate, attempts = select_candidate(history, target_date, birth_date)
+                return candidate, attempts, "model", None
+            except Exception as exc:  # noqa: BLE001 - every failure moves down the chain
+                quota = fallback.is_quota_error(exc)
+                reason = ("лимит подписки исчерпан" if quota else "основная модель не справилась") + f": {str(exc)[:200]}"
+                print(f"FALLBACK: {reason}", file=sys.stderr)
+
+            if not fallback.is_quota_error(reason) and fallback.fallback_model():
+                MODEL_OVERRIDE = fallback.fallback_model()
+                try:
+                    candidate, attempts = select_candidate(history, target_date, birth_date)
+                    return candidate, attempts, "fallback_model", f"{MODEL_OVERRIDE}; {reason}"
+                except Exception as exc:  # noqa: BLE001
+                    reason += f"; резервная модель {MODEL_OVERRIDE}: {str(exc)[:200]}"
+                    print(f"FALLBACK: {reason}", file=sys.stderr)
+                finally:
+                    MODEL_OVERRIDE = None
+    finally:
+        ALERT_ON_EXHAUSTION = saved
+
+    age = child_age_months(target_date, birth_date)
+    with connect_db() as con:
+        candidate = fallback.library_candidate(con, history, age, target_date, child_id)
+    if candidate is not None:
+        return candidate, 0, "library", reason
+
+    send_failure_alert([reason or "неизвестная причина", "в библиотеке нет подходящей игры"])
+    raise RuntimeError(f"Подготовка игры не удалась, резерва нет: {reason}")
 
 
 

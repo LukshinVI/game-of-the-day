@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -134,6 +134,13 @@ def migrate(con):
         # A test child (e.g. the VK test dialog) gets real games and deliveries, but its
         # games never absorb feedback that arrives without an explicit game.
         con.execute("ALTER TABLE children ADD COLUMN is_test INTEGER NOT NULL DEFAULT 0")
+    # Where a game came from (graceful degradation): the primary model, the fallback
+    # model or the library of already validated games; the full candidate is kept so
+    # library games can be re-rendered later.
+    for column, ddl in (("origin", "TEXT NOT NULL DEFAULT 'model'"), ("origin_reason", "TEXT"),
+                        ("candidate_json", "TEXT")):
+        if column not in columns(con, "games"):
+            con.execute(f"ALTER TABLE games ADD COLUMN {column} {ddl}")
     if "child_id" not in columns(con, "games"):
         con.execute("ALTER TABLE games ADD COLUMN child_id INTEGER REFERENCES children(id)")
     con.execute(
