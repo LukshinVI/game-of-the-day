@@ -29,7 +29,7 @@ def good(age, title="Башенка", skill="fine_motor"):
     }
 
 
-class Chain(unittest.TestCase):
+class ChainSetup(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -90,6 +90,8 @@ class Chain(unittest.TestCase):
         finally:
             con.close()
 
+
+class Chain(ChainSetup):
     def test_the_fallback_model_saves_the_day_and_says_so(self):
         bad = {**good(self.age), "duration_minutes": 30}
         self.assertIsNone(self.prepare([bad, bad, bad, good(self.age)]))
@@ -113,7 +115,7 @@ class Chain(unittest.TestCase):
         self.assertEqual(game["message_text"], "🎲 Игра дня: «Мячик в корзину»")
         level, title, details = self.alerts[-1]
         self.assertEqual((level, title), ("warning", "Игра из резерва (библиотека), а не подобрана"))
-        self.assertIn("копия игры #1", details)
+        self.assertIn("копия game #1", details)
 
     def test_a_spent_daily_budget_skips_the_models(self):
         self.library_game("Ладушки", self.age, "speech")
@@ -170,3 +172,49 @@ class LibraryChoice(unittest.TestCase):
     def test_quota_detection(self):
         self.assertTrue(fallback.is_quota_error(RuntimeError("Claude AI usage limit reached|123")))
         self.assertFalse(fallback.is_quota_error(RuntimeError("timeout")))
+
+
+class WarmReserve(ChainSetup):
+    def test_import_from_eval_reports_validates_and_dedups(self):
+        report = Path(self.db).with_name("report.json")
+        report.write_text(json.dumps([
+            {"passed": True, "candidate": good(2, "Гулим", "speech")},
+            {"passed": True, "candidate": {**good(2, "Плохая", "speech"), "duration_minutes": 40}},
+            {"passed": False, "error": "x"},
+        ], ensure_ascii=False))
+        with contextlib.redirect_stdout(io.StringIO()):
+            gp.reserve_import([str(report)])
+            gp.reserve_import([str(report)])
+        con = sqlite3.connect(self.db)
+        self.assertEqual(con.execute("SELECT title, age_months FROM reserve_games").fetchall(), [("Гулим", 2)])
+        con.close()
+
+    def test_a_baby_with_no_history_gets_a_reserve_game(self):
+        con = ch.connect_db(self.db)
+        con.execute("UPDATE children SET birth_date = '2026-07-01'")  # a 4-month-old
+        con.commit()
+        fallback.add_reserve(con, gp.with_rendered_message(good(3, "Погремушка", "sensory")), "test")
+        con.commit()
+        con.close()
+        self.assertIsNone(self.prepare([RuntimeError("usage limit reached")]))
+        game = self.game()
+        self.assertEqual((game["origin"], game["title"]), ("library", "Погремушка"))
+        self.assertIn("копия reserve #1", self.alerts[-1][2])
+
+    def test_top_up_fills_upcoming_ages_within_the_cap(self):
+        made = []
+
+        def fake(prompt):
+            context = json.loads(prompt.split("INPUT CONTEXT:\n", 1)[1])
+            age = context["child_age_months"]
+            made.append(age)
+            skill = [s for s in context["allowed_skills"] if s not in context["last_skills"]][len(made) % 3]
+            return good(age, f"Резерв {len(made)}", skill)
+
+        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gp, "run_claude", fake):
+            count = gp.reserve_top_up(TODAY)
+        # three for the current age; they also cover the next two months (age window)
+        self.assertEqual(count, gp.RESERVE_MIN)
+        self.assertEqual(made, [self.age] * 3)
+        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gp, "run_claude", fake):
+            self.assertEqual(gp.reserve_top_up(TODAY), 0)  # nothing missing: no model call

@@ -1,0 +1,10 @@
+[Unit]
+Description=Game of the Day - weekly warm-reserve top-up
+
+[Timer]
+# Sunday night: away from the 07:00 preparation and from the owner's working hours.
+OnCalendar=Sun *-*-* 04:30:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -114,6 +114,26 @@ CREATE TABLE IF NOT EXISTS model_runs (
 """
 
 
+# Warm reserve for graceful degradation: validated games kept per age, so a child of
+# any age has a library game even before the family has any history.
+MIGRATION_6 = """
+CREATE TABLE IF NOT EXISTS reserve_games (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    age_months INTEGER NOT NULL,
+    skill TEXT NOT NULL,
+    title TEXT NOT NULL,
+    mechanics TEXT,
+    source_name TEXT,
+    source_url TEXT NOT NULL,
+    message_text TEXT NOT NULL,
+    candidate_json TEXT,
+    made_by TEXT,
+    UNIQUE(title, age_months)
+);
+"""
+
+
 def connect_db(path=None):
     con = sqlite3.connect(path or DB_PATH, timeout=10)
     con.row_factory = sqlite3.Row
@@ -130,6 +150,7 @@ def migrate(con):
     con.executescript(MIGRATION_2)
     con.executescript(MIGRATION_3)
     con.executescript(MIGRATION_4)
+    con.executescript(MIGRATION_6)
     if "is_test" not in columns(con, "children"):
         # A test child (e.g. the VK test dialog) gets real games and deliveries, but its
         # games never absorb feedback that arrives without an explicit game.

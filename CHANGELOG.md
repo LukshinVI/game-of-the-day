@@ -14,6 +14,9 @@ on the commit that completed each milestone.
   already validated game from the library (age window, skill rules, nothing repeated). The
   owner is told which path produced the day; every game records its origin; `/llm` counts
   reserve days.
+- A warm reserve (`reserve_games`) so a child of any age has a library game even with no
+  history: seeded from passed eval candidates (`prepare reserve import`) and topped up
+  weekly for each child's next months (`reserve top-up`, Sundays 04:30 MSK, within budget).
 - Test children (`children.py add --test`): games only from a manual run
   (`prepare --child ID`), never from the daily schedule, and never the target of feedback
   that arrives without an explicit game, so a family's VK answer cannot land on a test game.
