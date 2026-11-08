@@ -42,7 +42,7 @@ flowchart TD
 - **Edge** (Cloudflare Workers + Queues): callback validation, durable hand-off to the host, and the semantic feedback agent on Workers AI.
 - Feedback goes through three separate queues (ingress, storage, enrichment). The storage queue carries both the raw event and, later, its analysis.
 
-Details: [Architecture](docs/architecture.md) · [Reliability model](docs/reliability.md) · [AI design](docs/ai-design.md) · [Product roadmap](docs/product-roadmap.md)
+Details: [Deployment](docs/deployment.md) · [Architecture](docs/architecture.md) · [Reliability model](docs/reliability.md) · [AI design](docs/ai-design.md) · [Product roadmap](docs/product-roadmap.md)
 
 ## Where AI is used, and where it is not
 
