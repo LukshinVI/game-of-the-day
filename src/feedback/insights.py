@@ -52,6 +52,7 @@ KINDS = {
     "skill": {"went_well", "hard"},
     "like": None,      # free short phrase
     "dislike": None,
+    "wish": None,      # about the service, not the child: goes to the owner, not the profile
 }
 
 SCHEMA = {
@@ -68,7 +69,7 @@ SCHEMA = {
                 "required": ["kind", "value", "skill", "evidence"],
                 "properties": {
                     "kind": {"type": "string", "enum": list(KINDS)},
-                    "value": {"type": "string", "maxLength": 60},
+                    "value": {"type": "string", "maxLength": 120},
                     "skill": {"type": ["string", "null"], "enum": [*skills.ALL, None]},
                     "evidence": {"type": "string", "maxLength": 200},
                 },
@@ -177,6 +178,8 @@ def valid_observations(output, text, game_skill):
             skill = skill if skill in skills.ALL else None
         if kind in ("like", "dislike"):
             value = value[:60].lower()
+        if kind == "wish":
+            value = value[:120]
         kept.append({"kind": kind, "value": value, "skill": skill, "evidence": evidence})
     return kept
 
@@ -204,6 +207,8 @@ def reply_text(game_title, observations):
             lines.append(f"• любит: {obs['value']}")
         elif obs["kind"] == "dislike":
             lines.append(f"• не любит: {obs['value']} — учтём")
+        elif obs["kind"] == "wish":
+            lines.append(f"• пожелание к сервису передали: {obs['value']}")
     unique = list(dict.fromkeys(lines))[:4]
     if not unique:
         return "Спасибо за отзыв! 🙏 Сохранили его к игре «" + game_title + "»."
@@ -247,6 +252,25 @@ def send_reply(con, group, text):
     raise RuntimeError(f"unknown channel {first['channel']}")
 
 
+def who(con, row):
+    name = None
+    if row.get("child_id") is not None:
+        found = con.execute("SELECT name FROM children WHERE id = ?", (row["child_id"],)).fetchone()
+        name = found and found["name"]
+    return f"{row['channel']}" + (f", ребёнок {name}" if name else "")
+
+
+def record_wish(con, source, text, evidence=None, child_id=None, chat_id=None, feedback_id=None, who=""):
+    """Store a wish about the service and tell the owner (forwarded by the ops bot)."""
+    con.execute(
+        "INSERT INTO wishes(source, feedback_id, child_id, chat_id, text, evidence) VALUES (?, ?, ?, ?, ?, ?)",
+        (source, feedback_id, child_id, chat_id, text, evidence),
+    )
+    if con.execute("SELECT 1 FROM sqlite_master WHERE name = 'user_events'").fetchone():
+        con.execute("INSERT INTO user_events(chat_id, kind, text) VALUES (?, 'wish', ?)",
+                    (chat_id, f"💡 Пожелание ({who or source}): {text}"))
+
+
 def mark(con, group, status, now):
     con.executemany("UPDATE feedback SET insights_at = ?, insights_status = ? WHERE id = ?",
                     [(now.isoformat(timespec="seconds"), status, r["id"]) for r in group])
@@ -286,12 +310,16 @@ def run(db_path=None, now=None, reply=True, model=run_model, sender=send_reply):
             except Exception as exc:  # noqa: BLE001 - stays pending, retried next run
                 print(f"feedback {group[0]['id']}: {str(exc)[:200]}", file=sys.stderr)
                 continue
+            about_child = [o for o in observations if o["kind"] != "wish"]
             con.executemany(
                 "INSERT INTO observations(feedback_id, child_id, game_id, kind, value, skill, evidence) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [(group[-1]["id"], child_id, group[0]["game_id"], o["kind"], o["value"], o["skill"], o["evidence"])
-                 for o in observations],
+                 for o in about_child],
             )
+            for wish in (o for o in observations if o["kind"] == "wish"):
+                record_wish(con, "feedback", wish["value"], wish["evidence"], child_id=child_id,
+                            feedback_id=group[-1]["id"], who=who(con, group[0]))
             mark(con, group, "done", now)
             if child_id is not None:
                 profile.rebuild(con, child_id)

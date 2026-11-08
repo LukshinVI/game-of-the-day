@@ -171,3 +171,18 @@ class ReactionsInVk(InsightsSetup):
         self.run_insights([{"kind": "outcome", "value": "liked", "skill": None, "evidence": "Понравилось"}])
         self.assertNotIn("[стикер]", self.prompts[0].split("INPUT:", 1)[1])
         self.assertEqual(self.rows("SELECT kind FROM observations"), [("outcome",)])
+
+
+class Wishes(InsightsSetup):
+    def test_a_wish_in_feedback_goes_to_the_owner_not_into_the_profile(self):
+        self.feedback("Понравилось! Хотелось бы больше игр на улице", 30)
+        self.run_insights([
+            {"kind": "outcome", "value": "liked", "skill": None, "evidence": "Понравилось"},
+            {"kind": "wish", "value": "больше игр на улице", "skill": None, "evidence": "больше игр на улице"},
+        ])
+        self.assertEqual(self.rows("SELECT kind FROM observations"), [("outcome",)])
+        self.assertEqual(self.rows("SELECT source, text FROM wishes"), [("feedback", "больше игр на улице")])
+        self.assertEqual(self.rows("SELECT kind FROM user_events"), [("wish",)])
+        self.assertIn("пожелание к сервису передали", self.replies[0])
+        from src.ops import users_report
+        self.assertIn("больше игр на улице", users_report.wishes(self.db))

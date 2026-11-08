@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -156,6 +156,21 @@ CREATE TABLE IF NOT EXISTS child_profiles (
 """
 
 
+# Wishes about the service itself (not about the child): from feedback or /idea.
+MIGRATION_8 = """
+CREATE TABLE IF NOT EXISTS wishes (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    source TEXT NOT NULL CHECK(source IN ('feedback', 'command')),
+    feedback_id INTEGER,
+    child_id INTEGER,
+    chat_id TEXT,
+    text TEXT NOT NULL,
+    evidence TEXT
+);
+"""
+
+
 def connect_db(path=None):
     con = sqlite3.connect(path or DB_PATH, timeout=10)
     con.row_factory = sqlite3.Row
@@ -174,6 +189,7 @@ def migrate(con):
     con.executescript(MIGRATION_4)
     con.executescript(MIGRATION_6)
     con.executescript(MIGRATION_7)
+    con.executescript(MIGRATION_8)
     for column in ("insights_at", "insights_status", "reply_sent_at"):
         if column not in columns(con, "feedback"):
             con.execute(f"ALTER TABLE feedback ADD COLUMN {column} TEXT")

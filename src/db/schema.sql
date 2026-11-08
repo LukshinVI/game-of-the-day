@@ -149,6 +149,18 @@ CREATE TABLE feedback (
     FOREIGN KEY(game_id) REFERENCES games(id)
 );
 
+-- Wishes about the service (src/feedback/insights.py, /idea in the product bot).
+CREATE TABLE wishes (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    source TEXT NOT NULL CHECK(source IN ('feedback', 'command')),
+    feedback_id INTEGER,
+    child_id INTEGER,
+    chat_id TEXT,
+    text TEXT NOT NULL,
+    evidence TEXT
+);
+
 -- Feedback insights (src/feedback/insights.py).
 CREATE TABLE observations (
     id INTEGER PRIMARY KEY,
@@ -177,4 +189,4 @@ CREATE TABLE migration_meta (
     value TEXT
 );
 
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '7');
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '8');

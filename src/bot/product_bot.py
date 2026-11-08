@@ -49,7 +49,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.db import children as ch  # noqa: E402
-from src.feedback import reactions, storage  # noqa: E402
+from src.feedback import insights, reactions, storage  # noqa: E402
 
 DB_PATH = ch.DB_PATH
 API = "https://api.telegram.org"
@@ -83,6 +83,7 @@ HELP = (
     "/add_child — добавить ребёнка\n"
     "/pause — приостановить игры\n"
     "/resume — возобновить\n"
+    "/idea — предложить, что улучшить в сервисе\n"
     "/faq — частые вопросы"
 ).format(time=DELIVERY_TIME_MSK)
 OWNER_HELP = (
@@ -265,6 +266,8 @@ class ProductBot:
             return self.list_children(con, chat_id)
         if command in ("/pause", "/resume"):
             return self.set_active(con, chat_id, command == "/resume")
+        if command == "/idea":
+            return self.idea(con, chat_id, text.split(maxsplit=1)[1] if len(parts) > 1 else "")
         if command:
             return self.help(is_owner)
 
@@ -469,6 +472,22 @@ class ProductBot:
         if active:
             return "Игры возобновлены с ближайшего утра."
         return "Пауза. Уже подготовленная на сегодня игра может прийти, дальше — тишина. /resume — вернуть."
+
+    # --- wishes ---------------------------------------------------------------
+
+    def idea(self, con, chat_id, text):
+        text = " ".join(text.split())[:500]
+        if not text:
+            return ("Напишите пожелание сразу после команды, например:\n"
+                    "/idea хочется больше игр на улице")
+        recent = con.execute(
+            "SELECT count(*) FROM wishes WHERE chat_id = ? AND created_at >= datetime('now', '-1 day')",
+            (chat_id,),
+        ).fetchone()[0]
+        if recent >= 5:
+            return "Спасибо! На сегодня пожеланий достаточно — продолжим завтра."
+        insights.record_wish(con, "command", text, chat_id=chat_id, who=self.who(con, chat_id))
+        return "Спасибо! 💡 Передал пожелание. Такие идеи помогают сделать сервис лучше."
 
     # --- feedback ------------------------------------------------------------
 
