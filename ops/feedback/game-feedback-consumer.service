@@ -1,0 +1,27 @@
+[Unit]
+Description=Game of the Day - pull feedback from the Cloudflare storage queue into SQLite
+After=network-online.target
+Wants=network-online.target
+OnFailure=game-backup-alert@%n.service
+
+[Service]
+Type=simple
+User=gotd
+Group=gotd
+WorkingDirectory=/srv/game-of-the-day
+EnvironmentFile=/etc/game-of-the-day/feedback.env
+EnvironmentFile=-/etc/game-of-the-day/ops-bot.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/feedback/queue_consumer.py
+# Messages stay in the queue until acknowledged, so a restart loses nothing.
+Restart=always
+RestartSec=30
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/srv/game-of-the-day/data
+
+[Install]
+WantedBy=multi-user.target

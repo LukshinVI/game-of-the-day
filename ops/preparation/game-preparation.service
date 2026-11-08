@@ -1,0 +1,30 @@
+[Unit]
+Description=Game of the Day - prepare today's game (model proposes, code validates)
+After=network-online.target
+Wants=network-online.target
+OnFailure=game-backup-alert@%n.service
+
+[Service]
+Type=oneshot
+User=gotd
+Group=gotd
+WorkingDirectory=/srv/game-of-the-day
+# game.env: CHILD_BIRTH_DATE. preparation.env: PREPARATION_BACKEND and the model
+# credentials, readable by this unit only. ops-bot.env: alert credentials.
+EnvironmentFile=/etc/game-of-the-day/game.env
+EnvironmentFile=/etc/game-of-the-day/preparation.env
+EnvironmentFile=-/etc/game-of-the-day/ops-bot.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+# The model CLI keeps its config and cache under HOME; give it a private state dir
+# instead of the checkout.
+StateDirectory=game-of-the-day
+Environment=HOME=/var/lib/game-of-the-day
+ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/preparation/game_preparation.py prepare
+# Up to three model attempts with web research, each bounded by PREPARATION_MODEL_TIMEOUT.
+TimeoutStartSec=35min
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/srv/game-of-the-day/data

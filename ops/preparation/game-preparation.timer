@@ -1,0 +1,13 @@
+[Unit]
+Description=Game of the Day - prepare today's game before the 10:00 delivery
+
+[Timer]
+# Preparation is idempotent: once today's game exists, a later run exits without
+# calling the model. The extra runs are retries for a failed or missed morning run.
+OnCalendar=*-*-* 07:00:00 Europe/Moscow
+OnCalendar=*-*-* 08:00:00 Europe/Moscow
+OnCalendar=*-*-* 09:00:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target
