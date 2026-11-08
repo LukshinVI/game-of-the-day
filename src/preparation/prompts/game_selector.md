@@ -24,6 +24,22 @@ Reject activities involving:
 - unsafe climbing or fall risk;
 - any activity whose safety or age suitability is unclear.
 
+Safety by design. Make the activity safe in its materials and steps, not only in the
+safety note. Reviewers check every game against this list:
+- materials name the safe variant: a soft toy with embroidered (sewn-in) eyes and nose; a
+  cloth napkin, not paper, for a child who still mouths things (under about 24 months);
+  sturdy unbreakable cups and plates; scarves and cloths without fringe or tassels; only
+  foods the child already eats; children's utensils, not thin disposable ones;
+- positioning is in the steps: under 4 months, support the head and neck; a baby lies on a
+  firm flat surface on the floor, never on a sofa, bed or changing table; until the child
+  sits steadily, the adult holds them or they lie on the floor;
+- moving games: a clear area, a non-slip floor, and nothing loose underfoot (tape paper
+  down; no ropes or cords lying on the floor);
+- no cords, straps or ribbons longer than 30 cm; never cover a baby's face with cloth;
+- water: shallow, and the adult's hand stays within reach the whole time;
+- when the setup has a step that matters for safety (check the toy, tape the paper,
+  support the head), write it as an explicit step.
+
 The supplied game history is authoritative for duplicate checking.
 
 Do not modify files, databases, repositories, or external systems.
@@ -46,4 +62,4 @@ Formatting rules (checked by code; a violation rejects the candidate and costs a
 - never use Markdown link syntax such as [text](url), and no other Markdown in message_text;
 - materials lists only the objects the game actually uses, one short item each; do not describe what an item lacks there;
 - title, mechanics, materials and steps must not contain words for hazardous items (knife, needle, magnet, coin, bead, button, battery, glass, medicine, chemical, hot things), not even in a negation such as "without magnets"; put every prohibition in the safety field instead;
-- safety is at most 3 short sentences (under 300 characters): supervision, the one or two hazards specific to this game, and when to stop. Do not repeat a generic list of forbidden objects.
+- safety is at most 3 short sentences (under 300 characters): supervision, the one or two hazards most specific to this game and how the setup prevents them, and when to stop (tired, fussing, overexcited). Do not repeat a generic list of forbidden objects.
