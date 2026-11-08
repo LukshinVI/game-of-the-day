@@ -1,0 +1,37 @@
+[Unit]
+Description=Game of the Day - product Telegram bot (invites, onboarding, feedback)
+After=network-online.target
+Wants=network-online.target
+OnFailure=game-backup-alert@%n.service
+
+[Service]
+Type=simple
+User=gotd
+Group=gotd
+WorkingDirectory=/srv/game-of-the-day
+# Only the product bot token and the owner chat id. No VK, model or Cloudflare
+# credentials: this process faces the public and never needs them.
+EnvironmentFile=/etc/game-of-the-day/product-bot.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/bot/product_bot.py
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+ReadWritePaths=/srv/game-of-the-day/data
+
+[Install]
+WantedBy=multi-user.target

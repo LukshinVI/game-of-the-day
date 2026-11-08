@@ -1,0 +1,472 @@
+#!/usr/bin/env python3
+"""Product Telegram bot: self-service onboarding and feedback for caregivers.
+
+This is the bot families talk to. It is separate from the owner's ops bot
+(src/ops/manual_bot.py), which stays private: alerts and manual delivery only.
+
+Access is by invitation. The owner sends /invite to this bot and gets a one-time
+link t.me/<bot>?start=<code> (valid INVITE_TTL_DAYS). Whoever opens it becomes a
+member and fills a short questionnaire: the child's name and birth date, then a
+confirmation showing the computed age. The child and a Telegram recipient for this
+chat are created; the next preparation run picks them up.
+
+Members:
+  /add_child   another child
+  /children    who is subscribed, with the current age
+  /pause       stop the daily games for this chat (from the next game)
+  /resume      start them again
+  /help
+  any other text: feedback on the latest game sent to this chat
+
+Owner (GAME_BOT_OWNER_ID) additionally:
+  /invite      a new one-time invite link
+  /members     members and their children
+
+Deterministic code only: no model call here. State lives in SQLite (invites are
+stored as hashes, the questionnaire survives a restart). Outbound long polling,
+no inbound port. Feedback is persisted with an explicit game id, so a chat's
+answer can never attach to another family's game.
+"""
+
+import hashlib
+import json
+import os
+import secrets
+import sqlite3
+import sys
+import time
+import urllib.request
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+from src.db import children as ch  # noqa: E402
+from src.feedback import storage  # noqa: E402
+
+DB_PATH = ch.DB_PATH
+API = "https://api.telegram.org"
+MOSCOW = ZoneInfo("Europe/Moscow")
+
+INVITE_TTL_DAYS = 7
+MAX_NAME_CHARS = 40
+MAX_AGE_MONTHS = 72
+MAX_FEEDBACK_CHARS = 4000
+PREPARATION_HOUR_MSK = 7
+DELIVERY_TIME_MSK = "10:00"
+POLL_TIMEOUT_SECONDS = 30
+EXIT_AFTER_FAILING_SECONDS = 600
+
+YES = {"да", "+", "верно", "ок", "ok", "yes", "д"}
+NO = {"нет", "-", "no", "н", "заново"}
+
+CLOSED = "Это закрытый бот. Чтобы подключиться, попросите пригласительную ссылку у того, кто вас пригласил."
+HELP = (
+    "Каждый день в {time} по Москве я присылаю одну развивающую игру по возрасту ребёнка.\n"
+    "Ответьте на сообщение с игрой обычным текстом — как прошло, что понравилось, — "
+    "и следующие игры будут учитывать ваш отзыв.\n\n"
+    "/children — кто подписан\n"
+    "/add_child — добавить ребёнка\n"
+    "/pause — приостановить игры\n"
+    "/resume — возобновить"
+).format(time=DELIVERY_TIME_MSK)
+OWNER_HELP = "\n\nВладелец:\n/invite — новая пригласительная ссылка\n/members — участники"
+ASK_NAME = "Как зовут ребёнка? (можно сокращённо или прозвище)"
+ASK_BIRTH = "Дата рождения? Например: 15.03.2025"
+
+
+def hash_code(code):
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+
+def utcnow():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def parse_birth_date(text, today):
+    """Accept DD.MM.YYYY, D.M.YYYY or YYYY-MM-DD. Return ISO date or raise ValueError."""
+    text = text.strip().replace("/", ".")
+    try:
+        if "-" in text:
+            value = date.fromisoformat(text)
+        else:
+            day, month, year = (int(part) for part in text.split("."))
+            value = date(year, month, day)
+    except (ValueError, TypeError):
+        raise ValueError("Не получилось разобрать дату. Напишите так: 15.03.2025") from None
+    if value > today:
+        raise ValueError("Дата рождения в будущем — проверьте, пожалуйста.")
+    if age_months(value, today) > MAX_AGE_MONTHS:
+        raise ValueError("Игры рассчитаны на детей до 6 лет.")
+    return value.isoformat()
+
+
+def age_months(birth, today):
+    months = (today.year - birth.year) * 12 + today.month - birth.month
+    if today.day < birth.day:
+        months -= 1
+    return months
+
+
+def months_word(n):
+    if n % 10 == 1 and n % 100 != 11:
+        return "месяц"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return "месяца"
+    return "месяцев"
+
+
+def describe_age(birth_iso, today):
+    months = age_months(date.fromisoformat(birth_iso), today)
+    return f"{months} {months_word(months)}"
+
+
+class ProductBot:
+    def __init__(self, db_path, owner_id, username="", now=None, new_code=None):
+        self.db_path = db_path
+        self.owner_id = str(owner_id) if owner_id else ""
+        self.username = username
+        self.now = now or (lambda: datetime.now(MOSCOW))
+        self.new_code = new_code or (lambda: secrets.token_urlsafe(12))
+        self.outbox = []  # (chat_id, text) to send to someone other than the sender
+
+    # --- storage -------------------------------------------------------------
+
+    def connect(self):
+        con = ch.connect_db(self.db_path)
+        con.execute("PRAGMA busy_timeout = 10000")
+        return con
+
+    @staticmethod
+    def member(con, chat_id):
+        return con.execute("SELECT * FROM members WHERE chat_id = ?", (chat_id,)).fetchone()
+
+    @staticmethod
+    def step(con, chat_id):
+        return con.execute("SELECT * FROM onboarding WHERE chat_id = ?", (chat_id,)).fetchone()
+
+    @staticmethod
+    def set_step(con, chat_id, step, name=None, birth_date=None):
+        con.execute(
+            "INSERT INTO onboarding(chat_id, step, name, birth_date, updated_at) "
+            "VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) ON CONFLICT(chat_id) DO UPDATE SET "
+            "step = excluded.step, name = excluded.name, birth_date = excluded.birth_date, "
+            "updated_at = excluded.updated_at",
+            (chat_id, step, name, birth_date),
+        )
+
+    @staticmethod
+    def chat_children(con, chat_id):
+        return con.execute(
+            "SELECT c.id, c.name, c.birth_date, r.active FROM recipients r "
+            "JOIN children c ON c.id = r.child_id "
+            "WHERE r.channel = 'telegram' AND r.address = ? AND c.active = 1 ORDER BY c.id",
+            (chat_id,),
+        ).fetchall()
+
+    # --- dispatch ------------------------------------------------------------
+
+    def handle(self, update):
+        """Return the reply text for an update, or None when it must be ignored."""
+        message = update.get("message") or {}
+        chat = message.get("chat") or {}
+        sender = message.get("from") or {}
+        if chat.get("type") != "private" or sender.get("is_bot"):
+            return None
+        chat_id = str(chat.get("id"))
+        text = (message.get("text") or "").strip()
+        if not text:
+            return None
+
+        con = self.connect()
+        try:
+            con.execute("BEGIN IMMEDIATE")
+            reply = self.dispatch(con, chat_id, text, message, sender)
+            con.commit()
+        except Exception:
+            con.rollback()
+            self.outbox.clear()
+            raise
+        finally:
+            con.close()
+        return reply
+
+    def dispatch(self, con, chat_id, text, message, sender):
+        parts = text.split()
+        command = parts[0].split("@")[0].lower() if text.startswith("/") else ""
+        is_owner = chat_id == self.owner_id
+        member = self.member(con, chat_id)
+
+        if is_owner and command == "/invite":
+            return self.invite(con)
+        if is_owner and command == "/members":
+            return self.members(con)
+
+        if member is None:
+            if command == "/start" and len(parts) > 1:
+                return self.join(con, chat_id, parts[1], sender)
+            if is_owner and command == "/start":
+                return self.join_owner(con, chat_id, sender)
+            return CLOSED
+
+        if command == "/start":
+            if not self.chat_children(con, chat_id) and self.step(con, chat_id) is None:
+                self.set_step(con, chat_id, "name")
+                return "С возвращением! " + ASK_NAME
+            return self.help(is_owner)
+        if command == "/help":
+            return self.help(is_owner)
+        if command == "/add_child":
+            self.set_step(con, chat_id, "name")
+            return ASK_NAME
+        if command == "/cancel":
+            con.execute("DELETE FROM onboarding WHERE chat_id = ?", (chat_id,))
+            return "Отменено."
+        if command == "/children":
+            return self.list_children(con, chat_id)
+        if command in ("/pause", "/resume"):
+            return self.set_active(con, chat_id, command == "/resume")
+        if command:
+            return self.help(is_owner)
+
+        current = self.step(con, chat_id)
+        if current is not None:
+            return self.questionnaire(con, chat_id, current, text)
+        return self.feedback(con, chat_id, text, message)
+
+    def help(self, is_owner):
+        return HELP + (OWNER_HELP if is_owner else "")
+
+    # --- invites -------------------------------------------------------------
+
+    def invite(self, con):
+        code = self.new_code()
+        expires = (datetime.now(timezone.utc) + timedelta(days=INVITE_TTL_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+        con.execute("INSERT INTO invites(code_hash, expires_at) VALUES (?, ?)", (hash_code(code), expires))
+        link = f"https://t.me/{self.username}?start={code}" if self.username else f"/start {code}"
+        return (
+            f"Одноразовая ссылка, действует {INVITE_TTL_DAYS} дней:\n{link}\n\n"
+            "Перешлите её одному человеку: после первого использования она перестаёт работать."
+        )
+
+    def members(self, con):
+        rows = con.execute(
+            "SELECT m.chat_id, m.display_name, m.joined_at, "
+            "(SELECT group_concat(c.name || ' ' || c.birth_date || CASE WHEN r.active THEN '' ELSE ' (пауза)' END, ', ') "
+            " FROM recipients r JOIN children c ON c.id = r.child_id "
+            " WHERE r.channel = 'telegram' AND r.address = m.chat_id) AS kids "
+            "FROM members m ORDER BY m.joined_at"
+        ).fetchall()
+        if not rows:
+            return "Участников пока нет. /invite — пригласить."
+        return "\n".join(
+            f"{r['display_name'] or '—'} (chat {r['chat_id']}, с {r['joined_at'][:10]}): {r['kids'] or 'анкета не заполнена'}"
+            for r in rows
+        )
+
+    def join(self, con, chat_id, code, sender):
+        row = con.execute(
+            "SELECT id, expires_at, used_at FROM invites WHERE code_hash = ?", (hash_code(code),)
+        ).fetchone()
+        if row is None or row["used_at"] is not None or row["expires_at"] < utcnow():
+            return "Ссылка недействительна или уже использована. Попросите новую."
+        con.execute("UPDATE invites SET used_at = ?, used_by = ? WHERE id = ?", (utcnow(), chat_id, row["id"]))
+        self.add_member(con, chat_id, row["id"], sender)
+        return "Здравствуйте! Я присылаю одну развивающую игру в день по возрасту ребёнка.\n\n" + ASK_NAME
+
+    def join_owner(self, con, chat_id, sender):
+        self.add_member(con, chat_id, None, sender)
+        return "Вы владелец бота. Можно подписать своего ребёнка или пригласить других: /invite\n\n" + ASK_NAME
+
+    def add_member(self, con, chat_id, invite_id, sender):
+        display = " ".join(filter(None, [sender.get("first_name"), sender.get("last_name")]))[:80]
+        con.execute(
+            "INSERT INTO members(chat_id, invite_id, display_name) VALUES (?, ?, ?)",
+            (chat_id, invite_id, display or None),
+        )
+        self.set_step(con, chat_id, "name")
+        if chat_id != self.owner_id:
+            self.notify_owner(f"Новый участник по приглашению: {display or chat_id}")
+
+    def notify_owner(self, text):
+        if self.owner_id:
+            self.outbox.append((self.owner_id, text))
+
+    # --- questionnaire -------------------------------------------------------
+
+    def questionnaire(self, con, chat_id, current, text):
+        today = self.now().date()
+        if current["step"] == "name":
+            name = " ".join(text.split())
+            if not name or len(name) > MAX_NAME_CHARS:
+                return f"Имя — до {MAX_NAME_CHARS} символов. " + ASK_NAME
+            self.set_step(con, chat_id, "birth_date", name=name)
+            return ASK_BIRTH
+
+        if current["step"] == "birth_date":
+            try:
+                birth = parse_birth_date(text, today)
+            except ValueError as exc:
+                return str(exc)
+            self.set_step(con, chat_id, "confirm", name=current["name"], birth_date=birth)
+            shown = date.fromisoformat(birth).strftime("%d.%m.%Y")
+            return (
+                f"{current['name']}, {shown} — сейчас {describe_age(birth, today)}. Всё верно?\n"
+                "Ответьте «да» или «нет»."
+            )
+
+        answer = text.lower().strip(" .!")
+        if answer in NO:
+            self.set_step(con, chat_id, "name")
+            return "Давайте заново. " + ASK_NAME
+        if answer not in YES:
+            return "Ответьте «да» или «нет»."
+
+        child_id = con.execute(
+            "INSERT INTO children(name, birth_date) VALUES (?, ?)", (current["name"], current["birth_date"])
+        ).lastrowid
+        con.execute(
+            "INSERT INTO recipients(child_id, channel, address) VALUES (?, 'telegram', ?)", (child_id, chat_id)
+        )
+        con.execute("DELETE FROM onboarding WHERE chat_id = ?", (chat_id,))
+        self.notify_owner(
+            f"Подписан ребёнок: {current['name']}, {describe_age(current['birth_date'], today)} (chat {chat_id})"
+        )
+        when = "сегодня" if self.now().hour < PREPARATION_HOUR_MSK else "завтра"
+        return (
+            f"Готово! Первая игра для {current['name']} придёт {when} в {DELIVERY_TIME_MSK} по Москве.\n\n" + HELP
+        )
+
+    # --- member commands -----------------------------------------------------
+
+    def list_children(self, con, chat_id):
+        rows = self.chat_children(con, chat_id)
+        if not rows:
+            return "Пока никто не подписан. /add_child — добавить ребёнка."
+        today = self.now().date()
+        return "\n".join(
+            f"{r['name']} — {describe_age(r['birth_date'], today)}" + ("" if r["active"] else " (на паузе)")
+            for r in rows
+        )
+
+    def set_active(self, con, chat_id, active):
+        changed = con.execute(
+            "UPDATE recipients SET active = ? WHERE channel = 'telegram' AND address = ? AND active = ?",
+            (int(active), chat_id, int(not active)),
+        ).rowcount
+        if not changed:
+            return "Игры уже идут." if active else "Игры уже на паузе (или ещё не подписаны)."
+        self.notify_owner(f"chat {chat_id}: {'возобновил' if active else 'поставил на паузу'} игры")
+        if active:
+            return "Игры возобновлены с ближайшего утра."
+        return "Пауза. Уже подготовленная на сегодня игра может прийти, дальше — тишина. /resume — вернуть."
+
+    # --- feedback ------------------------------------------------------------
+
+    def feedback(self, con, chat_id, text, message):
+        game = con.execute(
+            "SELECT g.id FROM deliveries d JOIN games g ON g.id = d.game_id "
+            "WHERE d.channel = 'telegram' AND d.recipient = ? AND d.status = 'sent' "
+            "ORDER BY g.game_date DESC, g.id DESC LIMIT 1",
+            (chat_id,),
+        ).fetchone()
+        if game is None:
+            return "Первая игра ещё не пришла — отзыв можно будет написать после неё."
+        # storage.save_raw opens its own connection: release our write lock first.
+        con.commit()
+        result = storage.save_raw({
+            "event_id": f"tg:{chat_id}:{message.get('message_id')}",
+            "channel": "telegram",
+            "raw_text": text[:MAX_FEEDBACK_CHARS],
+            "game_id": game["id"],
+        })
+        if result.get("status") == "existing":
+            return None
+        return "Спасибо, записал! 🙏"
+
+
+def single_child_guard(con):
+    """Refuse to start while the database is still in single-child mode with history.
+
+    The first child added through the bot switches preparation to the children
+    table; a child served only by CHILD_BIRTH_DATE / VK_PEER_ID would silently
+    stop getting games. Register that child first (children.py add --adopt-existing
+    plus its VK recipient).
+    """
+    if ch.has_children(con):
+        return None
+    if con.execute("SELECT 1 FROM games LIMIT 1").fetchone() is None:
+        return None
+    return (
+        "The database has games but no children: register the existing child first "
+        "(src/db/children.py add --adopt-existing, then add-recipient --channel vk), "
+        "otherwise the first family that signs up switches it off."
+    )
+
+
+# --- Telegram transport ------------------------------------------------------
+
+def telegram(token, method, payload, timeout):
+    request = urllib.request.Request(
+        f"{API}/bot{token}/{method}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read())
+
+
+def main():
+    token = os.environ["GAME_TELEGRAM_BOT_TOKEN"]
+    owner_id = os.environ.get("GAME_BOT_OWNER_ID", "")
+    con = ch.connect_db(DB_PATH)
+    try:
+        ch.migrate(con)  # additive and idempotent
+        legacy_problem = single_child_guard(con)
+    finally:
+        con.close()
+    if legacy_problem:
+        raise SystemExit(legacy_problem)
+    username = telegram(token, "getMe", {}, 20)["result"].get("username", "")
+    bot = ProductBot(DB_PATH, owner_id, username)
+    offset = None
+    last_success = time.time()
+
+    def send(chat_id, text):
+        try:
+            telegram(token, "sendMessage", {"chat_id": chat_id, "text": text[:3500]}, 20)
+        except Exception as exc:  # noqa: BLE001 - never log tokens or URLs
+            print(f"send failed: {type(exc).__name__}", flush=True)
+
+    while True:
+        try:
+            payload = {"timeout": POLL_TIMEOUT_SECONDS, "allowed_updates": ["message"]}
+            if offset is not None:
+                payload["offset"] = offset
+            result = telegram(token, "getUpdates", payload, POLL_TIMEOUT_SECONDS + 10)
+            last_success = time.time()
+            for update in result.get("result", []):
+                offset = update["update_id"] + 1
+                try:
+                    reply = bot.handle(update)
+                except Exception as exc:  # noqa: BLE001 - one bad update must not stop the bot
+                    print(f"update {update['update_id']} failed: {type(exc).__name__}: {exc}", flush=True)
+                    reply = "Что-то пошло не так, попробуйте ещё раз чуть позже."
+                chat_id = ((update.get("message") or {}).get("chat") or {}).get("id")
+                if reply and chat_id is not None:
+                    send(chat_id, reply)
+                while bot.outbox:
+                    send(*bot.outbox.pop(0))
+        except Exception as exc:  # noqa: BLE001
+            print(f"poll error: {type(exc).__name__}", flush=True)
+            if time.time() - last_success > EXIT_AFTER_FAILING_SECONDS:
+                print("no successful poll for too long; exiting", flush=True)
+                sys.exit(1)
+            time.sleep(5)
+
+
+if __name__ == "__main__":
+    main()

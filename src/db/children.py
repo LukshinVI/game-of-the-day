@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -46,6 +46,33 @@ CREATE TABLE IF NOT EXISTS recipients (
 );
 """
 
+# Self-service onboarding in the product Telegram bot (src/bot/product_bot.py):
+# one-time invites (only the hash is stored), members (a chat that joined with an
+# invite) and the in-progress questionnaire, so a bot restart loses nothing.
+MIGRATION_3 = """
+CREATE TABLE IF NOT EXISTS invites (
+    id INTEGER PRIMARY KEY,
+    code_hash TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    used_by TEXT
+);
+CREATE TABLE IF NOT EXISTS members (
+    chat_id TEXT PRIMARY KEY,
+    invite_id INTEGER REFERENCES invites(id),
+    display_name TEXT,
+    joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS onboarding (
+    chat_id TEXT PRIMARY KEY REFERENCES members(chat_id),
+    step TEXT NOT NULL CHECK(step IN ('name', 'birth_date', 'confirm')),
+    name TEXT,
+    birth_date TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 
 def connect_db(path=None):
     con = sqlite3.connect(path or DB_PATH, timeout=10)
@@ -61,6 +88,7 @@ def columns(con, table):
 def migrate(con):
     """Bring an existing database to SCHEMA_VERSION. Idempotent and additive only."""
     con.executescript(MIGRATION_2)
+    con.executescript(MIGRATION_3)
     if "child_id" not in columns(con, "games"):
         con.execute("ALTER TABLE games ADD COLUMN child_id INTEGER REFERENCES children(id)")
     con.execute(
@@ -77,6 +105,11 @@ def migrate(con):
 
 def is_migrated(con):
     return "child_id" in columns(con, "games") and bool(columns(con, "children"))
+
+
+def has_children(con):
+    """True once any child was ever added: from then on there is no single-child fallback."""
+    return is_migrated(con) and con.execute("SELECT 1 FROM children LIMIT 1").fetchone() is not None
 
 
 def active_children(con):

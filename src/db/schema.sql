@@ -21,6 +21,29 @@ CREATE TABLE recipients (
     UNIQUE(child_id, channel, address)
 );
 
+-- Self-service onboarding in the product Telegram bot (src/bot/product_bot.py).
+CREATE TABLE invites (
+    id INTEGER PRIMARY KEY,
+    code_hash TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    used_by TEXT
+);
+CREATE TABLE members (
+    chat_id TEXT PRIMARY KEY,
+    invite_id INTEGER REFERENCES invites(id),
+    display_name TEXT,
+    joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE onboarding (
+    chat_id TEXT PRIMARY KEY REFERENCES members(chat_id),
+    step TEXT NOT NULL CHECK(step IN ('name', 'birth_date', 'confirm')),
+    name TEXT,
+    birth_date TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE games (
     id INTEGER PRIMARY KEY,
     legacy_id TEXT UNIQUE,
@@ -79,4 +102,4 @@ CREATE TABLE migration_meta (
     value TEXT
 );
 
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '2');
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '3');

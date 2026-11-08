@@ -83,7 +83,7 @@ class Migration(TempDb):
         ch.migrate(con)  # idempotent
         self.assertTrue(ch.is_migrated(con))
         self.assertEqual(self.query("SELECT id, child_id FROM games"), [(1, None)])
-        self.assertEqual(self.query("SELECT value FROM migration_meta WHERE key='schema_version'"), [("2",)])
+        self.assertEqual(self.query("SELECT value FROM migration_meta WHERE key='schema_version'"), [(str(ch.SCHEMA_VERSION),)])
 
     def test_adopt_existing_attaches_the_history_to_the_first_child(self):
         con = self.con()
@@ -298,3 +298,17 @@ class SingleChildMode(TempDb):
             self.query("SELECT d.channel, d.recipient, d.idempotency_key LIKE 'vk-%' FROM deliveries d"),
             [("vk", None, 1)],
         )
+
+
+class PausedChildren(TempDb):
+    def test_a_child_without_active_recipients_costs_no_model_call_and_no_fallback(self):
+        con = self.con()
+        child = ch.add_child(con, "Пауза", "2025-09-01")
+        ch.add_recipient(con, child, "telegram", "555")
+        con.execute("UPDATE recipients SET active = 0")
+        con.commit()
+        select = mock.Mock()
+        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gp, "select_candidate", select):
+            gp.prepare_run(self.today)
+        select.assert_not_called()  # in particular, no single-child (env) game either
+        self.assertEqual(self.query("SELECT count(*) FROM games"), [(0,)])
