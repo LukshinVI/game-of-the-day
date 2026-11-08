@@ -20,8 +20,8 @@ Observations
   paper that can be chewed, supporting a 2-month-old's head, a firm surface, taping paper
   down before jumping). This is a prompt problem, not a model problem.
 
-Decision
-- Daily selection moves to **Sonnet**: the same gate results and close quality at half the
+Recommendation
+- Move daily selection to **Sonnet**: the same gate results and close quality at half the
   quota and nearly twice the speed. Opus stays the judge for evals.
 - Next: a concrete safety checklist in the prompt (detachable parts, surfaces and falls,
   head and sitting support by age, chewable materials), then re-run these evals.
