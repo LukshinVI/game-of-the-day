@@ -16,6 +16,11 @@ on the commit that completed each milestone.
 - An external host watcher: the private backup repository checks every 6 hours that a
   backup arrived within 26 hours, and GitHub emails the owner otherwise.
 
+### Fixed
+- The product bot accepted children up to 6 years, but the games and the candidate schema
+  cover 0–36 months: such a child would have failed every day. Sign-up is capped at 3 years
+  and preparation skips a child who outgrew the range instead of alerting daily.
+
 ### Changed
 - Schema version 4 (additive).
 

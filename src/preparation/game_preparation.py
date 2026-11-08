@@ -55,6 +55,9 @@ MAX_ATTEMPTS = 3
 # forbidden objects were the main reason messages felt heavy to read.
 MAX_SAFETY_CHARS = 450
 
+# The age range the prompt and the candidate schema are designed for.
+MAX_AGE_MONTHS_SUPPORTED = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))["properties"]["age_months"]["maximum"]
+
 # Web research makes a single model call slow; one attempt must still fit well
 # inside the preparation unit's TimeoutStartSec.
 MODEL_TIMEOUT_SECONDS = int(os.environ.get("PREPARATION_MODEL_TIMEOUT", "600"))
@@ -865,6 +868,13 @@ def prepare_run(target_date, dry_run=False):
         # A child nobody receives games for (all recipients paused) costs a model
         # call for nothing: skip it.
         children = [c for c in active_children(con) if c["recipients"]]
+
+    # The games (and the candidate schema) cover 0-36 months; an older child would
+    # fail every attempt and alert daily. Skip with a note instead.
+    grown = [c for c in children if child_age_months(target_date, c["birth_date"]) > MAX_AGE_MONTHS_SUPPORTED]
+    for child in grown:
+        print(f"{child['name']} (id {child['id']}): старше {MAX_AGE_MONTHS_SUPPORTED} мес., игры не готовятся.")
+    children = [c for c in children if c not in grown]
 
     # Single-child mode only before the first child exists; once children are
     # configured, "nobody to prepare for" means nothing to do, not the env child.
