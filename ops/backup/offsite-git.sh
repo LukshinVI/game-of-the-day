@@ -2,17 +2,22 @@
 # Encrypted off-site copies of the SQLite backup in a private Git repository.
 #
 #   offsite-git.sh <backup.db.gz>   encrypt (age) -> verify the round trip -> commit -> push
-#                                   (this is GAME_BACKUP_OFFSITE_CMD for game-backup.sh)
+#   offsite-git.sh push-latest      the same for the newest published local backup
+#                                   (the manifest of game-backup.sh), used by game-offsite-push
 #   offsite-git.sh verify           fetch the newest copy, decrypt, gunzip, integrity_check
 #   offsite-git.sh restore <db>     the same, then install it as <db> (refuses to overwrite)
 #
 # Only ciphertext leaves the host: the repository (and its host) never sees the data.
-# Access is a deploy key limited to that one repository; GitHub's host keys are pinned.
+# GitHub's host keys are pinned. The SSH key should be a deploy key for that one
+# repository; if a broader key is used, run this as a different user than the
+# application (game-offsite-push.service runs it as root, out of the bots' reach).
 #
 # Configuration (environment):
 #   GAME_OFFSITE_REPO       git@github.com:<owner>/<private-repo>.git   (required)
 #   GAME_OFFSITE_BRANCH     branch holding the copies                   (db-backups)
-#   GAME_OFFSITE_DIR        state: deploy_key, age.key, work tree       (/var/lib/game-of-the-day/offsite)
+#   GAME_OFFSITE_DIR        state: age.key, work tree                   (/var/lib/game-of-the-day/offsite)
+#   GAME_OFFSITE_SSH_KEY    SSH key for the repository                  ($GAME_OFFSITE_DIR/deploy_key)
+#   GAME_BACKUP_DIR         local backups, for push-latest              (/var/backups/game-of-the-day)
 #   GAME_OFFSITE_RECIPIENT  age public key; default: derived from age.key
 #   GAME_OFFSITE_KEEP       copies kept in the branch tip                (30; history keeps older ones)
 set -euo pipefail
@@ -23,6 +28,8 @@ BRANCH=${GAME_OFFSITE_BRANCH:-db-backups}
 STATE=${GAME_OFFSITE_DIR:-/var/lib/game-of-the-day/offsite}
 KEEP=${GAME_OFFSITE_KEEP:-30}
 IDENTITY="$STATE/age.key"
+SSH_KEY=${GAME_OFFSITE_SSH_KEY:-$STATE/deploy_key}
+LOCAL=${GAME_BACKUP_DIR:-/var/backups/game-of-the-day}
 KNOWN_HOSTS="$(cd "$(dirname "$0")" && pwd)/github_known_hosts"
 WORK=""
 
@@ -34,10 +41,10 @@ trap cleanup EXIT
 [ -n "$REPO" ] || die "GAME_OFFSITE_REPO is not set"
 case "$KEEP" in ''|*[!0-9]*|0) die "GAME_OFFSITE_KEEP must be a positive integer" ;; esac
 for tool in age git gzip sqlite3; do command -v "$tool" > /dev/null || die "$tool is not installed"; done
-[ -r "$STATE/deploy_key" ] || die "deploy key missing: $STATE/deploy_key"
+[ -r "$SSH_KEY" ] || die "SSH key missing: $SSH_KEY"
 [ -r "$KNOWN_HOSTS" ] || die "pinned host keys missing: $KNOWN_HOSTS"
 
-export GIT_SSH_COMMAND="ssh -i $STATE/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN_HOSTS"
+export GIT_SSH_COMMAND="ssh -i $SSH_KEY -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$KNOWN_HOSTS"
 export GIT_TERMINAL_PROMPT=0
 git_() { git -c user.name=gotd-backup -c user.email=gotd-backup@localhost -c init.defaultBranch="$BRANCH" "$@"; }
 
@@ -62,7 +69,7 @@ push() {
     local src=$1 name enc remote_has
     [ -s "$src" ] || die "backup file missing or empty: $src"
     gzip -t "$src" || die "not a valid gzip: $src"
-    WORK=$(mktemp -d "$STATE/.work.XXXXXX")
+    WORK=$(mktemp -d "${TMPDIR:-/tmp}/offsite.XXXXXX")
     name="$(basename "$src").age"
     enc="$WORK/$name"
 
@@ -111,6 +118,12 @@ case "${1:-}" in
     verify)
         fetch_latest > /dev/null
         ;;
+    push-latest)
+        [ -r "$LOCAL/.last-local-ok" ] || die "no successful local backup recorded in $LOCAL"
+        read -r _ latest_name < "$LOCAL/.last-local-ok" || true
+        [ -n "${latest_name:-}" ] || die "local manifest names no backup"
+        push "$LOCAL/$latest_name"
+        ;;
     restore)
         target=${2:-}
         [ -n "$target" ] || die "usage: $0 restore <target.db>"
@@ -120,7 +133,7 @@ case "${1:-}" in
         log "restored to $target"
         ;;
     ''|-h|--help)
-        die "usage: $0 <backup.db.gz> | verify | restore <target.db>"
+        die "usage: $0 <backup.db.gz> | push-latest | verify | restore <target.db>"
         ;;
     *)
         push "$1"

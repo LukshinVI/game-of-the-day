@@ -1,0 +1,28 @@
+[Unit]
+Description=Game of the Day - push the newest backup, encrypted, to the private backup repository
+After=network-online.target game-backup.service
+Wants=network-online.target
+OnFailure=game-backup-alert@%n.service
+ConditionPathExists=/etc/game-of-the-day/offsite.env
+
+[Service]
+Type=oneshot
+# Root, not the application user: the repository key may be broader than one repository
+# and must stay out of reach of the bots, which run as the application user.
+User=root
+EnvironmentFile=/etc/game-of-the-day/offsite.env
+UMask=0077
+Nice=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+# Read-only access to root's SSH key; nothing else under /root is needed.
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+ReadOnlyPaths=/var/backups/game-of-the-day /var/lib/game-of-the-day/offsite
+ExecStart=/srv/game-of-the-day/ops/backup/offsite-git.sh push-latest
+TimeoutStartSec=10min
