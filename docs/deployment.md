@@ -72,6 +72,18 @@ binary system-wide (for example `/usr/local/bin/claude`); a per-user install und
 root's home is not visible to the service user. Pin and update it deliberately:
 preparation depends on its `--json-schema` structured output.
 
+### Deploying a new version
+
+```bash
+sudo /srv/game-of-the-day/ops/deploy.sh --check   # what would change
+sudo /srv/game-of-the-day/ops/deploy.sh           # backup, fast-forward, tests, migrate, units, restart
+```
+
+The script refuses a non-fast-forward, backs the database up first, runs the test suite
+on the new code before migrating (a failure rolls the code back and leaves the database
+untouched), installs changed units, installs new ones without enabling them, and checks
+that the long-running services are up afterwards.
+
 ### Units
 
 | unit | schedule |
