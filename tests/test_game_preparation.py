@@ -172,6 +172,19 @@ class AttemptLoop(unittest.TestCase):
         self.assertIn("deterministic_validation_errors", prompts[1])
 
 
+class SafetyLength(unittest.TestCase):
+    def test_a_focused_safety_note_passes(self):
+        self.assertEqual(gp.validate_candidate(candidate(safety="Под присмотром. " * 20), [], 12), [])
+
+    def test_a_long_generic_safety_note_is_rejected_with_a_reason(self):
+        errors = gp.validate_candidate(candidate(safety="Не давайте мелкие предметы. " * 20), [], 12)
+        self.assertTrue(any(e.startswith("safety is") for e in errors))
+
+    def test_the_prompt_asks_for_a_short_specific_note(self):
+        text = gp.PROMPT_PATH.read_text(encoding="utf-8")
+        self.assertIn("at most 3 short sentences", text)
+
+
 class MessageLayout(unittest.TestCase):
     def test_the_message_uses_the_emoji_layout_and_a_plain_source_url(self):
         text = gp.render_message(candidate())
