@@ -61,11 +61,16 @@ class Digest(unittest.TestCase):
 
     def test_the_first_sunday_of_a_month_asks_what_is_missing(self):
         con = sqlite3.connect(self.db)
-        con.execute("UPDATE games SET game_date = '2026-12-05' WHERE title = 'Ку-ку'")
+        con.execute("UPDATE games SET game_date = date('2026-12-06', '-' || (id % 3) || ' days')")
         con.commit()
         con.close()
         self.run_digest(date(2026, 12, 6))
         self.assertIn("чего не хватает", self.sent[0][2])
 
-    def test_no_games_no_digest(self):
+    def test_too_few_games_no_digest(self):
         self.assertEqual(self.run_digest(date(2027, 1, 10)), 0)
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE games SET game_date = '2026-10-01' WHERE title = 'Мяч'")
+        con.commit()
+        con.close()
+        self.assertEqual(self.run_digest(date(2026, 11, 15)), 0)  # two games are not a week
