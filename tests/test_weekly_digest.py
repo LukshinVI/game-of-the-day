@@ -1,10 +1,12 @@
-"""Sunday digest: content from the week's games and feedback, milestones, idempotency."""
+"""Sunday digest: content from the week's games and feedback, next-week ideas, idempotency."""
 
+import os
 import sqlite3
 import sys
 import tempfile
 import unittest
-from datetime import date
+from unittest import mock
+from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,8 +56,11 @@ class Digest(unittest.TestCase):
         self.assertIn("мелкая моторика ×2", text)
         self.assertIn("❤️ Понравилось: «Башенка»", text)
         self.assertIn("🌱 Получалось: строил сам", text)
-        self.assertIn("к 15 мес.", text)
-        self.assertIn("не медицинская оценка", text)
+        self.assertIn("✨ Что попробовать на следующей неделе:", text)
+        self.assertIn("• Повторите «Башенка»", text)
+        ideas = text.split("✨ Что попробовать на следующей неделе:")[1].split("\n\n")[0]
+        self.assertEqual(ideas.count("• "), wd.MAX_IDEAS)
+        self.assertNotIn("мелкая моторика:", ideas)   # played twice this week, not suggested
         self.assertNotIn("чего не хватает", text)
         self.assertEqual(self.run_digest(date(2026, 11, 15)), 0)   # idempotent
 
@@ -66,6 +71,38 @@ class Digest(unittest.TestCase):
         con.close()
         self.run_digest(date(2026, 12, 6))
         self.assertIn("чего не хватает", self.sent[0][2])
+
+    def test_no_age_norms_anywhere(self):
+        """Parents must never read what their child "should" do by an age."""
+        banned = ("обычно", "должен", "должна", "норм", "к 1", "к 2", "к 3", "мес.", "отста", "CDC")
+        for skill, bands in wd.IDEAS.items():
+            for _, idea in bands:
+                for word in banned:
+                    self.assertNotIn(word, idea, f"{skill}: {idea}")
+        for age in range(0, 37):
+            games = [{"skill": "speech"}] * 3
+            for idea in wd.next_week_ideas(age, games, [], date(2026, 11, 15)):
+                for word in banned:
+                    self.assertNotIn(word, idea)
+
+    def test_ideas_follow_the_age(self):
+        today = date(2026, 11, 15)
+        games = [{"skill": "speech"}] * 3
+        for age in range(0, 37):
+            ideas = wd.next_week_ideas(age, games, [], today)
+            self.assertEqual(len(ideas), wd.MAX_IDEAS, age)
+            for idea in ideas:
+                label = idea.split(":")[0]
+                key = next(k for k, v in wd.skills.LABELS.items() if v == label)
+                self.assertIn(key, wd.skills.for_age(age), (age, idea))
+        self.assertIsNone(wd.idea_for("imagination", 12))
+        self.assertIsNone(wd.idea_for("fine_motor", 2))
+
+    def test_ideas_rotate_between_weeks(self):
+        games = [{"skill": "speech"}] * 3
+        weeks = {tuple(wd.next_week_ideas(20, games, [], date(2026, 11, 15) + timedelta(weeks=w)))
+                 for w in range(4)}
+        self.assertGreater(len(weeks), 1)
 
     def test_too_few_games_no_digest(self):
         self.assertEqual(self.run_digest(date(2027, 1, 10)), 0)
@@ -80,6 +117,9 @@ class StarRequest(unittest.TestCase):
     """The one-time GitHub star request: after a month, only when feedback is positive."""
 
     def setUp(self):
+        patcher = mock.patch.dict(os.environ, {wd.STAR_ENABLED_ENV: "1"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.db = Path(tmp.name) / "t.db"
@@ -124,6 +164,12 @@ class StarRequest(unittest.TestCase):
         self.game("2026-12-17")
         self.game("2026-12-18")
         self.assertNotIn("github.com", self.run_digest(date(2026, 12, 20)))  # never twice
+
+    def test_off_by_default(self):
+        self.game("2026-11-08")
+        self.week()
+        with mock.patch.dict(os.environ, {wd.STAR_ENABLED_ENV: ""}):
+            self.assertNotIn("github.com", self.run_digest(date(2026, 12, 13)))
 
     def test_not_before_a_month(self):
         self.game("2026-11-20")

@@ -7,6 +7,15 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+### Changed
+- The Sunday digest no longer lists typical milestones for the age: "what children
+  usually do by N months" reads as a test and worries parents whose child is not there
+  yet. In its place, "What to try next week": one or two home ideas chosen by code — a
+  liked game to repeat, then the skills played least this week, with an idea per skill
+  and age band; ties rotate weekly. A test keeps age-norm wording out of the ideas.
+- The GitHub star request is off unless `GAME_DIGEST_STAR_REQUEST=1`, until it is
+  decided whether to send it.
+
 ### Added
 - A one-time request to star the project on GitHub, in the Sunday digest: once per
   recipient, only after the child has had games for 30 days and the last 30 days of

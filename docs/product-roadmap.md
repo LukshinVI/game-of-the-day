@@ -37,8 +37,8 @@ quotes; a code-built profile per child (difficulty direction per skill, what wen
 likes, dislikes); the selection prompt follows it; the parent sees what was taken into
 account.
 
-**Parents' week.** A Sunday digest with the week's games, what went well, typical
-milestones for the age, and a monthly question about what is missing.
+**Parents' week.** A Sunday digest with the week's games, what went well, one or two
+home ideas for next week (no age norms), and a monthly question about what is missing.
 
 **Quality and reliability of selection.** A second safety line (a model reviewer after the
 gate); "too easy" means the same skill, harder. Eight age-banded skills; safety by design in the

@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Sunday digest for parents: the week in games, what went well, what to expect next.
+"""Sunday digest for parents: the week in games, what went well, what to try next.
 
-For every active, non-test child with at least one game this week, one message per
-recipient: games and skills of the week, what the parents' feedback said went well,
-and a few typical milestones for the child's age (CDC "Learn the Signs. Act Early."),
-clearly marked as a guide, not an assessment. On the first Sunday of a month it also
+For every active, non-test child with at least MIN_GAMES games this week, one message
+per recipient: games and skills of the week, what the parents' feedback said went well,
+and one or two home ideas for next week (a liked game to repeat, skills played least).
+Deliberately no age norms or milestones: a list of what children "usually do" by an age
+reads as a test and worries parents whose child is not there yet. On the first Sunday of a month it also
 asks one question: what is missing in the service (the answer arrives as ordinary
 feedback and the insights job routes it to the owner as a wish).
 
-Once per recipient, ever, a digest also asks to star the project on GitHub — only after
+Once per recipient, ever, a digest may also ask to star the project on GitHub — only after
 the child has had games for at least a month and the family's recent feedback is
-positive (see star_request_due). Never in the same digest as the monthly question.
+positive (see star_request_due). Off unless GAME_DIGEST_STAR_REQUEST=1. Never in the same digest as the monthly question.
 
 Deterministic: no model call. Idempotent per child, recipient and week.
 
@@ -19,6 +20,7 @@ Deterministic: no model call. Idempotent per child, recipient and week.
 
 import argparse
 import hashlib
+import os
 import sqlite3
 import sys
 from collections import Counter
@@ -47,21 +49,60 @@ STAR_TEXT = ("⭐ Вы с нами уже больше месяца. Если с
              "Это бесплатно и очень помогает автору. Нет аккаунта на GitHub — просто напишите "
              "в ответ пару слов, что нравится, это тоже ценно 🙂")
 
-# Typical milestones by age, after CDC "Learn the Signs. Act Early." (2022 revision):
-# what most children (about three in four) do by that age.
-MILESTONES = [
-    (2, ["улыбается, когда с ним говорят", "лёжа на животе приподнимает голову", "следит глазами за лицом"]),
-    (4, ["гулит в ответ, когда с ним говорят", "на руках держит голову без поддержки", "тянет игрушку ко рту"]),
-    (6, ["смеётся", "переворачивается со спины на живот", "лёжа на животе опирается на руки"]),
-    (9, ["откликается на своё имя", "сидит без поддержки", "перекладывает предмет из руки в руку"]),
-    (12, ["машет «пока»", "подтягивается, чтобы встать", "берёт мелкие кусочки двумя пальцами"]),
-    (15, ["пробует говорить 1–2 слова кроме «мама» и «папа»", "делает несколько шагов сам",
-          "показывает пальцем, чтобы что-то попросить"]),
-    (18, ["пытается сказать три слова и больше", "ходит сам", "пьёт из открытой чашки, может проливать"]),
-    (24, ["говорит два слова вместе: «ещё сок»", "бегает", "бьёт по мячу ногой"]),
-    (30, ["говорит около 50 слов", "прыгает на двух ногах", "играет «понарошку» сам"]),
-    (36, ["говорит в диалоге 2–3 фразы подряд", "сам надевает простую одежду", "рисует круг, если показать"]),
-]
+# Star request stays off until the owner decides to send it (set GAME_DIGEST_STAR_REQUEST=1).
+STAR_ENABLED_ENV = "GAME_DIGEST_STAR_REQUEST"
+
+# "What to try next week": one home idea per skill and age band, chosen by code.
+# No norms and no "by N months your child should": parents must not read the digest
+# as a test their child can fail. Ideas use only big, safe household things.
+# skill -> [(from_months, idea)], the last band whose from_months <= age wins.
+IDEAS = {
+    "coordination": [
+        (0, "почаще выкладывайте малыша на животик, положите перед ним яркую игрушку и лягте рядом лицом к лицу"),
+        (6, "положите игрушку чуть дальше, чем малыш может дотянуться, пусть потянется или поползёт за ней"),
+        (12, "покатайте мяч друг другу по полу и поиграйте в «догонялки» шагом"),
+        (24, "попрыгайте вместе «как зайчики» и пройдите по дорожке из скотча на полу"),
+    ],
+    "sensory": [
+        (0, "дайте потрогать разные ткани: мягкий плед, гладкую наволочку, махровое полотенце, и называйте их"),
+        (6, "поиграйте с водой в тазике (только рядом с вами): переливайте из стаканчика, шлёпайте ладошками"),
+        (12, "сделайте дорожку из коврика, полотенца и подушки и пройдите по ней босиком"),
+        (24, "спрячьте знакомую игрушку в мешочек и предложите угадать её на ощупь"),
+    ],
+    "social_emotional": [
+        (0, "повторяйте за малышом его звуки и выражения лица, это ваш первый «разговор»"),
+        (6, "поиграйте в «ку-ку» с платочком и в «ладушки»"),
+        (12, "играйте по очереди: «твоя очередь бросить мяч в корзину, теперь моя»"),
+        (24, "называйте чувства в книжках и в жизни: «мишка грустит», «ты обрадовался»"),
+    ],
+    "speech": [
+        (0, "рассказывайте малышу, что вы делаете, с паузами, чтобы он мог «ответить» гулением"),
+        (6, "называйте то, на что малыш смотрит или показывает: «это мяч», «это кошка»"),
+        (12, "разглядывайте книжки с картинками и спрашивайте: «где собачка?»"),
+        (24, "добавляйте к словам малыша ещё одно: «машина» — «красная машина едет»"),
+    ],
+    "fine_motor": [
+        (3, "подавайте погремушку то с одной, то с другой стороны, чтобы малыш тянулся и хватал"),
+        (6, "дайте вынимать платочки из коробки или крупные кубики из миски"),
+        (12, "стройте вместе башню из больших кубиков и складывайте игрушки в коробку"),
+        (24, "порисуйте вместе мелками на большом листе или полепите из теста"),
+    ],
+    "cognitive": [
+        (4, "покажите, как звенит погремушка, когда её трясёшь, и дайте попробовать самому"),
+        (6, "спрячьте игрушку под платочек на глазах у малыша и предложите найти"),
+        (12, "разложите вместе вещи по корзинкам: носочки отдельно, мячики отдельно"),
+        (24, "соберите простой пазл из 2–4 крупных частей или найдите одинаковые картинки"),
+    ],
+    "self_care": [
+        (12, "дайте малышу самому попить из кружки и вытереть ручки полотенцем"),
+        (24, "предложите самому снять носки и шапку, а потом вместе убрать игрушки"),
+    ],
+    "imagination": [
+        (18, "покормите вместе мишку или куклу игрушечной ложкой и уложите спать"),
+        (24, "поиграйте с игрушками в «магазин» или «доктора»"),
+    ],
+}
+MAX_IDEAS = 2
 
 
 def connect(path=None):
@@ -77,12 +118,32 @@ def age_months(birth, today):
     return months - (1 if today.day < birth.day else 0)
 
 
-def next_milestones(age):
-    """The next milestone band at or after the child's age."""
-    for months, items in MILESTONES:
-        if months >= age:
-            return months, items
-    return None
+def idea_for(skill, age):
+    """The idea for this skill at this age, or None if the skill is not for this age yet."""
+    idea = None
+    for start, text in IDEAS.get(skill, []):
+        if age >= start:
+            idea = text
+    return idea
+
+
+def next_week_ideas(age, games, liked, today):
+    """Up to MAX_IDEAS ideas: repeat a liked game, then the skills least played this week.
+
+    Ties rotate with the week number so a family does not read the same idea every Sunday.
+    """
+    ideas = []
+    if liked:
+        ideas.append(f"повторите «{liked[0]}»: малыши любят знакомые игры, а вы можете добавить что-то новое")
+    played = Counter(g["skill"] for g in games if g["skill"])
+    allowed = [k for k in skills.for_age(age) if idea_for(k, age)]
+    week = today.isocalendar().week
+    order = {k: (i - week) % len(allowed) for i, k in enumerate(allowed)}
+    for key in sorted(allowed, key=lambda k: (played.get(k, 0), order[k])):
+        if len(ideas) >= MAX_IDEAS:
+            break
+        ideas.append(f"{skills.LABELS[key]}: {idea_for(key, age)}")
+    return ideas
 
 
 def compose(con, child, today):
@@ -109,13 +170,9 @@ def compose(con, child, today):
         lines.append("❤️ Понравилось: " + ", ".join(f"«{t}»" for t in liked))
     if went_well:
         lines.append("🌱 Получалось: " + "; ".join(went_well))
-    age = age_months(child["birth_date"], today)
-    band = next_milestones(age)
-    if band:
-        months, items = band
-        when = "сейчас" if months == age else f"к {months} мес."
-        lines += ["", f"👀 Что обычно появляется {when}:", *[f"• {item}" for item in items],
-                  "У каждого ребёнка свой темп; это ориентир CDC, а не медицинская оценка."]
+    ideas = next_week_ideas(age_months(child["birth_date"], today), games, liked, today)
+    if ideas:
+        lines += ["", "✨ Что попробовать на следующей неделе:", *[f"• {_cap(i)}" for i in ideas]]
     if today.day <= 7:
         lines += ["", "💡 Раз в месяц спрашиваем: чего не хватает в сервисе, что улучшить? "
                       "Ответьте на это сообщение одним предложением."]
@@ -126,6 +183,8 @@ def compose(con, child, today):
 
 def star_request_due(con, child, channel, address, today):
     """True when this recipient should get the one-time GitHub star request today."""
+    if os.environ.get(STAR_ENABLED_ENV) != "1":
+        return False  # off until the owner decides
     if today.day <= 7 or not _has(con, "star_requests"):
         return False  # the first Sunday carries the monthly question; one ask at a time
     if con.execute("SELECT 1 FROM star_requests WHERE channel = ? AND address = ?",
@@ -145,6 +204,10 @@ def star_request_due(con, child, channel, address, today):
         "AND o.value IN ('liked', 'disliked') GROUP BY o.value", (child["id"], since)).fetchall())
     liked, disliked = counts.get("liked", 0), counts.get("disliked", 0)
     return liked >= 1 and disliked <= liked
+
+
+def _cap(text):
+    return text[:1].upper() + text[1:]
 
 
 def _has(con, table):
