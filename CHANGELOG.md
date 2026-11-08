@@ -8,6 +8,14 @@ on the commit that completed each milestone.
 ## [Unreleased]
 
 ### Added
+- The child profile from feedback (`src/feedback/insights.py`, `profile.py`): a small model
+  extracts observations (outcome, difficulty, what went well or was hard, likes and
+  dislikes) into a strict schema; code keeps only those whose quote is verbatim in the
+  feedback, aggregates them into a per-child profile (60 days, recency-weighted), and the
+  selection prompt follows it. Messages sent close together are merged; at most 3 analyses
+  per child and 20 in total a day; no dialogue, one deterministic reply saying what was
+  taken into account (only for fresh feedback). Every game now ends with an invitation to
+  reply. Evals gained a profile case and a profile-fit score.
 - Graceful degradation: a day is never lost to the model. If the primary model fails its
   attempts, a cheaper fallback model (Haiku) gets the same gate; if the subscription quota
   is exhausted or the daily model budget is spent, or the fallback fails too, code picks an
@@ -23,7 +31,7 @@ on the commit that completed each milestone.
 - `game_preparation.py prepare --child ID` limits a manual run to one child.
 
 ### Changed
-- Schema version 6 (additive).
+- Schema version 7 (additive).
 
 ## [1.3.0] - 2026-11-08 — Measured, then cheaper
 

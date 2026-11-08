@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -134,6 +134,28 @@ CREATE TABLE IF NOT EXISTS reserve_games (
 """
 
 
+# Feedback insights (src/feedback/insights.py): facts extracted from feedback, each with
+# a verbatim quote, and the per-child profile code aggregates from them.
+MIGRATION_7 = """
+CREATE TABLE IF NOT EXISTS observations (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    feedback_id INTEGER NOT NULL REFERENCES feedback(id),
+    child_id INTEGER,
+    game_id INTEGER,
+    kind TEXT NOT NULL CHECK(kind IN ('outcome', 'difficulty', 'skill', 'like', 'dislike')),
+    value TEXT NOT NULL,
+    skill TEXT,
+    evidence TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS child_profiles (
+    child_id INTEGER PRIMARY KEY,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    profile_json TEXT NOT NULL
+);
+"""
+
+
 def connect_db(path=None):
     con = sqlite3.connect(path or DB_PATH, timeout=10)
     con.row_factory = sqlite3.Row
@@ -151,6 +173,10 @@ def migrate(con):
     con.executescript(MIGRATION_3)
     con.executescript(MIGRATION_4)
     con.executescript(MIGRATION_6)
+    con.executescript(MIGRATION_7)
+    for column in ("insights_at", "insights_status", "reply_sent_at"):
+        if column not in columns(con, "feedback"):
+            con.execute(f"ALTER TABLE feedback ADD COLUMN {column} TEXT")
     if "is_test" not in columns(con, "children"):
         # A test child (e.g. the VK test dialog) gets real games and deliveries, but its
         # games never absorb feedback that arrives without an explicit game.

@@ -11,9 +11,21 @@
       "id": "infant-6m-fine-motor-heavy",
       "age_months": 6,
       "history": [
-        {"title": "Шуршащая бумага", "skill": "fine_motor", "mechanics": "мнёт и шуршит бумагой"},
-        {"title": "Перекладываем кубик", "skill": "fine_motor", "mechanics": "перекладывает кубик из руки в руку"},
-        {"title": "Тянем платочек", "skill": "fine_motor", "mechanics": "вытягивает платок из коробки"}
+        {
+          "title": "Шуршащая бумага",
+          "skill": "fine_motor",
+          "mechanics": "мнёт и шуршит бумагой"
+        },
+        {
+          "title": "Перекладываем кубик",
+          "skill": "fine_motor",
+          "mechanics": "перекладывает кубик из руки в руку"
+        },
+        {
+          "title": "Тянем платочек",
+          "skill": "fine_motor",
+          "mechanics": "вытягивает платок из коробки"
+        }
       ],
       "why": "Three fine-motor games in a row: the next one should switch skill."
     },
@@ -27,12 +39,36 @@
       "id": "toddler-14m-long-history",
       "age_months": 14,
       "history": [
-        {"title": "Где мячик? В корзине!", "skill": "coordination", "mechanics": "бросает мяч в корзину"},
-        {"title": "Кто там спрятался?", "skill": "speech", "mechanics": "ищет игрушку под платком и называет её"},
-        {"title": "Башня из стаканчиков", "skill": "fine_motor", "mechanics": "ставит стаканчики друг на друга"},
-        {"title": "Ку-ку!", "skill": "speech", "mechanics": "прятки за ладонями и звукоподражание"},
-        {"title": "Толкай машинку", "skill": "coordination", "mechanics": "толкает машинку и идёт за ней"},
-        {"title": "Крышки на банках", "skill": "fine_motor", "mechanics": "снимает и надевает крышки"}
+        {
+          "title": "Где мячик? В корзине!",
+          "skill": "coordination",
+          "mechanics": "бросает мяч в корзину"
+        },
+        {
+          "title": "Кто там спрятался?",
+          "skill": "speech",
+          "mechanics": "ищет игрушку под платком и называет её"
+        },
+        {
+          "title": "Башня из стаканчиков",
+          "skill": "fine_motor",
+          "mechanics": "ставит стаканчики друг на друга"
+        },
+        {
+          "title": "Ку-ку!",
+          "skill": "speech",
+          "mechanics": "прятки за ладонями и звукоподражание"
+        },
+        {
+          "title": "Толкай машинку",
+          "skill": "coordination",
+          "mechanics": "толкает машинку и идёт за ней"
+        },
+        {
+          "title": "Крышки на банках",
+          "skill": "fine_motor",
+          "mechanics": "снимает и надевает крышки"
+        }
       ],
       "why": "A long history: must not repeat a title or a mechanic."
     },
@@ -40,8 +76,16 @@
       "id": "speech-24m",
       "age_months": 24,
       "history": [
-        {"title": "Лепим колбаски", "skill": "fine_motor", "mechanics": "раскатывает пластилин"},
-        {"title": "Прыгаем как зайчик", "skill": "coordination", "mechanics": "прыгает на двух ногах"}
+        {
+          "title": "Лепим колбаски",
+          "skill": "fine_motor",
+          "mechanics": "раскатывает пластилин"
+        },
+        {
+          "title": "Прыгаем как зайчик",
+          "skill": "coordination",
+          "mechanics": "прыгает на двух ногах"
+        }
       ],
       "why": "Two years: speech games should use short phrases, not single sounds."
     },
@@ -50,6 +94,40 @@
       "age_months": 36,
       "history": [],
       "why": "The top of the supported range: still a toddler game, not a preschool worksheet."
+    },
+    {
+      "id": "profile-14m-towers-too-easy",
+      "age_months": 14,
+      "history": [
+        {
+          "title": "Башня из стаканчиков",
+          "skill": "fine_motor",
+          "mechanics": "ставит стаканчики друг на друга"
+        },
+        {
+          "title": "Ку-ку!",
+          "skill": "speech",
+          "mechanics": "прятки за ладонями"
+        }
+      ],
+      "profile": {
+        "next_difficulty": {
+          "fine_motor": "harder"
+        },
+        "went_well": {
+          "fine_motor": [
+            "башню из трёх стаканчиков строит сам"
+          ]
+        },
+        "dislikes": [
+          "лежать на животе",
+          "громкие звуки"
+        ],
+        "likes": [
+          "мячи"
+        ]
+      },
+      "why": "Feedback said towers were too easy: a fine-motor game must be one step harder; nothing loud, no tummy time; balls are a plus."
     }
   ]
 }

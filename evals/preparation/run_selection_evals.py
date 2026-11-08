@@ -40,12 +40,13 @@ REPORTS = Path(__file__).with_name("reports")
 JUDGE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["age_fit", "clarity", "developmental_value", "safety_concerns", "notes"],
+    "required": ["age_fit", "clarity", "developmental_value", "safety_concerns", "profile_fit", "notes"],
     "properties": {
         "age_fit": {"type": "integer", "minimum": 1, "maximum": 5},
         "clarity": {"type": "integer", "minimum": 1, "maximum": 5},
         "developmental_value": {"type": "integer", "minimum": 1, "maximum": 5},
         "safety_concerns": {"type": "array", "items": {"type": "string"}},
+        "profile_fit": {"type": "integer", "minimum": 0, "maximum": 5},
         "notes": {"type": "string"},
     },
 }
@@ -54,8 +55,12 @@ Rate strictly, 1-5:
 - age_fit: realistic for exactly this age (motor and language milestones), neither too hard nor too easy;
 - clarity: a tired parent can follow the steps without guessing;
 - developmental_value: it actually exercises the declared skill ({skill}), not just keeps the child busy.
-List concrete safety_concerns for this age (empty if none). notes: one or two sentences.
+List concrete safety_concerns for this age (empty if none).
+profile_fit: 0 if no child profile is given; otherwise 1-5 for how well the activity follows
+it (difficulty direction for the skill, avoids dislikes, uses likes).
+notes: one or two sentences.
 Case intent: {why}
+Child profile from parents' feedback: {profile}
 
 ACTIVITY (JSON):
 {candidate}
@@ -82,6 +87,7 @@ def lint(candidate, history):
 
 def judge(candidate, case, model):
     prompt = JUDGE_PROMPT.format(age=case["age_months"], skill=candidate.get("skill"), why=case["why"],
+                                 profile=json.dumps(case.get("profile") or {}, ensure_ascii=False),
                                  candidate=json.dumps(candidate, ensure_ascii=False, indent=2))
     command = [os.environ.get("CLAUDE_BIN", "claude"), "--print", "--output-format", "json",
                "--json-schema", json.dumps(JUDGE_SCHEMA), "--model", model, "--tools", "",
@@ -98,6 +104,7 @@ def judge(candidate, case, model):
 
 def run_case(case, judge_model=None):
     gp.RUN_LOG.clear()
+    gp.PROFILE_CONTEXT = case.get("profile") or {}
     out = io.StringIO()
     record = {"id": case["id"], "age_months": case["age_months"]}
     try:
@@ -111,6 +118,7 @@ def run_case(case, judge_model=None):
             record["judge"] = judge(candidate, case, judge_model)
     except Exception as exc:  # noqa: BLE001 - a failed case is a result
         record.update(passed=False, attempts=len(gp.RUN_LOG), error=f"{type(exc).__name__}: {str(exc)[:300]}")
+    gp.PROFILE_CONTEXT = {}
     runs = list(gp.RUN_LOG)
     record["rejections"] = [e for r in runs if r["outcome"] == "rejected" for e in r["errors"]]
     record["wall_ms"] = sum(r.get("wall_ms") or 0 for r in runs)
@@ -149,6 +157,9 @@ def summary(model, judge_model, records):
         lines.append(f"- judge ({judge_model}): age fit {avg['age_fit']:.1f}, clarity {avg['clarity']:.1f}, "
                      f"developmental value {avg['developmental_value']:.1f} (of 5); "
                      f"cases with safety concerns: {sum(1 for j in judged if j['safety_concerns'])}")
+        fits = [j["profile_fit"] for j in judged if j.get("profile_fit")]
+        if fits:
+            lines.append(f"- profile fit (cases with a profile): {sum(fits) / len(fits):.1f} of 5")
     lines += ["", "| case | gate | attempts | lint | judge | title |", "|---|---|---|---|---|---|"]
     for r in records:
         j = r.get("judge") or {}

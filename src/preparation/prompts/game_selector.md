@@ -10,6 +10,11 @@ Requirements:
 - keep the skills varied: prefer a skill with a low count in `recent_skill_counts`,
   and never repeat the skill of both games in `last_skills`;
 - age appropriate for `child_age_months`;
+- when INPUT CONTEXT has `child_profile` (built by the application from the parents'
+  feedback), use it: follow `next_difficulty` for the chosen skill (harder: one step more
+  demanding than what `went_well` describes; easier: break it into smaller steps), never
+  build the game around anything in `dislikes` or `disliked_games`, and prefer to build on
+  `likes`;
 - safe under direct adult supervision;
 - do not repeat a previous game's title or core mechanics;
 - use a reliable primary or authoritative source;

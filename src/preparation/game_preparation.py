@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.db.children import active_children, has_children  # noqa: E402
+from src.feedback import profile as child_profile  # noqa: E402
 from src.preparation import fallback, skills  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -138,6 +139,7 @@ def build_prompt(history, age_months, today=None):
         "today": today or datetime.now(MOSCOW).date().isoformat(),
         "child_age_months": age_months,
         **skills.prompt_context(age_months, history),
+        **({"child_profile": PROFILE_CONTEXT} if PROFILE_CONTEXT else {}),
         "previous_games": history,
     }
 
@@ -172,6 +174,8 @@ def run_model(prompt):
 
 
 MODEL_OVERRIDE = None  # set by obtain_candidate() for the fallback model
+# The child's profile from feedback (src/feedback/profile.py), set by prepare_for_child().
+PROFILE_CONTEXT = {}
 
 
 def claude_command(schema):
@@ -1004,10 +1008,17 @@ def prepare_for_child(target_date, child, dry_run=False):
     print(f"Исторических игр: {len(history)}")
     print(f"Целевая дата: {target_date}")
 
+    global PROFILE_CONTEXT
+    with connect_db() as con:
+        PROFILE_CONTEXT = child_profile.load(con, child_id)
+    if PROFILE_CONTEXT:
+        print(f"Профиль: {json.dumps(PROFILE_CONTEXT, ensure_ascii=False)}")
+
     RUN_LOG.clear()
     try:
         candidate, attempts, origin, origin_reason = obtain_candidate(history, target_date, child)
     finally:
+        PROFILE_CONTEXT = {}
         persist_runs(target_date, child_id, dry_run)
     print(f"Источник: {fallback.describe(origin, origin_reason)}")
 
