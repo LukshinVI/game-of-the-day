@@ -161,6 +161,16 @@ CREATE TABLE wishes (
     evidence TEXT
 );
 
+-- Sunday digests sent (src/ops/weekly_digest.py).
+CREATE TABLE digests (
+    child_id INTEGER NOT NULL,
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    week TEXT NOT NULL,
+    sent_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (child_id, channel, address, week)
+);
+
 -- Feedback insights (src/feedback/insights.py).
 CREATE TABLE observations (
     id INTEGER PRIMARY KEY,
@@ -189,4 +199,4 @@ CREATE TABLE migration_meta (
     value TEXT
 );
 
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '8');
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '9');

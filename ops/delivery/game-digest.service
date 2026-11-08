@@ -1,0 +1,24 @@
+[Unit]
+Description=Game of the Day - Sunday digest for parents
+After=network-online.target
+Wants=network-online.target
+OnFailure=game-backup-alert@%n.service
+
+[Service]
+Type=oneshot
+User=gotd
+Group=gotd
+WorkingDirectory=/srv/game-of-the-day
+EnvironmentFile=/etc/game-of-the-day/game.env
+EnvironmentFile=-/etc/game-of-the-day/ops-bot.env
+# Product bot token for Telegram recipients (optional until the product bot exists).
+EnvironmentFile=-/etc/game-of-the-day/product-bot.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/ops/weekly_digest.py run
+TimeoutStartSec=5min
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/srv/game-of-the-day/data
