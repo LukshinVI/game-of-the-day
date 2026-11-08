@@ -1,0 +1,10 @@
+[Unit]
+Description=Game of the Day - daily delivery at 10:00 Moscow time
+
+[Timer]
+# A repeated run is safe: an already-sent delivery is not sent again.
+OnCalendar=*-*-* 10:00:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target

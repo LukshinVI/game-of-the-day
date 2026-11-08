@@ -13,15 +13,51 @@ Conventions the unit files assume:
 | checkout | `/srv/game-of-the-day` |
 | runtime data (SQLite) | `/srv/game-of-the-day/data` |
 | backups | `/var/backups/game-of-the-day` |
-| secrets | root-owned `EnvironmentFile`, variables as in [`.env.example`](../.env.example) |
+| service state (model CLI config/cache) | `/var/lib/game-of-the-day` (`StateDirectory=`) |
+| secrets | root-owned `EnvironmentFile`s in `/etc/game-of-the-day/` (mode 0600), see below |
 
 Fresh host:
 
 ```bash
-sudo useradd --system --home-dir /srv/game-of-the-day --shell /usr/sbin/nologin gotd
+sudo apt-get install -y git sqlite3
+sudo useradd --system --home-dir /var/lib/game-of-the-day --no-create-home --shell /usr/sbin/nologin gotd
 sudo git clone https://github.com/LukshinVI/game-of-the-day.git /srv/game-of-the-day
-sudo chown -R gotd:gotd /srv/game-of-the-day
+sudo install -d -o gotd -g gotd -m 0750 /srv/game-of-the-day/data
+sudo -u gotd sqlite3 /srv/game-of-the-day/data/game-of-the-day.db < /srv/game-of-the-day/src/db/schema.sql
 ```
+
+The checkout stays root-owned: the service user can write only `data/`.
+
+### Secrets
+
+systemd reads these as root before dropping privileges; each unit loads only
+what it needs. Variable names are listed in [`.env.example`](../.env.example).
+
+| file | used by | contents |
+|---|---|---|
+| `game.env` | preparation, delivery | `CHILD_BIRTH_DATE`, `VK_TOKEN`, `VK_PEER_ID` |
+| `preparation.env` | preparation | `PREPARATION_BACKEND`, `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` |
+| `feedback.env` | feedback consumer | `CF_ACCOUNT_ID`, `CF_STORAGE_QUEUE_ID`, `CF_ENRICHED_QUEUE_ID`, `CF_QUEUE_API_TOKEN` |
+| `ops-bot.env` | alerts, ops bot | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+
+### Model CLI
+
+Preparation calls `claude` (default backend) or `codex` from `PATH`. Install the
+binary system-wide (for example `/usr/local/bin/claude`); a per-user install under
+root's home is not visible to the service user. Pin and update it deliberately:
+preparation depends on its `--json-schema` structured output.
+
+### Units
+
+| unit | schedule |
+|---|---|
+| `ops/preparation/game-preparation.{service,timer}` | 07:00, retries 08:00 and 09:00 MSK (idempotent) |
+| `ops/delivery/game-delivery.{service,timer}` | 10:00 MSK |
+| `ops/delivery/game-delivery-retry.service` | manual, via the bot |
+| `ops/feedback/game-feedback-consumer.service` | always on |
+| `ops/day-outcome/game-day-outcome.{service,timer}` | 10:15, 11:15, 13:15, 17:15 MSK |
+| `ops/backup/game-backup*.{service,timer}` | 03:30 backup, 12:00 freshness check |
+| `ops/bot/game-bot.service` | always on |
 
 Then install the units following each runbook:
 [backup](../ops/backup/README.md), [manual delivery bot](../ops/bot/README.md),
