@@ -583,7 +583,7 @@ def send_preparation_success_alert(
         f"Название: {candidate['title']}\n"
         f"Навык: {candidate['skill']}\n"
         + (f"Попыток подбора: {attempts}\n" if origin != "library" else
-           f"Из библиотеки: копия игры #{candidate.get('library_source_game_id')}\n")
+           f"Из библиотеки: копия {candidate.get('library_source')}\n")
         + (f"Причина резерва: {origin_reason}\n" if origin != "model" else "")
         + "Статус: ожидает отправки"
     )
@@ -1179,9 +1179,86 @@ def obtain_candidate(history, target_date, child):
 
 
 
+RESERVE_MIN = 3
+RESERVE_MONTHS_AHEAD = 2
+RESERVE_MAX_NEW_PER_RUN = 6
+
+
+def reserve_import(paths):
+    """Add validated candidates from selection-eval reports to the warm reserve."""
+    added = 0
+    with connect_db() as con:
+        for path in paths:
+            for record in json.loads(Path(path).read_text(encoding="utf-8")):
+                candidate = record.get("candidate")
+                if not record.get("passed") or not isinstance(candidate, dict):
+                    continue
+                candidate = with_rendered_message(candidate)
+                errors = validate_candidate(candidate, [], candidate["age_months"])
+                if errors:
+                    print(f"skip {candidate.get('title')}: {errors}")
+                    continue
+                if fallback.add_reserve(con, candidate, f"evals:{Path(path).name}"):
+                    added += 1
+                    print(f"+ {candidate['age_months']} мес. {candidate['skill']}: {candidate['title']}")
+    print(f"added {added}")
+
+
+def reserve_top_up(target_date):
+    """Keep at least RESERVE_MIN library games for each child's age over the next months.
+
+    Generates the missing ones with the configured model under the same validator and
+    within the daily budget; at most RESERVE_MAX_NEW_PER_RUN per run.
+    """
+    global ALERT_ON_EXHAUSTION
+    target_date = validate_target_date(target_date)
+    with connect_db() as con:
+        children = [c for c in active_children(con) if c["recipients"]]
+    made = 0
+    for child in children:
+        history = load_history(child["id"])
+        base = child_age_months(target_date, child["birth_date"])
+        for age in range(base, min(base + RESERVE_MONTHS_AHEAD, MAX_AGE_MONTHS_SUPPORTED) + 1):
+            with connect_db() as con:
+                have = fallback.eligible_count(con, history, age, target_date)
+                budget, spent = fallback.daily_budget_usd(), fallback.spent_today(con, target_date)
+            print(f"{child['name']}: {age} мес. — в резерве {have}")
+            synthetic = list(history)
+            while have < RESERVE_MIN and made < RESERVE_MAX_NEW_PER_RUN:
+                if budget is not None and spent >= budget:
+                    print("budget spent; stopping")
+                    return made
+                RUN_LOG.clear()
+                saved, ALERT_ON_EXHAUSTION = ALERT_ON_EXHAUSTION, False
+                try:
+                    candidate, _ = select_candidate(synthetic, target_date, age_months=age)
+                except Exception as exc:  # noqa: BLE001 - a reserve gap is not an outage
+                    print(f"could not make a reserve game for {age} months: {str(exc)[:200]}")
+                    break
+                finally:
+                    ALERT_ON_EXHAUSTION = saved
+                    persist_runs(target_date, None, False)
+                with connect_db() as con:
+                    if fallback.add_reserve(con, candidate, os.environ.get("PREPARATION_CLAUDE_MODEL", "model")):
+                        made += 1
+                        have += 1
+                    spent = fallback.spent_today(con, target_date)
+                synthetic.append(candidate)
+                print(f"+ {age} мес. {candidate['skill']}: {candidate['title']}")
+    print(f"reserve: {made} new")
+    return made
+
+
 def main():
     parser = argparse.ArgumentParser(prog="game-preparation")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    reserve = sub.add_parser("reserve", help="warm reserve of validated games for graceful degradation")
+    reserve_sub = reserve.add_subparsers(dest="reserve_command", required=True)
+    imp = reserve_sub.add_parser("import", help="add passed candidates from selection-eval reports")
+    imp.add_argument("paths", nargs="+")
+    top = reserve_sub.add_parser("top-up", help="generate missing reserve games for upcoming ages")
+    top.add_argument("--date", default=datetime.now(MOSCOW).date().isoformat())
 
     sub.add_parser("shadow")
 
@@ -1200,7 +1277,12 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "shadow":
+    if args.command == "reserve":
+        if args.reserve_command == "import":
+            reserve_import(args.paths)
+        else:
+            reserve_top_up(args.date)
+    elif args.command == "shadow":
         shadow_run()
     elif args.command == "prepare":
         prepare_run(

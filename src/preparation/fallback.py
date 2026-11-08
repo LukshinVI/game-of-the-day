@@ -57,7 +57,7 @@ def library_candidate(con, history, age_months, target_date, child_id=None):
     """A validated past game for this child, as a candidate dict, or None."""
     columns = {r[1] for r in con.execute("PRAGMA table_info(games)")}
     origin_filter = "AND COALESCE(origin, 'model') != 'library'" if "origin" in columns else ""
-    rows = [dict(r) for r in con.execute(
+    rows = [{**dict(r), "kind": "game"} for r in con.execute(
         f"""
         SELECT id, title, age_months, skill, mechanics, source_name, source_url, message_text
         FROM games
@@ -67,6 +67,11 @@ def library_candidate(con, history, age_months, target_date, child_id=None):
           {origin_filter}
         """
     )]
+    if con.execute("SELECT 1 FROM sqlite_master WHERE name = 'reserve_games'").fetchone():
+        rows += [{**dict(r), "kind": "reserve"} for r in con.execute(
+            "SELECT id, title, age_months, skill, mechanics, source_name, source_url, message_text "
+            "FROM reserve_games"
+        )]
     seen_titles = {normalize(g.get("title")) for g in history}
     seen_mechanics = {normalize(g.get("mechanics")) for g in history if g.get("mechanics")}
     recent = Counter(g.get("skill") for g in history[-14:])
@@ -81,7 +86,7 @@ def library_candidate(con, history, age_months, target_date, child_id=None):
         ]
         if pool:
             def order(r):
-                tie = hashlib.sha256(f"{target_date}:{child_id}:{r['id']}".encode()).hexdigest()
+                tie = hashlib.sha256(f"{target_date}:{child_id}:{r['kind']}{r['id']}".encode()).hexdigest()
                 return (recent.get(r["skill"], 0), age_months - r["age_months"], tie)
 
             best = min(pool, key=order)
@@ -93,7 +98,7 @@ def library_candidate(con, history, age_months, target_date, child_id=None):
                 "source_name": best["source_name"] or "",
                 "source_url": best["source_url"],
                 "message_text": best["message_text"],
-                "library_source_game_id": best["id"],
+                "library_source": f"{best['kind']} #{best['id']}",
             }
     return None
 
@@ -105,3 +110,27 @@ def describe(origin, reason):
 
 def candidate_json(candidate):
     return json.dumps({k: v for k, v in candidate.items() if k != "message_text"}, ensure_ascii=False)
+
+
+def eligible_count(con, history, age_months, target_date):
+    """How many distinct library games would fit this child (for the reserve top-up)."""
+    count, seen = 0, list(history)
+    while count < 10:
+        pick = library_candidate(con, seen, age_months, target_date)
+        if pick is None:
+            break
+        count += 1
+        seen = seen + [{"title": pick["title"], "mechanics": pick["mechanics"], "skill": None}]
+    return count
+
+
+def add_reserve(con, candidate, made_by):
+    """Store a validated candidate in the warm reserve; False if it is already there."""
+    cur = con.execute(
+        "INSERT OR IGNORE INTO reserve_games(age_months, skill, title, mechanics, source_name, source_url, "
+        "message_text, candidate_json, made_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (candidate["age_months"], candidate["skill"], candidate["title"].strip(), candidate["mechanics"],
+         candidate.get("source_name"), candidate["source_url"], candidate["message_text"],
+         candidate_json(candidate), made_by),
+    )
+    return cur.rowcount == 1

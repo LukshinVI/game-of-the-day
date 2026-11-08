@@ -78,6 +78,22 @@ CREATE TABLE model_runs (
     dry_run INTEGER NOT NULL DEFAULT 0
 );
 
+-- Warm reserve of validated games per age (src/preparation/fallback.py).
+CREATE TABLE reserve_games (
+    id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    age_months INTEGER NOT NULL,
+    skill TEXT NOT NULL,
+    title TEXT NOT NULL,
+    mechanics TEXT,
+    source_name TEXT,
+    source_url TEXT NOT NULL,
+    message_text TEXT NOT NULL,
+    candidate_json TEXT,
+    made_by TEXT,
+    UNIQUE(title, age_months)
+);
+
 CREATE TABLE games (
     id INTEGER PRIMARY KEY,
     legacy_id TEXT UNIQUE,

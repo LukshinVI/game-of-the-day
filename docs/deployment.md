@@ -77,6 +77,7 @@ preparation depends on its `--json-schema` structured output.
 | unit | schedule |
 |---|---|
 | `ops/preparation/game-preparation.{service,timer}` | 07:00, retries 08:00 and 09:00 MSK (idempotent) |
+| `ops/preparation/game-reserve.{service,timer}` | Sundays 04:30 MSK: top up the warm reserve of validated games |
 | `ops/delivery/game-delivery.{service,timer}` | 10:00 MSK, catch-up 10:12 |
 | `ops/delivery/game-delivery-retry.service` | manual, via the bot |
 | `ops/feedback/game-feedback-consumer.service` | always on |
