@@ -62,9 +62,11 @@ class BotTest(unittest.TestCase):
 
 class Invites(BotTest):
     def test_strangers_get_nothing_but_the_closed_notice(self):
-        for text in ("/start", "/start nope", "привет", "/invite", "/members"):
-            reply = self.say("42", text)
-            self.assertTrue(reply == pb.CLOSED or "недействительна" in reply, text)
+        self.assertEqual(self.say("42", "привет"), pb.CLOSED)
+        for text in ("/start", "привет", "/invite", "/members", "/block 1"):
+            self.assertIsNone(self.say("42", text), text)  # once a day, then silence
+        self.assertIn("недействительна", self.say("42", "/start nope"))
+        self.assertEqual(self.say("43", "/faq"), pb.CLOSED)
         self.assertEqual(self.rows("SELECT count(*) FROM members"), [(0,)])
         self.assertEqual(self.rows("SELECT count(*) FROM invites"), [(0,)])
 
@@ -265,3 +267,49 @@ class Faq(BotTest):
 
     def test_strangers_do_not_get_the_faq(self):
         self.assertEqual(self.say("42", "/faq"), pb.CLOSED)
+
+
+class Abuse(BotTest):
+    def add_child(self, chat, name, birth="01.01.2026"):
+        self.say(chat, "/add_child")
+        self.say(chat, name)
+        self.say(chat, birth)
+        return self.say(chat, "да")
+
+    def test_children_per_chat_are_capped(self):
+        self.onboard("42")
+        self.add_child("42", "Петя")
+        self.add_child("42", "Оля")
+        self.assertIn("до 3 детей", self.say("42", "/add_child"))
+        self.assertEqual(self.rows("SELECT count(*) FROM children"), [(3,)])
+
+    def test_the_total_is_capped_and_the_owner_is_told(self):
+        with mock.patch.object(pb, "MAX_ACTIVE_CHILDREN", 1):
+            self.onboard("42")
+            reply = self.onboard("43", name="Оля")
+        self.assertIn("мест нет", reply)
+        self.assertEqual(self.rows("SELECT count(*) FROM children"), [(1,)])
+        self.assertTrue(any("лимит детей" in text for _, text in self.bot.outbox))
+
+    def test_feedback_per_day_is_capped(self):
+        self.onboard("42")
+        Feedback.sent_game(self, "42", "A")
+        with mock.patch.object(pb, "MAX_FEEDBACK_PER_DAY", 2):
+            self.say("42", "раз")
+            self.say("42", "два")
+            self.assertIn("достаточно", self.say("42", "три"))
+        self.assertEqual(self.rows("SELECT count(*) FROM feedback"), [(2,)])
+
+    def test_block_stops_the_member_and_their_children_but_not_shared_ones(self):
+        self.onboard("42")
+        con = ch.connect_db(self.db)
+        ch.add_recipient(con, 1, "vk", "999")  # Маша is also reached through VK
+        con.close()
+        self.add_child("42", "Петя")
+        self.assertNotIn("заблокирован", self.say("42", "/block 42"))  # members cannot block
+        self.assertIn("заблокирован", self.say(OWNER, "/block 42"))
+        self.assertIsNone(self.say("42", "/children"))
+        self.assertEqual(self.rows("SELECT name, active FROM children ORDER BY id"), [("Маша", 1), ("Петя", 0)])
+        self.assertEqual(self.rows("SELECT count(*) FROM recipients WHERE channel='telegram' AND active=1"), [(0,)])
+        self.assertNotIn("42", self.say(OWNER, "/members"))
+        self.assertIn("Себя", self.say(OWNER, f"/block {OWNER}"))

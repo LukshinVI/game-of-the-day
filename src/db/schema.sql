@@ -34,7 +34,8 @@ CREATE TABLE members (
     chat_id TEXT PRIMARY KEY,
     invite_id INTEGER REFERENCES invites(id),
     display_name TEXT,
-    joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    blocked_at TEXT
 );
 CREATE TABLE onboarding (
     chat_id TEXT PRIMARY KEY REFERENCES members(chat_id),

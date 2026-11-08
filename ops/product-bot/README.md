@@ -44,6 +44,21 @@ on every join, subscription and pause.
 
 Strangers without an invite only get a "closed bot" notice; nothing is stored for them.
 
+## Abuse model
+
+The bot is public in Telegram search, so anyone can write to it.
+
+| threat | control |
+|---|---|
+| a stranger uses the bot | nothing without a valid invite: no rows, no model run; the "closed" notice at most once a day per chat, then silence |
+| guessing an invite | 96-bit random code, one-time, 7 days, stored as a hash |
+| impersonating the owner | owner commands check the sender chat id that Telegram sets |
+| a leaked invite or a misbehaving member | `GAME_MAX_CHILDREN_PER_CHAT` (3), `GAME_MAX_ACTIVE_CHILDREN` (20; each child is a model run a day, the owner is alerted at the cap), `GAME_MAX_FEEDBACK_PER_DAY` (20); `/block <chat_id>` |
+| a leaked bot token | the token lives only in a root-owned 0600 file read by systemd; rotate with BotFather `/revoke` |
+| prompt injection through names | the child's name and birth date never reach a model; only the age in months does |
+
+Group chats are ignored; there is no inbound port (long polling).
+
 ## Known gaps
 
 - Telegram feedback is stored raw (`processed = 0`). Semantic analysis currently runs only
