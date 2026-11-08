@@ -137,15 +137,17 @@ class AttemptLoop(unittest.TestCase):
         return result, codex, alert
 
     def test_a_valid_third_attempt_saves_the_day(self):
-        markdown = candidate(message_text=f"Игра\n\n[Pathways.org]({URL})")
+        # Message formatting can no longer fail (the layout is rendered by code), so
+        # the rejected attempts use field-level problems instead.
+        too_long = candidate(duration_minutes=30)
         hazard = candidate(steps=["Возьмите нож.", "Повторите."])
-        result, codex, alert = self.run_select([markdown, hazard, candidate()])
+        result, codex, alert = self.run_select([too_long, hazard, candidate()])
         self.assertEqual(result[1], 3)
         self.assertEqual(codex.call_count, 3)
         alert.assert_not_called()
 
     def test_all_attempts_failing_raises_and_alerts_once(self):
-        bad = candidate(message_text="без ссылки")
+        bad = candidate(duration_minutes=30)
         result, codex, alert = self.run_select([bad] * gp.MAX_ATTEMPTS)
         self.assertIsInstance(result, RuntimeError)
         self.assertEqual(codex.call_count, gp.MAX_ATTEMPTS)
@@ -162,12 +164,38 @@ class AttemptLoop(unittest.TestCase):
 
         def fake(prompt):
             prompts.append(prompt)
-            return candidate(message_text="без ссылки") if len(prompts) == 1 else candidate()
+            return candidate(duration_minutes=30) if len(prompts) == 1 else candidate()
 
         with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gp, "run_model", side_effect=fake):
             gp.select_candidate([], "2026-09-21")
         self.assertNotIn("deterministic_validation_errors", prompts[0])
         self.assertIn("deterministic_validation_errors", prompts[1])
+
+
+class MessageLayout(unittest.TestCase):
+    def test_the_message_uses_the_emoji_layout_and_a_plain_source_url(self):
+        text = gp.render_message(candidate())
+        lines = text.split("\n")
+        self.assertTrue(lines[0].startswith("🎲 Игра дня: «"))
+        for marker in ("⏱ ", "🎯 Цель: ", "🤲 Навык: ", "🧸 Нужно: ", "Как играть:", "✅ Безопасность: ", "Источник: "):
+            self.assertIn(marker, text)
+        self.assertEqual(lines[-1], URL)
+        self.assertEqual(gp.validate_candidate({**candidate(), "message_text": text}, [], 12), [])
+
+    def test_steps_are_numbered_and_skill_is_in_russian(self):
+        text = gp.render_message(candidate(steps=["Первый.", "Второй."], skill="fine_motor"))
+        self.assertIn("1. Первый.\n2. Второй.", text)
+        self.assertIn("🤲 Навык: мелкая моторика.", text)
+
+    def test_minutes_agree_with_the_number(self):
+        self.assertEqual([gp.minutes_word(n) for n in (1, 2, 5, 7, 11, 21, 22)],
+                         ["минута", "минуты", "минут", "минут", "минут", "минута", "минуты"])
+
+    def test_the_model_message_is_replaced_but_a_broken_candidate_is_left_for_validation(self):
+        rendered = gp.with_rendered_message(candidate(message_text="как угодно"))
+        self.assertTrue(rendered["message_text"].startswith("🎲 Игра дня"))
+        broken = {"title": "x"}
+        self.assertIs(gp.with_rendered_message(broken), broken)
 
 
 class ModelBackend(unittest.TestCase):
