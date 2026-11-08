@@ -5,7 +5,7 @@ versions follow [Semantic Versioning](https://semver.org/). Every version is wha
 running in production at that point. Versions before 1.0.0 were tagged retroactively,
 on the commit that completed each milestone.
 
-## [Unreleased]
+## [1.3.0] - 2026-11-08 — Measured, then cheaper
 
 ### Added
 - Eight developmental skills instead of three, opened by age (`src/preparation/skills.py`):
@@ -30,6 +30,11 @@ on the commit that completed each milestone.
   and preparation skips a child who outgrew the range instead of alerting daily.
 
 ### Changed
+- Daily selection runs on Sonnet instead of Opus, decided by the evals: the same gate
+  results, close judged quality, half the quota and nearly twice the speed
+  ([comparison](https://github.com/LukshinVI/game-of-the-day/blob/main/evals/preparation/reports/2026-11-08-comparison.md)).
+- The selection prompt asks for safety by design (safe materials, positioning in the steps,
+  a clear floor, explicit setup steps): judged safety concerns fell from 6/6 to 4/6 cases.
 - Schema version 4 (additive).
 
 ## [1.2.0] - 2026-11-08 — Backups that leave the host
@@ -137,6 +142,7 @@ messenger and nothing re-sent ([postmortem](https://github.com/LukshinVI/game-of
 - Daily delivery to VK from Google Sheets + Apps Script, with a retry window.
 - The first feedback agent and its eval harness.
 
+[1.3.0]: ../../compare/v1.2.0...v1.3.0
 [1.2.0]: ../../compare/v1.1.0...v1.2.0
 [1.1.0]: ../../compare/v1.0.0...v1.1.0
 [1.0.0]: ../../compare/v0.5.0...v1.0.0
