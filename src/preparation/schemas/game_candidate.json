@@ -36,7 +36,16 @@
     },
     "skill": {
       "type": "string",
-      "enum": ["speech", "coordination", "fine_motor"]
+      "enum": [
+        "coordination",
+        "sensory",
+        "social_emotional",
+        "speech",
+        "fine_motor",
+        "cognitive",
+        "self_care",
+        "imagination"
+      ]
     },
     "mechanics": {
       "type": "string",

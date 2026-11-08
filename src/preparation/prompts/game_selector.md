@@ -5,8 +5,10 @@ That age is computed by the application for the delivery date; set `age_months` 
 
 Requirements:
 - duration: 5-10 minutes;
-- develop exactly one primary skill:
-  speech, coordination, or fine_motor;
+- develop exactly one primary skill, chosen from `allowed_skills` in INPUT CONTEXT
+  (the skills the application offers at this age, with what each one means);
+- keep the skills varied: prefer a skill with a low count in `recent_skill_counts`,
+  and never repeat the skill of both games in `last_skills`;
 - age appropriate for `child_age_months`;
 - safe under direct adult supervision;
 - do not repeat a previous game's title or core mechanics;

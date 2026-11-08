@@ -8,6 +8,11 @@ on the commit that completed each milestone.
 ## [Unreleased]
 
 ### Added
+- Eight developmental skills instead of three, opened by age (`src/preparation/skills.py`):
+  movement, senses, emotions and social play, speech from birth; fine motor from 3 months;
+  thinking from 4; self-care from 12; imagination from 18. The model is offered only the
+  skills for the child's age with recent counts; the validator rejects a skill outside the
+  age band or used in both of the last two games.
 - LLM observability: every model attempt in daily preparation is recorded in
   `model_runs` (latency, turns, tokens, web searches, API-equivalent cost, outcome and
   the validator's rejection reasons), also when the day fails. A weekly report per model

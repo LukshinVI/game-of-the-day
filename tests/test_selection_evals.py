@@ -38,7 +38,7 @@ class Harness(unittest.TestCase):
     def test_a_case_records_gate_attempts_lint_and_cost(self):
         case = {"id": "x", "age_months": 6, "why": "w", "history": [
             {"title": f"G{i}", "skill": "fine_motor", "mechanics": f"m{i}"} for i in range(3)]}
-        answers = [candidate(6, duration_minutes=30), candidate(6, skill="fine_motor")]
+        answers = [candidate(6, duration_minutes=30), candidate(6, skill="fine_motor"), candidate(6, goal="Слушать и повторять")]
 
         def fake(prompt):
             gp.LAST_RUN_META.update({"model": "m", "cost_usd": 0.5})
@@ -47,10 +47,11 @@ class Harness(unittest.TestCase):
         with mock.patch.object(gp, "run_claude", fake):
             record = ev.run_case(case)
         self.assertTrue(record["passed"])
-        self.assertEqual(record["attempts"], 2)
-        self.assertEqual(record["cost_usd"], 1.0)
-        self.assertIn("fourth fine_motor game in a row", record["lint"])
+        self.assertEqual(record["attempts"], 3)
+        self.assertEqual(record["cost_usd"], 1.5)
+        self.assertIn("goal is not a finished sentence", record["lint"])
         self.assertTrue(any("duration_minutes" in e for e in record["rejections"]))
+        self.assertTrue(any("last 2 games" in e for e in record["rejections"]))
         text = ev.summary("m", None, [record])
         self.assertIn("passed the production gate: 1/1; on the first attempt: 0/1", text)
 

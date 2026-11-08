@@ -12,7 +12,7 @@ it is manual on purpose, never part of CI.
 Scores per case:
 - validator: the production gate (schema, safety terms, age, duration, duplicates);
 - lint: deterministic quality checks the gate does not enforce (step count and length,
-  materials, skill rotation after a streak, message length, https source);
+  materials, message length, https source, finished goal sentence);
 - judge (optional): another model rates age fit, clarity and developmental value 1-5
   and flags safety concerns, against a fixed rubric.
 
@@ -75,9 +75,8 @@ def lint(candidate, history):
         problems.append("message longer than 1500 characters")
     if not str(candidate.get("source_url", "")).startswith("https://"):
         problems.append("source is not https")
-    recent = [g.get("skill") for g in history[-3:]]
-    if len(recent) == 3 and len(set(recent)) == 1 and candidate.get("skill") == recent[0]:
-        problems.append(f"fourth {recent[0]} game in a row")
+    if not (candidate.get("goal") or "").strip().endswith("."):
+        problems.append("goal is not a finished sentence")
     return problems
 
 
