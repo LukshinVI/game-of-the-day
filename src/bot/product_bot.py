@@ -22,6 +22,10 @@ Members:
 Owner (GAME_BOT_OWNER_ID) additionally:
   /invite      a new one-time invite link
   /members     members and their children
+  /block ID    disable a member and the children reached only through them
+
+Limits (env): children per chat, active children in total (each is a model run a
+day), feedback per chat per day. Strangers get the closed notice once a day.
 
 Deterministic code only: no model call here. State lives in SQLite (invites are
 stored as hashes, the questionnaire survives a restart). Outbound long polling,
@@ -57,6 +61,12 @@ MAX_AGE_MONTHS = 72
 MAX_FEEDBACK_CHARS = 4000
 PREPARATION_HOUR_MSK = 7
 DELIVERY_TIME_MSK = "10:00"
+# Abuse limits. Every active child costs one model run a day, so the caps bound
+# the spend even if an invite leaks or a member misbehaves.
+MAX_CHILDREN_PER_CHAT = int(os.environ.get("GAME_MAX_CHILDREN_PER_CHAT", "3"))
+MAX_ACTIVE_CHILDREN = int(os.environ.get("GAME_MAX_ACTIVE_CHILDREN", "20"))
+MAX_FEEDBACK_PER_DAY = int(os.environ.get("GAME_MAX_FEEDBACK_PER_DAY", "20"))
+STRANGER_REPLY_EVERY_SECONDS = 24 * 3600
 POLL_TIMEOUT_SECONDS = 30
 EXIT_AFTER_FAILING_SECONDS = 600
 
@@ -66,15 +76,18 @@ NO = {"нет", "-", "no", "н", "заново"}
 CLOSED = "Это закрытый бот. Чтобы подключиться, попросите пригласительную ссылку у того, кто вас пригласил."
 HELP = (
     "Каждый день в {time} по Москве я присылаю одну развивающую игру по возрасту ребёнка.\n"
-    "Ответьте на сообщение с игрой обычным текстом — как прошло, что понравилось, — "
-    "и следующие игры будут учитывать ваш отзыв.\n\n"
+    "Ответьте на сообщение с игрой — как прошло, что понравилось. Отзывы копятся, "
+    "чтобы со временем подбор учитывал, что зашло.\n\n"
     "/children — кто подписан\n"
     "/add_child — добавить ребёнка\n"
     "/pause — приостановить игры\n"
     "/resume — возобновить\n"
     "/faq — частые вопросы"
 ).format(time=DELIVERY_TIME_MSK)
-OWNER_HELP = "\n\nВладелец:\n/invite — новая пригласительная ссылка\n/members — участники"
+OWNER_HELP = (
+    "\n\nВладелец:\n/invite — новая пригласительная ссылка\n/members — участники\n"
+    "/block <chat_id> — отключить участника и его детей"
+)
 FAQ = (Path(__file__).with_name("faq.txt")).read_text(encoding="utf-8").strip()
 WELCOME = (
     "Здравствуйте! 👋 Я присылаю одну развивающую игру в день — "
@@ -140,6 +153,7 @@ class ProductBot:
         self.now = now or (lambda: datetime.now(MOSCOW))
         self.new_code = new_code or (lambda: secrets.token_urlsafe(12))
         self.outbox = []  # (chat_id, text) to send to someone other than the sender
+        self.stranger_replies = {}  # chat_id -> time of the last "closed" notice (memory only)
 
     # --- storage -------------------------------------------------------------
 
@@ -212,13 +226,17 @@ class ProductBot:
             return self.invite(con)
         if is_owner and command == "/members":
             return self.members(con)
+        if is_owner and command == "/block":
+            return self.block(con, parts[1] if len(parts) > 1 else "")
 
+        if member is not None and member["blocked_at"]:
+            return None  # silently: a blocked member gets no signal to probe with
         if member is None:
             if command == "/start" and len(parts) > 1:
                 return self.join(con, chat_id, parts[1], sender)
             if is_owner and command == "/start":
                 return self.join_owner(con, chat_id, sender)
-            return CLOSED
+            return self.closed(chat_id)
 
         if command == "/start":
             if not self.chat_children(con, chat_id) and self.step(con, chat_id) is None:
@@ -232,6 +250,9 @@ class ProductBot:
             prompts = {"name": ASK_NAME, "birth_date": ASK_BIRTH, "confirm": "Подтвердите: «да» или «нет»."}
             return FAQ + (f"\n\n— Продолжим подключение. {prompts[pending['step']]}" if pending else "")
         if command == "/add_child":
+            limit = self.child_limit(con, chat_id)
+            if limit:
+                return limit
             self.set_step(con, chat_id, "name")
             return ASK_NAME
         if command == "/cancel":
@@ -270,7 +291,7 @@ class ProductBot:
             "(SELECT group_concat(c.name || ' ' || c.birth_date || CASE WHEN r.active THEN '' ELSE ' (пауза)' END, ', ') "
             " FROM recipients r JOIN children c ON c.id = r.child_id "
             " WHERE r.channel = 'telegram' AND r.address = m.chat_id) AS kids "
-            "FROM members m ORDER BY m.joined_at"
+            "FROM members m WHERE m.blocked_at IS NULL ORDER BY m.joined_at"
         ).fetchall()
         if not rows:
             return "Участников пока нет. /invite — пригласить."
@@ -342,6 +363,10 @@ class ProductBot:
         if answer not in YES:
             return "Ответьте «да» или «нет»."
 
+        limit = self.child_limit(con, chat_id)
+        if limit:
+            con.execute("DELETE FROM onboarding WHERE chat_id = ?", (chat_id,))
+            return limit
         child_id = con.execute(
             "INSERT INTO children(name, birth_date) VALUES (?, ?)", (current["name"], current["birth_date"])
         ).lastrowid
@@ -356,6 +381,51 @@ class ProductBot:
         return (
             f"Готово! Первая игра для {current['name']} придёт {when} в {DELIVERY_TIME_MSK} по Москве.\n\n" + HELP
         )
+
+    # --- limits and blocking -------------------------------------------------
+
+    def closed(self, chat_id):
+        """The closed notice at most once a day per stranger; nothing is stored."""
+        now = time.monotonic()
+        last = self.stranger_replies.get(chat_id)
+        if last is not None and now - last < STRANGER_REPLY_EVERY_SECONDS:
+            return None
+        if len(self.stranger_replies) > 10000:  # a flood of new ids must not grow memory
+            self.stranger_replies.clear()
+        self.stranger_replies[chat_id] = now
+        return CLOSED
+
+    def child_limit(self, con, chat_id):
+        if len(self.chat_children(con, chat_id)) >= MAX_CHILDREN_PER_CHAT:
+            return f"В одном чате можно подписать до {MAX_CHILDREN_PER_CHAT} детей."
+        total = con.execute("SELECT count(*) FROM children WHERE active = 1").fetchone()[0]
+        if total >= MAX_ACTIVE_CHILDREN:
+            self.notify_owner(
+                f"⚠️ Достигнут лимит детей ({MAX_ACTIVE_CHILDREN}): chat {chat_id} не смог подписаться. "
+                "Поднять: GAME_MAX_ACTIVE_CHILDREN в product-bot.env."
+            )
+            return "Сейчас мест нет — я сообщил владельцу. Попробуйте позже."
+        return None
+
+    def block(self, con, target):
+        target = target.strip()
+        if not target.lstrip("-").isdigit():
+            return "Использование: /block <chat_id> (из /members)"
+        if target == self.owner_id:
+            return "Себя заблокировать нельзя."
+        if self.member(con, target) is None:
+            return "Такого участника нет."
+        con.execute("UPDATE members SET blocked_at = CURRENT_TIMESTAMP WHERE chat_id = ?", (target,))
+        con.execute("DELETE FROM onboarding WHERE chat_id = ?", (target,))
+        con.execute("UPDATE recipients SET active = 0 WHERE channel = 'telegram' AND address = ?", (target,))
+        # Children reached only through this chat stop costing model runs.
+        con.execute(
+            "UPDATE children SET active = 0 WHERE id IN (SELECT child_id FROM recipients "
+            "WHERE channel = 'telegram' AND address = ?) AND NOT EXISTS (SELECT 1 FROM recipients r "
+            "WHERE r.child_id = children.id AND r.active = 1)",
+            (target,),
+        )
+        return f"Участник {target} заблокирован, его игры остановлены."
 
     # --- member commands -----------------------------------------------------
 
@@ -407,6 +477,14 @@ class ProductBot:
                     "ответьте на сообщение с игрой (свайп влево или «Ответить»)."
                 )
             game = latest
+        since = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        recent = con.execute(
+            "SELECT count(*) FROM feedback WHERE channel = 'telegram' AND external_event_id LIKE ? "
+            "AND received_at >= ?",
+            (f"tg:{chat_id}:%", since),
+        ).fetchone()[0]
+        if recent >= MAX_FEEDBACK_PER_DAY:
+            return "Спасибо! На сегодня отзывов достаточно — продолжим завтра."
         # storage.save_raw opens its own connection: release our write lock first.
         con.commit()
         result = storage.save_raw({
