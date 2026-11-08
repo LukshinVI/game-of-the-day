@@ -315,6 +315,11 @@ class ProductBot:
             name = " ".join(text.split())
             if not name or len(name) > MAX_NAME_CHARS:
                 return f"Имя — до {MAX_NAME_CHARS} символов. " + ASK_NAME
+            if any(r["name"].casefold() == name.casefold() for r in self.chat_children(con, chat_id)):
+                return (
+                    f"{name} у вас уже подписан(а). Если это другой ребёнок, напишите имя иначе, "
+                    "чтобы сообщения можно было различить (например, «Маша младшая»). /cancel — отменить."
+                )
             self.set_step(con, chat_id, "birth_date", name=name)
             return ASK_BIRTH
 
@@ -379,14 +384,29 @@ class ProductBot:
     # --- feedback ------------------------------------------------------------
 
     def feedback(self, con, chat_id, text, message):
-        game = con.execute(
+        """Attach to the replied-to game, or to the latest one when the chat has one child.
+
+        With several children in one chat "the latest game" is a guess between
+        siblings (both arrive at 10:00), so the bot asks for a reply instead.
+        """
+        sent = (
             "SELECT g.id FROM deliveries d JOIN games g ON g.id = d.game_id "
             "WHERE d.channel = 'telegram' AND d.recipient = ? AND d.status = 'sent' "
-            "ORDER BY g.game_date DESC, g.id DESC LIMIT 1",
-            (chat_id,),
-        ).fetchone()
+        )
+        replied = (message.get("reply_to_message") or {}).get("message_id")
+        game = None
+        if replied is not None:
+            game = con.execute(sent + "AND d.external_message_id = ?", (chat_id, str(replied))).fetchone()
         if game is None:
-            return "Первая игра ещё не пришла — отзыв можно будет написать после неё."
+            latest = con.execute(sent + "ORDER BY g.game_date DESC, g.id DESC LIMIT 1", (chat_id,)).fetchone()
+            if latest is None:
+                return "Первая игра ещё не пришла — отзыв можно будет написать после неё."
+            if len(self.chat_children(con, chat_id)) > 1:
+                return (
+                    "У вас подписано несколько детей — чтобы отзыв попал к нужной игре, "
+                    "ответьте на сообщение с игрой (свайп влево или «Ответить»)."
+                )
+            game = latest
         # storage.save_raw opens its own connection: release our write lock first.
         con.commit()
         result = storage.save_raw({

@@ -256,6 +256,8 @@ def deliver_one(delivery_id, retry_failed=False):
         print(f"Title: {game['title']}")
 
         random_id = deterministic_random_id(game["idempotency_key"])
+        game = dict(game)
+        game["message_text"] = child_header(con, game) + game["message_text"]
 
         changed = con.execute(
             """
@@ -567,6 +569,30 @@ def vk_send(message: str, random_id: int, peer_id=None):
         raise RuntimeError(f"Unexpected VK response: {data}")
 
     return data["response"]
+
+
+def child_header(con, game):
+    """'👶 <name>' when this address receives games for more than one child.
+
+    Without it a family with two children gets two games a day and cannot tell
+    which is whose. Single-child chats (and the legacy VK dialog) are unchanged.
+    """
+    if not game["recipient"] or "child_id" not in {r[1] for r in con.execute("PRAGMA table_info(games)")}:
+        return ""
+    row = con.execute(
+        """
+        SELECT c.name,
+               (SELECT count(DISTINCT r.child_id) FROM recipients r
+                JOIN children c2 ON c2.id = r.child_id AND c2.active = 1
+                WHERE r.channel = ? AND r.address = ? AND r.active = 1) AS siblings
+        FROM games g JOIN children c ON c.id = g.child_id
+        WHERE g.id = ?
+        """,
+        (game["channel"], game["recipient"], game["game_id"]),
+    ).fetchone()
+    if row is None or row["siblings"] < 2:
+        return ""
+    return f"👶 {row['name']}\n\n"
 
 
 def send_message(game, random_id):

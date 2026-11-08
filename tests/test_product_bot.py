@@ -158,14 +158,15 @@ class MemberCommands(BotTest):
 
 
 class Feedback(BotTest):
-    def sent_game(self, chat, title):
+    def sent_game(self, chat, title, external_id=None, child=None):
         con = sqlite3.connect(self.db)
         game = con.execute(
-            "INSERT INTO games(legacy_id, game_date, title) VALUES (?, '2026-11-08', ?)", (title, title)
+            "INSERT INTO games(legacy_id, game_date, title, child_id) VALUES (?, '2026-11-08', ?, ?)",
+            (title, title, child),
         ).lastrowid
         con.execute(
-            "INSERT INTO deliveries(game_id, channel, recipient, idempotency_key, status) "
-            "VALUES (?, 'telegram', ?, ?, 'sent')", (game, chat, f"k-{title}")
+            "INSERT INTO deliveries(game_id, channel, recipient, idempotency_key, status, external_message_id) "
+            "VALUES (?, 'telegram', ?, ?, 'sent', ?)", (game, chat, f"k-{title}", external_id)
         )
         con.commit()
         con.close()
@@ -181,6 +182,48 @@ class Feedback(BotTest):
         self.assertEqual(
             self.rows("SELECT game_id, channel, raw_text FROM feedback"), [(mine, "telegram", "понравилось")]
         )
+
+
+    def reply_to(self, chat, text, replied_id):
+        self.message_id += 1
+        return self.bot.handle({"message": {
+            "message_id": self.message_id, "text": text, "reply_to_message": {"message_id": replied_id},
+            "chat": {"id": int(chat), "type": "private"}, "from": {"id": int(chat)},
+        }})
+
+    def test_with_two_children_in_a_chat_feedback_needs_a_reply_to_the_game(self):
+        self.onboard("42")
+        self.say("42", "/add_child")
+        self.say("42", "Петя")
+        self.say("42", "01.01.2026")
+        self.say("42", "да")
+        masha = self.sent_game("42", "A", external_id="501", child=1)
+        self.sent_game("42", "B", external_id="502", child=2)
+        self.assertIn("ответьте на сообщение", self.say("42", "понравилось"))
+        self.assertEqual(self.rows("SELECT count(*) FROM feedback"), [(0,)])
+        self.assertIn("Спасибо", self.reply_to("42", "Маше понравилось", 501))
+        self.assertEqual(self.rows("SELECT game_id FROM feedback"), [(masha,)])
+
+    def test_a_reply_cannot_reach_a_game_sent_to_another_chat(self):
+        self.onboard("42")
+        self.onboard("43", name="Оля")
+        mine = self.sent_game("42", "A", external_id="501")
+        self.sent_game("43", "B", external_id="777")
+        self.reply_to("42", "ок", 777)  # 777 is a message id in someone else's chat
+        self.assertEqual(self.rows("SELECT game_id FROM feedback"), [(mine,)])
+
+
+class SameNames(BotTest):
+    def test_the_same_name_twice_in_one_chat_is_questioned(self):
+        self.onboard("42")
+        self.say("42", "/add_child")
+        self.assertIn("уже подписан", self.say("42", "маша"))
+        self.assertIn("Дата рождения", self.say("42", "Маша младшая"))
+
+    def test_the_same_name_in_different_families_is_fine(self):
+        self.onboard("42")
+        self.assertIn("Готово", self.onboard("43"))
+        self.assertEqual(self.rows("SELECT count(*) FROM children WHERE name = 'Маша'"), [(2,)])
 
 
 class Parsing(unittest.TestCase):

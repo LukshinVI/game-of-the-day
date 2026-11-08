@@ -33,8 +33,13 @@ Edit that file to change the wording; `/faq` in the middle of the questionnaire 
 the pending question afterwards.
 
 Member commands: `/faq`, `/children`, `/add_child`, `/pause`, `/resume`, `/cancel`, `/help`.
-Any other text is feedback on the latest game sent **to this chat** (explicit game id, so
-one family's answer cannot attach to another family's game). The owner gets a message
+Any other text is feedback, stored with an explicit game id: a reply to a game message
+goes to that game; plain text goes to the latest game sent **to this chat**, but only when
+the chat has one child (with siblings the bot asks for a reply). One family's answer
+cannot attach to another family's game.
+
+A chat with several children gets each game headed `👶 <name>`; a second child with the
+same name in one chat is questioned during the questionnaire. The owner gets a message
 on every join, subscription and pause.
 
 Strangers without an invite only get a "closed bot" notice; nothing is stored for them.
