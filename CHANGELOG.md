@@ -5,6 +5,24 @@ versions follow [Semantic Versioning](https://semver.org/). Every version is wha
 running in production at that point. Versions before 1.0.0 were tagged retroactively,
 on the commit that completed each milestone.
 
+## [1.2.0] - 2026-11-08 — Backups that leave the host
+
+### Added
+- Encrypted off-site backups: every night the newest verified backup is encrypted with
+  age, the round trip is checked, and the ciphertext is pushed to a private repository.
+  A weekly job restores the newest copy into a sandbox and runs `integrity_check`; both
+  alert on failure. Closes the main action of the host-loss postmortem.
+- A test that fails if a database or backup artifact is ever tracked in this repository.
+
+### Security
+- The public product bot runs as its own user (`gotd-bot`, `ProtectProc=invisible`): a
+  compromise could no longer read the other services' tokens from `/proc`. It shares only
+  the database, through a group.
+- The off-site push runs as root, so the repository key is out of the bots' reach.
+
+### Changed
+- The ops bot start message says plainly that nothing was sent.
+
 ## [1.1.0] - 2026-11-08 — Families
 
 ### Added
@@ -92,6 +110,7 @@ messenger and nothing re-sent ([postmortem](https://github.com/LukshinVI/game-of
 - Daily delivery to VK from Google Sheets + Apps Script, with a retry window.
 - The first feedback agent and its eval harness.
 
+[1.2.0]: ../../compare/v1.1.0...v1.2.0
 [1.1.0]: ../../compare/v1.0.0...v1.1.0
 [1.0.0]: ../../compare/v0.5.0...v1.0.0
 [0.5.0]: ../../compare/v0.4.0...v0.5.0
