@@ -19,7 +19,6 @@ The repository must not contain:
 
 Public documentation should use role-based terms such as `recipient`, `caregiver`, `child profile`, `application host`, and `production origin`, together with placeholders such as `api.<project-domain>`.
 
-Known, tracked exception to the runtime-username/filesystem-path rule above: the `ops/*` systemd unit files name the actual host service user and its `/srv/...` path, and two legacy-path identifiers (a messaging group id, a spreadsheet id) remain hardcoded in source. Both are pre-publication work (#34); the repository stays private until they are resolved.
 
 ## Secret handling
 
