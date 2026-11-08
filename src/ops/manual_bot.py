@@ -9,6 +9,7 @@ Commands, accepted only from the owner's private chat:
   /retry <code>    start the explicit-retry delivery unit
   /users           product-bot families: children, subscription, last game, feedback
   /ideas           wishes about the service, from feedback and /idea
+  /metrics         product metrics: feedback share, liked, difficulty, pauses, reserve days
   /llm             the last 7 days of game selection: attempts, latency, tokens, cost, rejections
 
 It also forwards owner-facing events the product bot records in SQLite (new member,
@@ -33,7 +34,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.ops import llm_report, users_report  # noqa: E402
+from src.ops import llm_report, product_metrics, users_report  # noqa: E402
 
 DELIVERY = ROOT / "src" / "delivery" / "game_delivery.py"
 API = "https://api.telegram.org"
@@ -59,7 +60,8 @@ HELP = (
     "/retry - повторить отправку после ошибки (нужен код подтверждения)\n"
     "/users - семьи в продуктовом боте\n"
     "/llm - подбор игр за неделю: попытки, время, токены, стоимость\n"
-    "/ideas - пожелания пользователей"
+    "/ideas - пожелания пользователей\n"
+    "/metrics - продуктовые метрики за неделю"
 )
 
 EXPLANATIONS = {
@@ -151,6 +153,12 @@ class Controller:
         if command == "/users":
             try:
                 return "Пользователи:\n\n" + self.users()
+            except Exception as exc:  # noqa: BLE001
+                return f"Не удалось построить отчёт: {type(exc).__name__}"
+
+        if command == "/metrics":
+            try:
+                return product_metrics.report()
             except Exception as exc:  # noqa: BLE001
                 return f"Не удалось построить отчёт: {type(exc).__name__}"
 
