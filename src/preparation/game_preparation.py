@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.db.children import active_children, has_children  # noqa: E402
+from src.preparation import skills  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
@@ -24,7 +25,7 @@ SHADOW_DIR = ROOT / "data" / "shadow"
 
 MOSCOW = ZoneInfo("Europe/Moscow")
 
-ALLOWED_SKILLS = {"speech", "coordination", "fine_motor"}
+
 
 DANGEROUS_TERMS = {
     "бусин",
@@ -136,6 +137,7 @@ def build_prompt(history, age_months, today=None):
     context = {
         "today": today or datetime.now(MOSCOW).date().isoformat(),
         "child_age_months": age_months,
+        **skills.prompt_context(age_months, history),
         "previous_games": history,
     }
 
@@ -349,8 +351,7 @@ def validate_candidate(candidate, history, expected_age_months):
             "supervision, the hazards specific to this game, when to stop"
         )
 
-    if candidate.get("skill") not in ALLOWED_SKILLS:
-        errors.append("invalid primary skill")
+    errors.extend(skills.violations(candidate.get("skill"), expected_age_months, history))
 
     title = normalize(candidate.get("title", ""))
     mechanics = normalize(candidate.get("mechanics", ""))
@@ -437,11 +438,7 @@ def validate_candidate(candidate, history, expected_age_months):
     return errors
 
 
-SKILL_LABELS = {
-    "speech": "речь",
-    "coordination": "координация",
-    "fine_motor": "мелкая моторика",
-}
+SKILL_LABELS = skills.LABELS
 
 
 def minutes_word(n):

@@ -290,3 +290,38 @@ class ChildAge(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class Skills(unittest.TestCase):
+    def test_skills_open_up_with_age(self):
+        from src.preparation import skills
+        self.assertEqual(skills.for_age(1), ["coordination", "sensory", "social_emotional", "speech"])
+        self.assertIn("fine_motor", skills.for_age(6))
+        self.assertNotIn("self_care", skills.for_age(11))
+        self.assertIn("self_care", skills.for_age(12))
+        self.assertNotIn("imagination", skills.for_age(17))
+        self.assertEqual(len(skills.for_age(24)), 8)
+
+    def test_the_validator_enforces_age_and_rotation(self):
+        from src.preparation import skills
+        history = [{"skill": "speech"}, {"skill": "speech"}]
+        self.assertEqual(skills.violations("imagination", 14, []),
+                         ["skill imagination is not offered at 14 months: choose one of "
+                          "coordination, sensory, social_emotional, speech, fine_motor, cognitive, self_care"])
+        self.assertIn("last 2 games", skills.violations("speech", 14, history)[0])
+        self.assertEqual(skills.violations("cognitive", 14, history), [])
+        self.assertEqual(skills.violations("juggling", 14, []), ["invalid primary skill"])
+
+    def test_the_prompt_lists_only_the_skills_for_the_age(self):
+        prompt = gp.build_prompt([{"title": "A", "skill": "speech"}], 6, today="2026-11-08")
+        context = json.loads(prompt.split("INPUT CONTEXT:\n", 1)[1])
+        self.assertEqual(set(context["allowed_skills"]),
+                         {"coordination", "sensory", "social_emotional", "speech", "fine_motor", "cognitive"})
+        self.assertEqual(context["recent_skill_counts"]["speech"], 1)
+        self.assertEqual(context["last_skills"], ["speech"])
+
+    def test_schema_and_labels_cover_every_skill(self):
+        from src.preparation import skills
+        schema = json.loads(gp.SCHEMA_PATH.read_text())
+        self.assertEqual(set(schema["properties"]["skill"]["enum"]), skills.ALL)
+        self.assertEqual(set(gp.SKILL_LABELS), skills.ALL)
