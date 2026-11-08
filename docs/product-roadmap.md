@@ -48,8 +48,6 @@ problem never costs a day.
 
 ## Next
 
-- **Similarity, not just exact duplicates.** A mechanic tag set by the model and a
-  deterministic no-repeat window.
 - **One feedback path for both channels.** The Worker passes the VK peer id (test and
   family dialogs told apart) and reaction labels; Telegram feedback joins the semantic
   agent.

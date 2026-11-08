@@ -18,6 +18,9 @@ Requirements:
   skill, one step harder or easier (as `direction` says) than the game named in `after`;
 - safe under direct adult supervision;
 - do not repeat a previous game's title or core mechanics;
+- set `mechanic_tag` to the one key from `mechanic_tags` that best describes what the child
+  mainly does; tags in `recent_mechanic_tags` are not offered because they were used in the
+  last games, so choose a genuinely different kind of activity;
 - use a reliable primary or authoritative source;
 - use live web search to verify the source and suitability;
 - source_url must be a direct usable source URL.

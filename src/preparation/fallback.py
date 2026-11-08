@@ -19,7 +19,7 @@ import os
 import re
 from collections import Counter
 
-from src.preparation import skills
+from src.preparation import mechanics, skills
 
 # Claude Code reports an exhausted subscription with these words; the same quota serves
 # the fallback model, so it is skipped and the library answers at once.
@@ -57,20 +57,23 @@ def library_candidate(con, history, age_months, target_date, child_id=None):
     """A validated past game for this child, as a candidate dict, or None."""
     columns = {r[1] for r in con.execute("PRAGMA table_info(games)")}
     origin_filter = "AND COALESCE(origin, 'model') != 'library'" if "origin" in columns else ""
+    tag = "mechanic_tag" if "mechanic_tag" in columns else "NULL"
     rows = [{**dict(r), "kind": "game"} for r in con.execute(
         f"""
-        SELECT id, title, age_months, skill, mechanics, source_name, source_url, message_text
+        SELECT id, title, age_months, skill, mechanics, source_name, source_url, message_text,
+               {tag} AS mechanic_tag
         FROM games
         WHERE message_text IS NOT NULL AND TRIM(message_text) != ''
           AND age_months IS NOT NULL AND skill IS NOT NULL
           AND source_url IS NOT NULL
           {origin_filter}
-        """
+        """.replace("{tag}", tag)
     )]
     if con.execute("SELECT 1 FROM sqlite_master WHERE name = 'reserve_games'").fetchone():
         rows += [{**dict(r), "kind": "reserve"} for r in con.execute(
-            "SELECT id, title, age_months, skill, mechanics, source_name, source_url, message_text "
-            "FROM reserve_games"
+            "SELECT id, title, age_months, skill, mechanics, source_name, source_url, message_text, "
+            + ("mechanic_tag" if "mechanic_tag" in {r[1] for r in con.execute("PRAGMA table_info(reserve_games)")} else "NULL")
+            + " AS mechanic_tag FROM reserve_games"
         )]
     seen_titles = {normalize(g.get("title")) for g in history}
     seen_mechanics = {normalize(g.get("mechanics")) for g in history if g.get("mechanics")}
@@ -81,6 +84,7 @@ def library_candidate(con, history, age_months, target_date, child_id=None):
             r for r in rows
             if age_months - window <= r["age_months"] <= age_months
             and not skills.violations(r["skill"], age_months, history)
+            and not mechanics.violations(r.get("mechanic_tag"), history)
             and normalize(r["title"]) not in seen_titles
             and normalize(r["mechanics"]) not in seen_mechanics
         ]
@@ -99,6 +103,7 @@ def library_candidate(con, history, age_months, target_date, child_id=None):
                 "source_url": best["source_url"],
                 "message_text": best["message_text"],
                 "library_source": f"{best['kind']} #{best['id']}",
+                "mechanic_tag": best.get("mechanic_tag"),
             }
     return None
 
@@ -128,9 +133,9 @@ def add_reserve(con, candidate, made_by):
     """Store a validated candidate in the warm reserve; False if it is already there."""
     cur = con.execute(
         "INSERT OR IGNORE INTO reserve_games(age_months, skill, title, mechanics, source_name, source_url, "
-        "message_text, candidate_json, made_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "message_text, candidate_json, made_by, mechanic_tag) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (candidate["age_months"], candidate["skill"], candidate["title"].strip(), candidate["mechanics"],
          candidate.get("source_name"), candidate["source_url"], candidate["message_text"],
-         candidate_json(candidate), made_by),
+         candidate_json(candidate), made_by, candidate.get("mechanic_tag")),
     )
     return cur.rowcount == 1

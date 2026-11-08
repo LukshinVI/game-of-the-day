@@ -5,6 +5,14 @@ versions follow [Semantic Versioning](https://semver.org/). Every version is wha
 running in production at that point. Versions before 1.0.0 were tagged retroactively,
 on the commit that completed each milestone.
 
+## [Unreleased]
+
+### Added
+- Similar games are caught, not only identical titles: every activity carries a mechanic tag
+  (what the child mainly does, 24 kinds); the gate and the library choice reject a tag used
+  in the child's last 7 games, and the prompt offers only fresh ones. Older games are
+  backfilled once (`src/preparation/mechanics.py backfill`). Schema 10.
+
 ## [1.4.0] - 2026-11-08 — Families talk back
 
 ### Added
