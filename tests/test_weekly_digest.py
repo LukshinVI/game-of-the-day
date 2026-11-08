@@ -74,3 +74,88 @@ class Digest(unittest.TestCase):
         con.commit()
         con.close()
         self.assertEqual(self.run_digest(date(2026, 11, 15)), 0)  # two games are not a week
+
+
+class StarRequest(unittest.TestCase):
+    """The one-time GitHub star request: after a month, only when feedback is positive."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.db = Path(tmp.name) / "t.db"
+        con = sqlite3.connect(self.db)
+        con.executescript((ROOT / "src/db/schema.sql").read_text())
+        con.close()
+        con = ch.connect_db(self.db)
+        self.child = ch.add_child(con, "Маша", "2025-09-03")
+        ch.add_recipient(con, self.child, "telegram", "42")
+        con.commit()
+        con.close()
+        self.sent = []
+
+    def game(self, day, outcome=None, delivered=True):
+        con = ch.connect_db(self.db)
+        gid = con.execute("INSERT INTO games(legacy_id, game_date, title, skill, child_id) VALUES (?, ?, ?, ?, ?)",
+                          (day, day, "Игра " + day, "speech", self.child)).lastrowid
+        if delivered:
+            con.execute("INSERT INTO deliveries(game_id, channel, recipient, status, idempotency_key, sent_at) "
+                        "VALUES (?, 'telegram', '42', 'sent', ?, ?)", (gid, "k" + day, day + "T10:00:00+03:00"))
+        if outcome:
+            con.execute("INSERT INTO feedback(game_id, raw_text) VALUES (?, 'x')", (gid,))
+            fid = con.execute("SELECT max(id) FROM feedback").fetchone()[0]
+            con.execute("INSERT INTO observations(feedback_id, game_id, kind, value, evidence) "
+                        "VALUES (?, ?, 'outcome', ?, 'x')", (fid, gid, outcome))
+        con.commit()
+        con.close()
+
+    def week(self, outcome="liked"):
+        for i, day in enumerate(("2026-12-09", "2026-12-10", "2026-12-11")):
+            self.game(day, outcome if i == 0 else None)
+
+    def run_digest(self, day):
+        wd.run(day, db_path=self.db, sender=lambda ch_, addr, text, key: self.sent.append(text))
+        return self.sent[-1] if self.sent else ""
+
+    def test_asked_once_after_a_month_of_positive_feedback(self):
+        self.game("2026-11-08")
+        self.week()
+        self.assertIn("github.com/LukshinVI/game-of-the-day", self.run_digest(date(2026, 12, 13)))
+        self.game("2026-12-16", "liked")
+        self.game("2026-12-17")
+        self.game("2026-12-18")
+        self.assertNotIn("github.com", self.run_digest(date(2026, 12, 20)))  # never twice
+
+    def test_not_before_a_month(self):
+        self.game("2026-11-20")
+        self.week()
+        self.assertNotIn("github.com", self.run_digest(date(2026, 12, 13)))
+
+    def test_not_without_positive_feedback(self):
+        self.game("2026-11-08")
+        self.week(outcome=None)
+        self.assertNotIn("github.com", self.run_digest(date(2026, 12, 13)))
+
+    def test_not_when_dislikes_outweigh(self):
+        self.game("2026-11-08")
+        self.week()
+        self.game("2026-12-12", "disliked")
+        self.game("2026-12-13", "disliked")
+        self.assertNotIn("github.com", self.run_digest(date(2026, 12, 13)))
+
+    def test_not_in_the_digest_with_the_monthly_question(self):
+        self.game("2026-10-01")
+        for day in ("2026-12-01", "2026-12-02", "2026-12-03"):
+            self.game(day, "liked")
+        text = self.run_digest(date(2026, 12, 6))
+        self.assertIn("чего не хватает", text)
+        self.assertNotIn("github.com", text)
+
+    def test_a_failed_send_does_not_use_up_the_request(self):
+        self.game("2026-11-08")
+        self.week()
+
+        def failing(*_):
+            raise RuntimeError("down")
+
+        wd.run(date(2026, 12, 13), db_path=self.db, sender=failing)
+        self.assertIn("github.com", self.run_digest(date(2026, 12, 13)))

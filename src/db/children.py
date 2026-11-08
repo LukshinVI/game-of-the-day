@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -184,6 +184,19 @@ CREATE TABLE IF NOT EXISTS digests (
 """
 
 
+
+# One-time request to star the project on GitHub, at most once per recipient ever
+# (src/ops/weekly_digest.py).
+MIGRATION_11 = """
+CREATE TABLE IF NOT EXISTS star_requests (
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    child_id INTEGER,
+    sent_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (channel, address)
+);
+"""
+
 def connect_db(path=None):
     con = sqlite3.connect(path or DB_PATH, timeout=10)
     con.row_factory = sqlite3.Row
@@ -204,6 +217,7 @@ def migrate(con):
     con.executescript(MIGRATION_7)
     con.executescript(MIGRATION_8)
     con.executescript(MIGRATION_9)
+    con.executescript(MIGRATION_11)
     # Mechanic tags (src/preparation/mechanics.py): similar ideas, not just equal titles.
     for table in ("games", "reserve_games"):
         if "mechanic_tag" not in columns(con, table):
