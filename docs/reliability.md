@@ -2,7 +2,8 @@
 
 What can go wrong, how the owner finds out, and what the system does about it. The
 architecture is in [architecture.md](architecture.md); the October host loss that shaped
-much of this is in the [postmortem](postmortems/2026-10-host-loss.md).
+much of this is in the [postmortem](postmortems/2026-10-host-loss.md). The objectives this
+model serves, and how far it is from them, are in [slo.md](slo.md).
 
 ## Principles
 
