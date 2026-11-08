@@ -16,7 +16,7 @@ Expected invariants:
 - an already-sent delivery is not sent again;
 - external side effects use stable identity where the channel supports it;
 - `sent` is recorded only after confirmed external success;
-- interrupted `sending` work can be detected; automatic recovery is not built yet, it needs a manual check (tracked in #28);
+- interrupted `sending` work is resolved from the channel itself (#28): the message id is derived from the idempotency key, so the dialog history shows whether it went out. Found → `sent` with the real message id, nothing resent; not found → `failed` with the reason, and a resend stays an explicit decision; younger than 10 minutes → left alone as possibly in flight. A second delivery run at 10:12 performs this before the 10:15 outcome check;
 - retryable failures remain retryable;
 - absence of an eligible activity is a normal domain state, not database corruption.
 

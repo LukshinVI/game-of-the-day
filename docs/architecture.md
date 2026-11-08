@@ -140,7 +140,7 @@ The final cutover is the only point at which the new scheduler becomes the sole 
 - external side effects have stable idempotency identities;
 - delivery states are explicit: `pending`, `sending`, `sent`, `failed`;
 - `failed` deliveries are recoverable through an explicit retry that reuses the same idempotency identity, and the retry refuses any other state;
-- a stale `sending` state is not automatically recovered yet: it needs manual recovery (tracked work);
+- a stale `sending` state is reconciled against the messenger history by the stable message id (`game_delivery.py recover`, also run by the 10:12 delivery pass): delivered → `sent`, not delivered → `failed` awaiting an explicit retry;
 - `sent_at` is recorded only after confirmed success;
 - absence of an activity for the current date is a valid no-op, not data corruption;
 - repeated scheduler executions must not create uncontrolled duplicate delivery.

@@ -119,7 +119,7 @@ Runbooks: [database backup](ops/backup/README.md) · [manual delivery control](o
 
 - Daily preparation and delivery run on the host/SQLite runtime. The original Google Sheets + Apps Script runtime is kept only as a rollback path.
 - The semantic feedback pipeline is in production. Next: feedback UX, a clarification workflow, and personalization from validated observations ([roadmap](docs/product-roadmap.md)).
-- Known gaps are documented, not hidden. For example, an interrupted `sending` delivery is detected but still needs a manual decision ([reliability model](docs/reliability.md)).
+- Known gaps are documented, not hidden ([reliability model](docs/reliability.md)). An interrupted `sending` delivery used to be one of them; it is now reconciled against the messenger history by its stable message id.
 
 Development is done through small PRs against an issue tracker. Issue numbers like `#27` in the docs and commit history refer to that tracker, which stays private because it contains production operational details.
 
