@@ -46,6 +46,11 @@ LEG_WORDS = re.compile(r"нож(?:к\w*|ек|онк\w*|еньк\w*)")
 # rejections used to exhaust the daily run. One more bounded corrective attempt is allowed.
 MAX_ATTEMPTS = 3
 
+# The prompt asks for under 300 characters; the hard limit leaves slack so a
+# slightly long but focused note does not cost an attempt. Long generic lists of
+# forbidden objects were the main reason messages felt heavy to read.
+MAX_SAFETY_CHARS = 450
+
 # Web research makes a single model call slow; one attempt must still fit well
 # inside the preparation unit's TimeoutStartSec.
 MODEL_TIMEOUT_SECONDS = int(os.environ.get("PREPARATION_MODEL_TIMEOUT", "600"))
@@ -295,6 +300,13 @@ def validate_candidate(candidate, history, expected_age_months):
     duration = candidate.get("duration_minutes")
     if not isinstance(duration, int) or not 5 <= duration <= 10:
         errors.append("duration_minutes must be between 5 and 10")
+
+    safety_text = str(candidate.get("safety", ""))
+    if len(safety_text) > MAX_SAFETY_CHARS:
+        errors.append(
+            f"safety is {len(safety_text)} characters; keep it under {MAX_SAFETY_CHARS}: "
+            "supervision, the hazards specific to this game, when to stop"
+        )
 
     if candidate.get("skill") not in ALLOWED_SKILLS:
         errors.append("invalid primary skill")

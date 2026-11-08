@@ -43,4 +43,5 @@ Formatting rules (checked by code; a violation rejects the candidate and costs a
 - write the source link in message_text as a plain URL exactly equal to source_url;
 - never use Markdown link syntax such as [text](url), and no other Markdown in message_text;
 - materials lists only the objects the game actually uses, one short item each; do not describe what an item lacks there;
-- title, mechanics, materials and steps must not contain words for hazardous items (knife, needle, magnet, coin, bead, button, battery, glass, medicine, chemical, hot things), not even in a negation such as "without magnets"; put every prohibition in the safety field instead.
+- title, mechanics, materials and steps must not contain words for hazardous items (knife, needle, magnet, coin, bead, button, battery, glass, medicine, chemical, hot things), not even in a negation such as "without magnets"; put every prohibition in the safety field instead;
+- safety is at most 3 short sentences (under 300 characters): supervision, the one or two hazards specific to this game, and when to stop. Do not repeat a generic list of forbidden objects.
