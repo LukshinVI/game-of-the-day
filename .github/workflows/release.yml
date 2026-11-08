@@ -1,0 +1,56 @@
+name: Release
+
+# Releases are cut from CHANGELOG.md. Push a tag vX.Y.Z (on a commit that passed CI)
+# whose section exists in CHANGELOG.md; this workflow creates the GitHub Release for
+# every tag that does not have one yet, with that section as the notes. It always runs
+# the workflow and changelog from main, so older tags can be released too.
+on:
+  push:
+    tags: ["v*.*.*"]
+    branches: [main]
+    paths: [CHANGELOG.md, .github/workflows/release.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Create missing releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          latest=$(git tag --list 'v*.*.*' --sort=-v:refname | head -1)
+          for tag in $(git tag --list 'v*.*.*' --sort=v:refname); do
+            if gh release view "$tag" >/dev/null 2>&1; then
+              continue
+            fi
+            version="${tag#v}"
+            awk -v v="$version" '
+              index($0, "## [" v "]") == 1 {found=1; next}
+              found && /^## \[/ {exit}
+              found {print}
+            ' CHANGELOG.md > notes.md
+            if [ ! -s notes.md ]; then
+              echo "::warning::CHANGELOG.md has no section for $version; $tag not released"
+              continue
+            fi
+            heading=$(grep -m1 -F "## [$version]" CHANGELOG.md)
+            title="$tag"
+            case "$heading" in *" — "*) title="$tag — ${heading##* — }";; esac
+            flag="--latest=false"
+            [ "$tag" = "$latest" ] && flag="--latest"
+            gh release create "$tag" --title "$title" --notes-file notes.md --verify-tag "$flag"
+            echo "released $tag"
+          done

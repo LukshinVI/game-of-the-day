@@ -1,6 +1,7 @@
 # Game of the Day
 
 [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/LukshinVI/game-of-the-day)](../../releases)
 
 A small production service that sends a caregiver one safe, age-appropriate developmental activity for a young child every day, collects free-form feedback in a messenger, and turns it into structured observations for future personalization.
 
@@ -124,7 +125,7 @@ Runbooks: [database backup](ops/backup/README.md) · [manual delivery control](o
 - The semantic feedback pipeline is in production. Next: feedback UX, a clarification workflow, and personalization from validated observations ([roadmap](docs/product-roadmap.md)).
 - Known gaps are documented, not hidden ([reliability model](docs/reliability.md)). An interrupted `sending` delivery used to be one of them; it is now reconciled against the messenger history by its stable message id.
 
-Development is done through small PRs against an issue tracker. Issue numbers like `#27` in the docs and commit history refer to that tracker, which stays private because it contains production operational details.
+Changes are released as tagged versions with notes from the [changelog](CHANGELOG.md). Development is done through small PRs against an issue tracker. Issue numbers like `#27` in the docs and commit history refer to that tracker, which stays private because it contains production operational details.
 
 ## Engineering principles
 
