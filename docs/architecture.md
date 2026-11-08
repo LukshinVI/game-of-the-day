@@ -9,7 +9,7 @@ is in [reliability.md](reliability.md). How the models are used and kept in boun
 ```mermaid
 flowchart LR
     subgraph Host["Host (systemd, SQLite in WAL mode)"]
-        PREP[Preparation 07:00<br/>model → gate → fallback → library]
+        PREP[Preparation 07:00<br/>model → gate → reviewer → fallback → library]
         DEL[Delivery 10:00<br/>state machine per recipient]
         CHK[Outcome check<br/>10:15 · 11:15 · 13:15 · 17:15]
         INS[Feedback insights<br/>every 15 min]
@@ -59,7 +59,8 @@ controls. They share nothing but the database.
 | Feedback insights | `src/feedback/insights.py` | every 15 minutes | merges messages sent together, extracts observations with verbatim quotes, rebuilds the child's profile, separates wishes about the service, replies once |
 | Product bot | `src/bot` | always | invite-only onboarding, FAQ, `/children`, `/add_child`, `/pause`, `/resume`, `/idea` |
 | Ops bot | `src/ops/manual_bot.py` | always | `/status`, `/send`, `/retry` with one-time codes; `/users`, `/llm`, `/ideas`; forwards product events |
-| Reports | `src/ops/llm_report.py`, `users_report.py` | Mondays 10:30; on demand | model quality, latency, tokens, cost, reserve days; families |
+| Reports | `src/ops/llm_report.py`, `users_report.py` | Mondays 10:30; on demand | model quality, latency, tokens, cost, reserve days; families; wishes |
+| Parents' digest | `src/ops/weekly_digest.py` | Sundays 19:00 | the week's games and skills, what went well, typical milestones for the age, a monthly question |
 | Warm reserve | `src/preparation/fallback.py` | Sundays 04:30 | keeps at least three validated games for each child's next two months |
 | Backups | `ops/backup` | 03:30 local, 03:45 off-site, Sundays restore test | SQLite online backup → age-encrypted copy in a private repository → weekly restore into a sandbox |
 | Deploy | `ops/deploy.sh` | by hand | backup → fast-forward → tests → migrate → units → restart → health |
@@ -79,10 +80,10 @@ children ──< recipients (channel, address, active)
    └── (is_test: gets games only from a manual run)
 
 members ── invites (hash only) · onboarding (questionnaire state)
-reserve_games · model_runs · user_events · wishes
+reserve_games · model_runs · user_events · wishes · digests
 ```
 
-All migrations are additive (`src/db/children.py migrate`, schema version 8): the
+All migrations are additive (`src/db/children.py migrate`, schema version 9): the
 previous code keeps working on a migrated database, which is what makes a code rollback
 safe. A database with no children runs in the original single-child mode from the
 environment.
@@ -95,7 +96,7 @@ environment.
 10:00  delivery to every recipient                    10:12  catch-up and reconciliation
 10:15  outcome check (again 11:15, 13:15, 17:15)
 */15   feedback insights                              */5    host health (infra repository)
-Mon    LLM report                                     Sun    reserve top-up, off-site restore test
+Mon    LLM report                                     Sun    reserve top-up, restore test, parents' digest 19:00
 ```
 
 ## 5. Delivery invariants
@@ -140,7 +141,8 @@ the child's profile, budgets and caps, and every external side effect.
 
 Models are used for exactly three things, each behind a schema and a deterministic check:
 
-1. proposing the day's activity (Claude Sonnet; Haiku as fallback);
+1. proposing the day's activity (Claude Sonnet; Haiku as fallback), and reviewing its
+   safety after the gate (Haiku);
 2. extracting observations and wishes from feedback (Claude Haiku);
 3. classifying VK feedback in the semantic feedback agent (Gemma on Workers AI).
 
