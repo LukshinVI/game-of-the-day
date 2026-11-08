@@ -19,6 +19,7 @@ It runs in production for a real family. It is also an engineering sandbox for o
 | Prompt and model changes regress silently | Eval suites: deterministic segmentation evals on every push, LLM evals against real Workers AI models on demand, with side-by-side model comparison. |
 | "It ran" is not "the user got the game" | An independent daily-outcome check verifies that today's activity actually exists and was delivered, separately from the per-process alerts. |
 | Onboarding without the operator | Families join through a one-time invite link in a Telegram bot and enter the child's birth date themselves; the age is computed, confirmed and stored, the next run picks the child up. No model is involved. |
+| Small moments matter | A deterministic greeting on the child's month-birthdays in the first year, then on birthdays and half-birthdays, put before that day's game; end-of-month and leap-day births handled. |
 | Ops for a one-person service | systemd units with hardening, verified SQLite backups with retention and alerting, an owner-only Telegram bot for manual send/retry. |
 
 ## Architecture
@@ -66,7 +67,7 @@ feedback text
 
 | Suite | What it covers | Runs |
 |---|---|---|
-| `tests/` (Python, 188 tests) | delivery state machine, feedback storage idempotency, preparation validation and message layout, child age, model backends, backup script, outcome check, ops bot, multi-child, product bot onboarding | every push (CI) |
+| `tests/` (Python, 194 tests) | delivery state machine, feedback storage idempotency, preparation validation and message layout, child age, model backends, backup script, outcome check, ops bot, multi-child, product bot onboarding | every push (CI) |
 | `worker/evals/runSegmentationEvals.js` | deterministic segmentation and relation detection | every push (CI) |
 | `worker/evals/feedbackCases.js` (16 cases) | end-to-end semantic feedback analysis against a real model; compares `baseline` / `gemma` / `glm` | manual workflow ([LLM evals](.github/workflows/llm-evals.yml)) |
 | ShellCheck | backup script | every push (CI) |
