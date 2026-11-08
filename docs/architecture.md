@@ -60,7 +60,7 @@ controls. They share nothing but the database.
 | Product bot | `src/bot` | always | invite-only onboarding, FAQ, `/children`, `/add_child`, `/pause`, `/resume`, `/idea` |
 | Ops bot | `src/ops/manual_bot.py` | always | `/status`, `/send`, `/retry` with one-time codes; `/users`, `/llm`, `/ideas`; forwards product events |
 | Reports | `src/ops/llm_report.py`, `users_report.py` | Mondays 10:30; on demand | model quality, latency, tokens, cost, reserve days; families; wishes |
-| Parents' digest | `src/ops/weekly_digest.py` | Sundays 19:00 | the week's games and skills, what went well, typical milestones for the age, a monthly question |
+| Parents' digest | `src/ops/weekly_digest.py` | Sundays 19:00 | the week's games and skills, what went well, typical milestones for the age, a monthly question; once per recipient, after a month of positive feedback, a request to star the project on GitHub |
 | Warm reserve | `src/preparation/fallback.py` | Sundays 04:30 | keeps at least three validated games for each child's next two months |
 | Backups | `ops/backup` | 03:30 local, 03:45 off-site, Sundays restore test | SQLite online backup → age-encrypted copy in a private repository → weekly restore into a sandbox |
 | Deploy | `ops/deploy.sh` | by hand | backup → fast-forward → tests → migrate → units → restart → health |
@@ -80,10 +80,10 @@ children ──< recipients (channel, address, active)
    └── (is_test: gets games only from a manual run)
 
 members ── invites (hash only) · onboarding (questionnaire state)
-reserve_games · model_runs · user_events · wishes · digests
+reserve_games · model_runs · user_events · wishes · digests · star_requests
 ```
 
-All migrations are additive (`src/db/children.py migrate`, schema version 9): the
+All migrations are additive (`src/db/children.py migrate`, schema version 11): the
 previous code keeps working on a migrated database, which is what makes a code rollback
 safe. A database with no children runs in the original single-child mode from the
 environment.

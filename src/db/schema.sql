@@ -201,4 +201,13 @@ CREATE TABLE migration_meta (
     value TEXT
 );
 
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '10');
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '11');
+
+-- One-time request to star the project on GitHub (src/ops/weekly_digest.py).
+CREATE TABLE star_requests (
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    child_id INTEGER,
+    sent_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (channel, address)
+);

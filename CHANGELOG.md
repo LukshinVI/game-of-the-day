@@ -8,6 +8,10 @@ on the commit that completed each milestone.
 ## [Unreleased]
 
 ### Added
+- A one-time request to star the project on GitHub, in the Sunday digest: once per
+  recipient, only after the child has had games for 30 days and the last 30 days of
+  feedback have at least one "liked" and no more "disliked" than "liked"; never in the
+  digest that carries the monthly question. Schema 11 (`star_requests`).
 - Engineering docs: service level objectives with the measured history
   ([docs/slo.md](docs/slo.md)), a scaling plan with today's ceilings
   ([docs/scaling.md](docs/scaling.md)), four architecture decision records
