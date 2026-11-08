@@ -282,6 +282,18 @@ class TwoChildren(TempDb):
         self.assertIsNone(doc.evaluate(doc.todays_rows(self.db, self.today)))
 
 
+    def test_a_chat_with_two_children_sees_whose_game_it_is(self):
+        ch.add_recipient(self.con(), self.older, "telegram", "555")
+        self.prepare(self.by_age)
+        vk, telegram, error = self.send(vk=mock.Mock(side_effect=[101, 102]), telegram=mock.Mock(side_effect=[201, 202]))
+        self.assertIsNone(error)
+        headers = sorted(c.args[0].split("\n")[0] for c in telegram.call_args_list)
+        self.assertEqual(headers, ["👶 Младший", "👶 Старший"])
+        for call in vk.call_args_list:  # VK dialogs serve one child each: unchanged
+            self.assertFalse(call.args[0].startswith("👶"))
+        self.assertFalse(any(t.startswith("👶") for (t,) in self.query("SELECT message_text FROM games")))
+
+
 class SingleChildMode(TempDb):
     """No children configured: behaviour is exactly the pre-#20 one."""
 
