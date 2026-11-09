@@ -23,6 +23,13 @@ on the commit that completed each milestone.
   any other VK family was dropped. It now passes every private dialog with the sender's
   peer id, and feedback is attached to the newest unanswered game delivered to that
   sender, so two VK families never answer each other's games.
+- An unfinished `/add_child` in the Telegram bot captured the family's feedback the next
+  day and answered "could not parse the date", so the feedback was lost. For a chat that
+  already has a child, a message is now feedback when the questionnaire is over an hour
+  old, the message replies to a game, or it is too long to be an answer; the
+  questionnaire is dropped with a hint to start again.
+- An unknown command in the Telegram bot got a bare repeat of the help, which read as
+  the bot being stuck; the reply now names the command first.
 
 ### Changed
 - The Sunday digest no longer lists typical milestones for the age: "what children
