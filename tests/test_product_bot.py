@@ -306,6 +306,15 @@ class StartGuard(BotTest):
         con.close()
 
 
+class UnknownCommand(BotTest):
+    def test_an_unknown_command_is_named_before_the_help(self):
+        self.onboard("42")
+        reply = self.say("42", "/setabouttext")
+        self.assertTrue(reply.startswith("Такой команды у меня нет: /setabouttext"))
+        self.assertIn("/add_child", reply)
+        self.assertEqual(self.rows("SELECT count(*) FROM feedback"), [(0,)])
+
+
 class Faq(BotTest):
     def test_the_welcome_points_to_the_faq_and_the_faq_resumes_the_questionnaire(self):
         link = self.say(OWNER, "/invite")
