@@ -30,6 +30,9 @@ on the commit that completed each milestone.
   questionnaire is dropped with a hint to start again.
 - An unknown command in the Telegram bot got a bare repeat of the help, which read as
   the bot being stuck; the reply now names the command first.
+- The Telegram bot's command menu had been set by hand to BotFather's setting names
+  (`/setdescription`, `/setabouttext`…), and families tapped them. The bot now sets its
+  menu at startup from the same list the help text is built from, in every scope.
 
 ### Changed
 - The Sunday digest no longer lists typical milestones for the age: "what children

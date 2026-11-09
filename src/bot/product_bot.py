@@ -79,17 +79,22 @@ YES = {"да", "+", "верно", "ок", "ok", "yes", "д"}
 NO = {"нет", "-", "no", "н", "заново"}
 
 CLOSED = "Это закрытый бот. Чтобы подключиться, попросите пригласительную ссылку у того, кто вас пригласил."
+# The family-facing commands: the help text and the Telegram menu are both built from
+# this list (the menu is set at startup), so the menu can never drift from the code.
+COMMANDS = [
+    ("children", "кто подписан"),
+    ("add_child", "добавить ребёнка"),
+    ("pause", "приостановить игры"),
+    ("resume", "возобновить игры"),
+    ("idea", "предложить, что улучшить в сервисе"),
+    ("faq", "частые вопросы"),
+]
 HELP = (
-    "Каждый день в {time} по Москве я присылаю одну развивающую игру по возрасту ребёнка.\n"
+    f"Каждый день в {DELIVERY_TIME_MSK} по Москве я присылаю одну развивающую игру по возрасту ребёнка.\n"
     "Ответьте на сообщение с игрой — как прошло, было ли легко или сложно, что понравилось. "
     "Следующие игры подстроятся под ребёнка.\n\n"
-    "/children — кто подписан\n"
-    "/add_child — добавить ребёнка\n"
-    "/pause — приостановить игры\n"
-    "/resume — возобновить\n"
-    "/idea — предложить, что улучшить в сервисе\n"
-    "/faq — частые вопросы"
-).format(time=DELIVERY_TIME_MSK)
+    + "\n".join(f"/{name} — {about}" for name, about in COMMANDS)
+)
 OWNER_HELP = (
     "\n\nВладелец:\n/invite — новая пригласительная ссылка\n/members — участники\n"
     "/block <chat_id> — отключить участника и его детей"
@@ -593,6 +598,14 @@ def single_child_guard(con):
 
 # --- Telegram transport ------------------------------------------------------
 
+def set_menu(token, call=None):
+    """Make the bot's command menu exactly COMMANDS (owner commands stay out of it)."""
+    call = call or telegram
+    commands = [{"command": name, "description": about} for name, about in COMMANDS]
+    for scope in ("default", "all_private_chats"):
+        call(token, "setMyCommands", {"commands": commands, "scope": {"type": scope}}, 20)
+
+
 def telegram(token, method, payload, timeout):
     request = urllib.request.Request(
         f"{API}/bot{token}/{method}",
@@ -616,6 +629,10 @@ def main():
     if legacy_problem:
         raise SystemExit(legacy_problem)
     username = telegram(token, "getMe", {}, 20)["result"].get("username", "")
+    try:
+        set_menu(token)
+    except Exception as exc:  # noqa: BLE001 - a stale menu must not stop the bot
+        print(f"menu not set: {type(exc).__name__}", flush=True)
     bot = ProductBot(DB_PATH, owner_id, username)
     offset = None
     last_success = time.time()
