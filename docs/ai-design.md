@@ -49,8 +49,9 @@ feedback → Haiku extracts observations (each with a quote) → code checks the
 
 The model proposes facts; the application decides what is remembered and how it is used.
 The profile says, per skill, whether the next game should be harder or easier, what went
-well, what is hard for now, likes and dislikes. A wish about the service ("more outdoor
-games") is routed to the owner, not to the profile. The parent gets one reply saying what
+well, what is hard for now, likes and dislikes. A request about the child's own games ("more games with objects")
+is a like and goes to the profile; a wish about the service itself ("send them in the
+evening") is routed to the owner, not to the profile. The parent gets one reply saying what
 was taken into account, built by code from the kept observations.
 
 ## The semantic feedback agent (VK)
