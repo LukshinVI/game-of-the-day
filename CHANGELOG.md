@@ -33,6 +33,14 @@ on the commit that completed each milestone.
 - The Telegram bot's command menu had been set by hand to BotFather's setting names
   (`/setdescription`, `/setabouttext`…), and families tapped them. The bot now sets its
   menu at startup from the same list the help text is built from, in every scope.
+- A parent's request about her own child's games ("can the next games use more
+  objects?") was filed as a wish about the service for the owner and never reached the
+  child's profile. The analysis prompt now treats what this child's games should be like
+  as a like / dislike; wishes are only about the service itself.
+- A thank-you reply that failed to send was dropped for good, and a Telegram feedback
+  restored by hand (no message id) always failed it. The reply is now sent without a
+  quote when there is no message to quote, and a failed reply is retried on the next
+  runs from the stored observations (no second model call) while the feedback is fresh.
 
 ### Changed
 - The Sunday digest no longer lists typical milestones for the age: "what children

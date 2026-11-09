@@ -119,7 +119,7 @@ def pending_groups(con, now):
 def analyses_today(con, now, child_id=None):
     day = now.date().isoformat()
     query = ("SELECT count(DISTINCT f.game_id || '@' || f.insights_at) FROM feedback f JOIN games g ON g.id = f.game_id "
-             "WHERE f.insights_status = 'done' AND substr(f.insights_at, 1, 10) = ?")
+             "WHERE f.insights_status IN ('done', 'reply_failed') AND substr(f.insights_at, 1, 10) = ?")
     params = [day]
     if child_id is not None:
         query += " AND g.child_id = ?"
@@ -223,9 +223,10 @@ def send_reply(con, group, text):
         token = os.environ.get("GAME_TELEGRAM_BOT_TOKEN")
         if not token or not chat_id:
             raise RuntimeError("no Telegram token or chat")
-        payload = {"chat_id": chat_id, "text": text,
-                   "reply_parameters": {"message_id": int(group[-1]["external_event_id"].rsplit(":", 1)[1]),
-                                        "allow_sending_without_reply": True}}
+        payload = {"chat_id": chat_id, "text": text}
+        replied = group[-1]["external_event_id"].rsplit(":", 1)[1]
+        if replied.isdigit():  # a feedback restored by hand has no Telegram message to quote
+            payload["reply_parameters"] = {"message_id": int(replied), "allow_sending_without_reply": True}
         request = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage",
                                          data=json.dumps(payload).encode(), method="POST",
                                          headers={"Content-Type": "application/json"})
@@ -274,6 +275,39 @@ def record_wish(con, source, text, evidence=None, child_id=None, chat_id=None, f
 def mark(con, group, status, now):
     con.executemany("UPDATE feedback SET insights_at = ?, insights_status = ? WHERE id = ?",
                     [(now.isoformat(timespec="seconds"), status, r["id"]) for r in group])
+
+
+def retry_replies(con, now, sender):
+    """Resend the replies that failed, from the observations already stored.
+
+    Status reply_failed is analysed feedback whose thank-you did not go out; it is retried
+    every run while the feedback is fresh, then given up as done (no late thank-yous).
+    """
+    rows = [dict(r) for r in con.execute(
+        "SELECT f.id, f.game_id, f.channel, f.external_event_id, f.received_at, g.title "
+        "FROM feedback f JOIN games g ON g.id = f.game_id "
+        "WHERE f.insights_status = 'reply_failed' ORDER BY f.game_id, f.received_at, f.id")]
+    groups = {}
+    for row in rows:
+        groups.setdefault((row["game_id"], row["external_event_id"].rsplit(":", 1)[0]), []).append(row)
+    for group in groups.values():
+        ids = [(r["id"],) for r in group]
+        if now - parse_time(group[-1]["received_at"]) > timedelta(hours=REPLY_WITHIN_HOURS):
+            con.executemany("UPDATE feedback SET insights_status = 'done' WHERE id = ?", ids)
+            con.commit()
+            continue
+        observations = [dict(r) for r in con.execute(
+            "SELECT kind, value, skill FROM observations WHERE feedback_id = ?", (group[-1]["id"],))]
+        observations += [{"kind": "wish", "value": r["text"], "skill": None} for r in con.execute(
+            "SELECT text FROM wishes WHERE feedback_id = ?", (group[-1]["id"],))]
+        try:
+            sender(con, group, reply_text(group[0]["title"], observations))
+        except Exception as exc:  # noqa: BLE001
+            print(f"reply retry failed: {type(exc).__name__}", file=sys.stderr)
+            continue
+        con.executemany("UPDATE feedback SET insights_status = 'done', reply_sent_at = CURRENT_TIMESTAMP "
+                        "WHERE id = ?", ids)
+        con.commit()
 
 
 def run(db_path=None, now=None, reply=True, model=run_model, sender=send_reply):
@@ -334,8 +368,12 @@ def run(db_path=None, now=None, reply=True, model=run_model, sender=send_reply):
                     con.executemany("UPDATE feedback SET reply_sent_at = CURRENT_TIMESTAMP WHERE id = ?",
                                     [(r["id"],) for r in group])
                     con.commit()
-                except Exception as exc:  # noqa: BLE001 - a lost thank-you is not worth a retry storm
+                except Exception as exc:  # noqa: BLE001 - retried by the next runs, then dropped
+                    mark(con, group, "reply_failed", now)
+                    con.commit()
                     print(f"reply failed: {type(exc).__name__}", file=sys.stderr)
+        if reply:
+            retry_replies(con, now, sender)
     finally:
         con.close()
     return done
