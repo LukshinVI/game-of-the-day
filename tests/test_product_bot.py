@@ -206,6 +206,59 @@ class Feedback(BotTest):
         self.assertIn("Спасибо", self.reply_to("42", "Маше понравилось", 501))
         self.assertEqual(self.rows("SELECT game_id FROM feedback"), [(masha,)])
 
+    def test_long_feedback_during_an_unfinished_add_child_is_kept_as_feedback(self):
+        # Production 2026-11-09: /add_child left at the birth date, the next day's
+        # feedback was answered "Не получилось разобрать дату" and lost.
+        self.onboard("42")
+        game = self.sent_game("42", "A")
+        self.say("42", "/add_child")
+        self.say("42", "Ванес")
+        text = "Получилось, но малышка пока не реагирует на зеркало, заменила на игрушку"
+        reply = self.say("42", text)
+        self.assertIn("Спасибо", reply)
+        self.assertIn("/add_child", reply)
+        self.assertEqual(self.rows("SELECT game_id, raw_text FROM feedback"), [(game, text)])
+        self.assertEqual(self.rows("SELECT count(*) FROM onboarding"), [(0,)])
+
+    def test_a_short_answer_still_continues_the_questionnaire(self):
+        self.onboard("42")
+        self.sent_game("42", "A")
+        self.say("42", "/add_child")
+        self.say("42", "Петя")
+        self.assertIn("Всё верно", self.say("42", "01.01.2026"))
+        self.assertEqual(self.rows("SELECT count(*) FROM feedback"), [(0,)])
+
+    def test_a_stale_questionnaire_stops_capturing_messages(self):
+        self.onboard("42")
+        game = self.sent_game("42", "A")
+        self.say("42", "/add_child")
+        self.say("42", "Петя")
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE onboarding SET updated_at = '2026-11-07 00:00:00'")
+        con.commit()
+        con.close()
+        self.assertIn("Спасибо", self.say("42", "понравилось"))
+        self.assertEqual(self.rows("SELECT game_id FROM feedback"), [(game,)])
+
+    def test_a_reply_to_a_game_is_feedback_even_mid_questionnaire(self):
+        self.onboard("42")
+        game = self.sent_game("42", "A", external_id="501")
+        self.say("42", "/add_child")
+        self.assertIn("Спасибо", self.reply_to("42", "ок", 501))
+        self.assertEqual(self.rows("SELECT game_id FROM feedback"), [(game,)])
+
+    def test_a_new_family_without_a_child_keeps_its_questionnaire(self):
+        link = self.say(OWNER, "/invite")
+        code = link.split("start=")[1].split()[0]
+        self.say("44", f"/start {code}")
+        self.say("44", "Маша")
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE onboarding SET updated_at = '2026-11-07 00:00:00'")
+        con.commit()
+        con.close()
+        self.assertIn("Не получилось разобрать дату", self.say("44", "какой-то длинный текст вместо даты рождения ребёнка"))
+        self.assertEqual(self.rows("SELECT step FROM onboarding"), [("birth_date",)])
+
     def test_a_reply_cannot_reach_a_game_sent_to_another_chat(self):
         self.onboard("42")
         self.onboard("43", name="Оля")
