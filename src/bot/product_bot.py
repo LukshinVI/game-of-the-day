@@ -273,7 +273,8 @@ class ProductBot:
         if command == "/idea":
             return self.idea(con, chat_id, text.split(maxsplit=1)[1] if len(parts) > 1 else "")
         if command:
-            return self.help(is_owner)
+            # Say so: a bare repeat of the help reads as the bot being stuck.
+            return f"Такой команды у меня нет: {parts[0][:40]}\n\n" + self.help(is_owner)
 
         current = self.step(con, chat_id)
         if current is not None and self.abandoned(con, chat_id, current, text, message):
