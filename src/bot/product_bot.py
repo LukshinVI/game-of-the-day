@@ -70,6 +70,10 @@ MAX_FEEDBACK_PER_DAY = int(os.environ.get("GAME_MAX_FEEDBACK_PER_DAY", "20"))
 STRANGER_REPLY_EVERY_SECONDS = 24 * 3600
 POLL_TIMEOUT_SECONDS = 30
 EXIT_AFTER_FAILING_SECONDS = 600
+# An unfinished "add a child" questionnaire stops capturing messages after this long,
+# so a family that started /add_child and walked away does not lose its feedback.
+ONBOARDING_TTL = timedelta(hours=1)
+ADD_CHILD_DROPPED = "Добавление ребёнка не закончено и отменено — /add_child, чтобы начать заново."
 
 YES = {"да", "+", "верно", "ок", "ok", "yes", "д"}
 NO = {"нет", "-", "no", "н", "заново"}
@@ -272,11 +276,33 @@ class ProductBot:
             return self.help(is_owner)
 
         current = self.step(con, chat_id)
+        if current is not None and self.abandoned(con, chat_id, current, text, message):
+            # A family with a child already subscribed wrote something that is not an
+            # answer: it is feedback. Drop the questionnaire instead of eating the message.
+            con.execute("DELETE FROM onboarding WHERE chat_id = ?", (chat_id,))
+            reply = self.feedback(con, chat_id, text, message)
+            return f"{reply}\n\n{ADD_CHILD_DROPPED}" if reply else None
         if current is not None:
             if reactions.is_reaction(text):
                 return "Ответьте, пожалуйста, текстом 🙂"
             return self.questionnaire(con, chat_id, current, text)
         return self.feedback(con, chat_id, text, message)
+
+    def abandoned(self, con, chat_id, current, text, message):
+        """Is this message feedback rather than an answer to an unfinished questionnaire?
+
+        Only for a chat that already has a child (a new family must finish signing up):
+        the questionnaire is older than ONBOARDING_TTL, the message replies to a game,
+        or it is too long to be a name, a date or "да".
+        """
+        if not self.chat_children(con, chat_id):
+            return False
+        cutoff = (self.now().astimezone(timezone.utc) - ONBOARDING_TTL).strftime("%Y-%m-%d %H:%M:%S")
+        return (
+            (current["updated_at"] or "") < cutoff
+            or bool(message.get("reply_to_message"))
+            or len(text) > MAX_NAME_CHARS
+        )
 
     def help(self, is_owner):
         return HELP + (OWNER_HELP if is_owner else "")
