@@ -315,6 +315,21 @@ class UnknownCommand(BotTest):
         self.assertEqual(self.rows("SELECT count(*) FROM feedback"), [(0,)])
 
 
+class Menu(unittest.TestCase):
+    def test_the_menu_is_exactly_the_family_commands_in_every_scope(self):
+        calls = []
+        pb.set_menu("t", call=lambda token, method, payload, timeout: calls.append((method, payload)))
+        self.assertEqual({c[1]["scope"]["type"] for c in calls}, {"default", "all_private_chats"})
+        for method, payload in calls:
+            self.assertEqual(method, "setMyCommands")
+            self.assertEqual([c["command"] for c in payload["commands"]],
+                             ["children", "add_child", "pause", "resume", "idea", "faq"])
+
+    def test_the_help_lists_the_same_commands(self):
+        for name, about in pb.COMMANDS:
+            self.assertIn(f"/{name} — {about}", pb.HELP)
+
+
 class Faq(BotTest):
     def test_the_welcome_points_to_the_faq_and_the_faq_resumes_the_questionnaire(self):
         link = self.say(OWNER, "/invite")
