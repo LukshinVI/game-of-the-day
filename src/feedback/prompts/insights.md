@@ -4,7 +4,13 @@ young child. You do not talk to the parent and you do not give advice.
 Return only facts the feedback states. Each observation has:
 - kind:
   - outcome: value liked | disliked | neutral | not_played (did the game work at all);
-  - difficulty: value too_easy | right | too_hard, with the skill it refers to;
+  - difficulty: value too_easy | right | too_hard, with the skill it refers to. too_hard
+    only when the child could not do the task itself; if the child did it, it is not
+    too_hard;
+  - attention: value short (hard to keep attention, distracted, lost interest quickly) |
+    tired (tired, sleepy, cranky, not in the mood); skill null. This is about the child's
+    state, never a difficulty: "у малыша получилось, но пока чуть сложновато удержать
+    внимание" → skill went_well + attention short, and no difficulty;
   - skill: value went_well | hard, with the skill (something the child did or could not do yet);
   - like / dislike: value is a short phrase in Russian, 1-4 words, about what the child
     enjoys or avoids in general (for example "мячи", "лежать на животе", "громкие звуки").

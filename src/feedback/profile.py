@@ -7,6 +7,7 @@ them into a small summary that preparation puts into the prompt:
 - per skill, the direction for the next game ("harder" / "easier"), from difficulty
   signals weighted by recency (half-life 14 days);
 - what went well and what was hard, per skill;
+- whether attention is short for now (keep games short and lively, not easier);
 - likes and dislikes;
 - games the child liked or disliked.
 
@@ -21,6 +22,8 @@ WINDOW_DAYS = 60
 HALF_LIFE_DAYS = 14
 DIRECTION_THRESHOLD = 0.8
 DIFFICULTY_SCORE = {"too_easy": 1.0, "right": 0.0, "too_hard": -1.0}
+# One "attention is short" signal counts for about two weeks (weight >= 0.5).
+ATTENTION_THRESHOLD = 0.5
 
 
 def _age_days(created_at, now):
@@ -38,6 +41,7 @@ def build(observations, now=None):
     difficulty = defaultdict(float)
     went_well, hard = defaultdict(list), defaultdict(list)
     likes, dislikes = defaultdict(float), defaultdict(float)
+    attention, attention_quotes = 0.0, []
     liked_games, disliked_games = [], []
 
     for obs in sorted(observations, key=lambda o: o["created_at"], reverse=True):
@@ -52,6 +56,10 @@ def build(observations, now=None):
             target = went_well if value == "went_well" else hard if value == "hard" else None
             if target is not None and obs["evidence"] not in target[skill] and len(target[skill]) < 3:
                 target[skill].append(obs["evidence"])
+        elif kind == "attention" and value == "short":
+            attention += weight
+            if obs["evidence"] not in attention_quotes and len(attention_quotes) < 3:
+                attention_quotes.append(obs["evidence"])
         elif kind == "like":
             likes[value] += weight
         elif kind == "dislike":
@@ -74,6 +82,8 @@ def build(observations, now=None):
         profile["went_well"] = dict(went_well)
     if hard:
         profile["hard_for_now"] = dict(hard)
+    if attention >= ATTENTION_THRESHOLD:
+        profile["short_attention"] = attention_quotes
     top = lambda d: [k for k, _ in sorted(d.items(), key=lambda kv: -kv[1])[:5]]  # noqa: E731
     if likes:
         profile["likes"] = top(likes)

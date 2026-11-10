@@ -50,6 +50,10 @@ KINDS = {
     "outcome": {"liked", "disliked", "neutral", "not_played"},
     "difficulty": {"too_easy", "right", "too_hard"},
     "skill": {"went_well", "hard"},
+    # Focus, tiredness, mood: how the child was, not how hard the game was. Never a
+    # difficulty signal (production 2026-11-10: "сложновато удержать внимание" made the
+    # next games easier although the child had managed the game).
+    "attention": {"short", "tired"},
     "like": None,      # free short phrase
     "dislike": None,
     "wish": None,      # about the service, not the child: goes to the owner, not the profile
@@ -180,8 +184,14 @@ def valid_observations(output, text, game_skill):
             value = value[:60].lower()
         if kind == "wish":
             value = value[:120]
+        if kind == "attention":
+            skill = None
         kept.append({"kind": kind, "value": value, "skill": skill, "evidence": evidence})
-    return kept
+    # "Went well" and "too hard" for the same skill contradict each other: the child did
+    # it, so what was hard is something else (usually attention). Keep the fact, drop
+    # the signal that would make the next game easier.
+    managed = {o["skill"] for o in kept if o["kind"] == "skill" and o["value"] == "went_well"}
+    return [o for o in kept if not (o["kind"] == "difficulty" and o["value"] == "too_hard" and o["skill"] in managed)]
 
 
 DIFFICULTY_TEXT = {"too_easy": "было легко → дальше дадим посложнее",
@@ -203,6 +213,10 @@ def reply_text(game_title, observations):
             lines.append(f"• получается: {obs['evidence']}")
         elif obs["kind"] == "skill" and obs["value"] == "hard":
             lines.append(f"• пока трудно: {obs['evidence']} — вернёмся к этому мягче")
+        elif obs["kind"] == "attention" and obs["value"] == "short":
+            lines.append("• внимание пока трудно удержать → сделаем игры короче и живее")
+        elif obs["kind"] == "attention" and obs["value"] == "tired":
+            lines.append("• малыш был уставший или не в настроении — сложность из-за этого не меняем")
         elif obs["kind"] == "like":
             lines.append(f"• любит: {obs['value']}")
         elif obs["kind"] == "dislike":

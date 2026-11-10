@@ -17,6 +17,12 @@ on the commit that completed each milestone.
   (`applications`, `outbox`, `inbound_events`); the module is `src/bot/vk_dialog.py`.
 
 ### Fixed
+- Feedback: trouble keeping attention was read as "too hard" and made the next games
+  easier although the child had managed the game (production 2026-11-10). Attention and
+  mood are now their own observation kind (`attention`: `short` | `tired`, schema 13);
+  "attention is short" puts `short_attention` into the profile, and the selector keeps
+  games short and lively instead of easier. "Went well" plus "too hard" for the same
+  skill keeps the first and drops the second; the reply no longer contradicts itself.
 - `ops/deploy.sh` failed its test step when started from a directory the application
   user cannot enter (e.g. `/root`): it now changes into the application directory first.
 - The Worker passed on VK messages from two hard-coded dialogs only, so the feedback of
