@@ -189,6 +189,57 @@ class Wishes(InsightsSetup):
         from src.ops import users_report
         self.assertIn("присылать игры вечером", users_report.wishes(self.db))
 
+    def test_short_attention_is_not_difficulty(self):
+        # Production 2026-11-10: "у малыша получилось, но пока чуть сложновато удержать
+        # внимание" was stored as "мышление: too_hard" and made the next games easier.
+        con = sqlite3.connect(self.db)
+        con.execute("UPDATE games SET child_id = ?", (self.child,))
+        con.commit()
+        con.close()
+        self.feedback("Хорошая игра, у малыша получилось, но пока чуть сложновато удержать внимание", 30)
+        self.run_insights([
+            {"kind": "outcome", "value": "liked", "skill": None, "evidence": "Хорошая игра"},
+            {"kind": "skill", "value": "went_well", "skill": "fine_motor", "evidence": "у малыша получилось"},
+            # what the model got wrong in production: dropped by code because it managed
+            {"kind": "difficulty", "value": "too_hard", "skill": "fine_motor",
+             "evidence": "чуть сложновато удержать внимание"},
+            {"kind": "attention", "value": "short", "skill": "fine_motor", "evidence": "сложновато удержать внимание"},
+        ])
+        self.assertEqual(self.rows("SELECT kind, value, skill FROM observations ORDER BY id"),
+                         [("outcome", "liked", None), ("skill", "went_well", "fine_motor"),
+                          ("attention", "short", None)])
+        self.assertNotIn("попроще", self.replies[0])
+        self.assertIn("внимание пока трудно удержать → сделаем игры короче и живее", self.replies[0])
+        con = ch.connect_db(self.db)
+        built = profile.load(con, self.child)
+        con.close()
+        self.assertNotIn("next_difficulty", built)
+        self.assertEqual(built["short_attention"], ["сложновато удержать внимание"])
+
+    def test_too_hard_stays_when_the_child_did_not_manage(self):
+        self.feedback("Пока не получается, слишком сложно", 30)
+        self.run_insights([{"kind": "difficulty", "value": "too_hard", "skill": "fine_motor",
+                            "evidence": "слишком сложно"}])
+        self.assertEqual(self.rows("SELECT kind, value FROM observations"), [("difficulty", "too_hard")])
+        self.assertIn("было сложно → дальше дадим попроще", self.replies[0])
+
+    def test_short_attention_fades(self):
+        now = datetime(2026, 11, 9, tzinfo=timezone.utc)
+        def obs(days):
+            return {"kind": "attention", "value": "short", "skill": None, "evidence": "отвлекался",
+                    "created_at": (now - timedelta(days=days)).isoformat()}
+        self.assertEqual(profile.build([obs(1)], now), {"short_attention": ["отвлекался"]})
+        self.assertEqual(profile.build([obs(20)], now), {})
+        tired = dict(obs(0), value="tired")
+        self.assertEqual(profile.build([tired], now), {})  # a bad day is not a profile trait
+
+    def test_the_prompts_separate_attention_from_difficulty(self):
+        prompt = (ROOT / "src/feedback/prompts/insights.md").read_text()
+        self.assertIn("сложновато удержать", prompt)
+        self.assertIn("attention short", prompt)
+        selector = (ROOT / "src/preparation/prompts/game_selector.md").read_text()
+        self.assertIn("short_attention", selector)
+
     def test_the_prompt_sends_requests_about_the_childs_games_to_the_profile(self):
         # Production 2026-11-09: "можно больше игр с предметами" became a wish for the
         # owner and never reached the child's profile.

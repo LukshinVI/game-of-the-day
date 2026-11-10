@@ -93,6 +93,26 @@ class Migration(TempDb):
         child = ch.add_child(con, "Старший", "2025-09-01", adopt_existing=True)
         self.assertEqual(self.query("SELECT child_id FROM games"), [(child,)])
 
+    def test_schema_13_allows_attention_and_keeps_observations(self):
+        con = self.con()
+        con.execute("INSERT INTO games(id, legacy_id, game_date, title) VALUES (1, '001', '2026-09-01', 'A')")
+        con.commit()
+        ch.migrate(con)
+        con.execute("DROP TABLE observations")  # back to the schema 12 table
+        con.executescript(ch.MIGRATION_7.replace("'skill', 'attention',", "'skill',"))
+        con.execute("INSERT INTO feedback(id, game_id, channel, raw_text) VALUES (1, 1, 'vk', 'x')")
+        con.execute("INSERT INTO observations(id, feedback_id, game_id, kind, value, evidence) "
+                    "VALUES (7, 1, 1, 'outcome', 'liked', 'x')")
+        con.commit()
+        with self.assertRaises(sqlite3.IntegrityError):
+            con.execute("INSERT INTO observations(feedback_id, kind, value, evidence) VALUES (1, 'attention', 'short', 'x')")
+        ch.migrate(con)
+        ch.migrate(con)  # idempotent
+        con.execute("INSERT INTO observations(feedback_id, kind, value, evidence) VALUES (1, 'attention', 'short', 'x')")
+        con.commit()
+        self.assertEqual(self.query("SELECT id, kind FROM observations ORDER BY id"), [(7, "outcome"), (8, "attention")])
+        self.assertEqual(self.query("SELECT name FROM sqlite_master WHERE name LIKE 'observations_%'"), [])
+
     def test_the_fresh_schema_and_the_migrated_one_have_the_same_tables(self):
         con = self.con()
         ch.migrate(con)

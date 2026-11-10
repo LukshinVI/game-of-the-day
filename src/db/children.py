@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -143,7 +143,7 @@ CREATE TABLE IF NOT EXISTS observations (
     feedback_id INTEGER NOT NULL REFERENCES feedback(id),
     child_id INTEGER,
     game_id INTEGER,
-    kind TEXT NOT NULL CHECK(kind IN ('outcome', 'difficulty', 'skill', 'like', 'dislike')),
+    kind TEXT NOT NULL CHECK(kind IN ('outcome', 'difficulty', 'skill', 'attention', 'like', 'dislike')),
     value TEXT NOT NULL,
     skill TEXT,
     evidence TEXT NOT NULL
@@ -257,6 +257,7 @@ def migrate(con):
     con.executescript(MIGRATION_9)
     con.executescript(MIGRATION_11)
     con.executescript(MIGRATION_12)
+    widen_observation_kinds(con)
     # Mechanic tags (src/preparation/mechanics.py): similar ideas, not just equal titles.
     for table in ("games", "reserve_games"):
         if "mechanic_tag" not in columns(con, table):
@@ -287,6 +288,40 @@ def migrate(con):
         (str(SCHEMA_VERSION),),
     )
     con.commit()
+
+
+def widen_observation_kinds(con):
+    """Schema 13: observations may be of kind 'attention' (focus, tiredness, mood: not
+    difficulty). SQLite cannot change a CHECK in place, so the table is rebuilt with the
+    same columns and rows. The old code still works on it: the CHECK only got wider."""
+    sql = con.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'observations'").fetchone()
+    if sql is None or "'attention'" in sql[0]:
+        return
+    con.commit()
+    con.execute("PRAGMA foreign_keys = OFF")
+    try:
+        con.executescript(f"""
+            BEGIN;
+            ALTER TABLE observations RENAME TO observations_v12;
+            CREATE TABLE observations (
+                id INTEGER PRIMARY KEY,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                feedback_id INTEGER NOT NULL REFERENCES feedback(id),
+                child_id INTEGER,
+                game_id INTEGER,
+                kind TEXT NOT NULL CHECK(kind IN ('outcome', 'difficulty', 'skill', 'attention', 'like', 'dislike')),
+                value TEXT NOT NULL,
+                skill TEXT,
+                evidence TEXT NOT NULL
+            );
+            INSERT INTO observations(id, created_at, feedback_id, child_id, game_id, kind, value, skill, evidence)
+                SELECT id, created_at, feedback_id, child_id, game_id, kind, value, skill, evidence
+                FROM observations_v12;
+            DROP TABLE observations_v12;
+            COMMIT;
+        """)
+    finally:
+        con.execute("PRAGMA foreign_keys = ON")
 
 
 def is_migrated(con):
