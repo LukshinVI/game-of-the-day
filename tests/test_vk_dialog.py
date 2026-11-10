@@ -128,6 +128,14 @@ class Onboarding(Base):
         self.assertEqual(self.q("SELECT count(*) FROM onboarding"), [(0,)])
         self.assertIn("Как зовут", self.say(777, "ВКонтакте"))
 
+    def test_the_welcome_offers_vk_or_telegram(self):
+        # Families who prefer Telegram did not know they could ask for it.
+        welcome = self.say(777, "Здравствуйте")
+        self.assertIn("ВКонтакте", welcome)
+        self.assertIn("«Телеграм»", welcome)
+        self.assertIn("Telegram", self.say(777, "Телеграм"))  # works mid-questionnaire too
+        self.assertEqual(self.q("SELECT kind FROM user_events ORDER BY id"), [("join",), ("telegram_request",)])
+
     def test_a_flood_of_strangers_is_bounded(self):
         with mock.patch.object(vd, "MAX_NEW_PER_DAY", 2):
             self.say(1001, "a")

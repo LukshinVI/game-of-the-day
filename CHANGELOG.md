@@ -7,6 +7,10 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+### Changed
+- The VK welcome says games can come here in VK or in Telegram, and that writing
+  «Телеграм» is enough to switch: families who preferred Telegram did not know they could.
+
 ## [1.6.1] - 2026-11-10 — Attention is not difficulty
 
 Hotfix.
