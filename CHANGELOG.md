@@ -7,14 +7,9 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
-### Added
-- VK self-service onboarding with owner approval. Whoever writes to the community fills
-  the questionnaire in the chat (name, birth date, confirmation — the Telegram bot's
-  rules); the owner gets the application in the ops bot with "approve" / "reject"
-  buttons, and only an approval creates the child and its VK recipient. Subscribed VK
-  families get text commands: «пауза», «продолжить», «мои дети», «добавить ребёнка»,
-  «помощь». Asking for Telegram notifies the owner to send an invite. Schema 12
-  (`applications`, `outbox`, `inbound_events`); the module is `src/bot/vk_dialog.py`.
+## [1.6.1] - 2026-11-10 — Attention is not difficulty
+
+Hotfix.
 
 ### Fixed
 - Feedback: trouble keeping attention was read as "too hard" and made the next games
@@ -23,6 +18,41 @@ on the commit that completed each milestone.
   "attention is short" puts `short_attention` into the profile, and the selector keeps
   games short and lively instead of easier. "Went well" plus "too hard" for the same
   skill keeps the first and drops the second; the reply no longer contradicts itself.
+
+## [1.6.0] - 2026-11-09 — VK families sign up themselves
+
+### Added
+- VK self-service onboarding with owner approval. Whoever writes to the community fills
+  the questionnaire in the chat (name, birth date, confirmation — the Telegram bot's
+  rules); the owner gets the application in the ops bot with "approve" / "reject"
+  buttons, and only an approval creates the child and its VK recipient. Subscribed VK
+  families get text commands: «пауза», «продолжить», «мои дети», «добавить ребёнка»,
+  «помощь». Asking for Telegram notifies the owner to send an invite. Schema 12
+  (`applications`, `outbox`, `inbound_events`); the module is `src/bot/vk_dialog.py`.
+- A one-time request to star the project on GitHub, in the Sunday digest: once per
+  recipient, only after the child has had games for 30 days and the last 30 days of
+  feedback have at least one "liked" and no more "disliked" than "liked"; never in the
+  digest that carries the monthly question. Schema 11 (`star_requests`).
+- Engineering docs: service level objectives with the measured history
+  ([docs/slo.md](docs/slo.md)), a scaling plan with today's ceilings
+  ([docs/scaling.md](docs/scaling.md)), four architecture decision records
+  ([docs/adr](docs/adr/)) and how the project is built with an AI coding agent
+  ([docs/development-process.md](docs/development-process.md)).
+- Product metrics (`/metrics` in the ops bot, and the top of the Monday report): games
+  delivered, the share with a written answer or a reaction, liked, difficulty (too easy /
+  right / too hard), pauses, wishes, reserve days and reviewer rejections, each against the
+  previous period, test children excluded.
+
+### Changed
+- The Sunday digest no longer lists typical milestones for the age: "what children
+  usually do by N months" reads as a test and worries parents whose child is not there
+  yet. In its place, "What to try next week": one or two home ideas chosen by code — a
+  liked game to repeat, then the skills played least this week, with an idea per skill
+  and age band; ties rotate weekly. A test keeps age-norm wording out of the ideas.
+- The GitHub star request is off unless `GAME_DIGEST_STAR_REQUEST=1`, until it is
+  decided whether to send it.
+
+### Fixed
 - `ops/deploy.sh` failed its test step when started from a directory the application
   user cannot enter (e.g. `/root`): it now changes into the application directory first.
 - The Worker passed on VK messages from two hard-coded dialogs only, so the feedback of
@@ -47,32 +77,6 @@ on the commit that completed each milestone.
   restored by hand (no message id) always failed it. The reply is now sent without a
   quote when there is no message to quote, and a failed reply is retried on the next
   runs from the stored observations (no second model call) while the feedback is fresh.
-
-### Changed
-- The Sunday digest no longer lists typical milestones for the age: "what children
-  usually do by N months" reads as a test and worries parents whose child is not there
-  yet. In its place, "What to try next week": one or two home ideas chosen by code — a
-  liked game to repeat, then the skills played least this week, with an idea per skill
-  and age band; ties rotate weekly. A test keeps age-norm wording out of the ideas.
-- The GitHub star request is off unless `GAME_DIGEST_STAR_REQUEST=1`, until it is
-  decided whether to send it.
-
-### Added
-- A one-time request to star the project on GitHub, in the Sunday digest: once per
-  recipient, only after the child has had games for 30 days and the last 30 days of
-  feedback have at least one "liked" and no more "disliked" than "liked"; never in the
-  digest that carries the monthly question. Schema 11 (`star_requests`).
-- Engineering docs: service level objectives with the measured history
-  ([docs/slo.md](docs/slo.md)), a scaling plan with today's ceilings
-  ([docs/scaling.md](docs/scaling.md)), four architecture decision records
-  ([docs/adr](docs/adr/)) and how the project is built with an AI coding agent
-  ([docs/development-process.md](docs/development-process.md)).
-- Product metrics (`/metrics` in the ops bot, and the top of the Monday report): games
-  delivered, the share with a written answer or a reaction, liked, difficulty (too easy /
-  right / too hard), pauses, wishes, reserve days and reviewer rejections, each against the
-  previous period, test children excluded.
-
-### Fixed
 - The host-loss postmortem counted 25 days without delivery; it was 24 (2026-10-15 … 11-07).
 
 ## [1.5.0] - 2026-11-08 — Not the same game twice
@@ -264,6 +268,8 @@ messenger and nothing re-sent ([postmortem](https://github.com/LukshinVI/game-of
 - Daily delivery to VK from Google Sheets + Apps Script, with a retry window.
 - The first feedback agent and its eval harness.
 
+[1.6.1]: ../../compare/v1.6.0...v1.6.1
+[1.6.0]: ../../compare/v1.5.0...v1.6.0
 [1.5.0]: ../../compare/v1.4.0...v1.5.0
 [1.4.0]: ../../compare/v1.3.0...v1.4.0
 [1.3.0]: ../../compare/v1.2.0...v1.3.0
