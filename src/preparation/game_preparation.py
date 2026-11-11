@@ -8,7 +8,7 @@ import sqlite3
 import subprocess
 import sys
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
@@ -1013,6 +1013,7 @@ def prepare_run(target_date, dry_run=False, only_child=None):
     if not plan:
         print("Нет активных детей с получателями: готовить нечего.")
     failures = []
+    run_started = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     for child in plan:
         label = f"{child['name']} (id {child['id']})" if child else "single-child mode"
@@ -1024,8 +1025,42 @@ def prepare_run(target_date, dry_run=False, only_child=None):
             print(f"ERROR: {exc}", file=sys.stderr)
             failures.append(f"{label}: {exc}")
 
+    if not dry_run and review.tiers_enabled():
+        summary = review_summary(target_date, run_started)
+        if summary:
+            send_ops_notification("info", "Проверка безопасности: сводка подготовки", summary)
+
     if failures:
         raise RuntimeError("; ".join(failures))
+
+
+def review_summary(target_date, since):
+    """The observation week of the review tiers: what the reviewer did in this run, per
+    child, and which games came from the library. None when the run reviewed nothing
+    (the game was already prepared)."""
+    with connect_db() as con:
+        rows = con.execute(
+            "SELECT r.child_id, c.name, r.outcome, r.errors_json FROM model_runs r "
+            "LEFT JOIN children c ON c.id = r.child_id WHERE r.target_date = ? AND r.at >= ? "
+            "AND r.model LIKE 'review:%' AND r.dry_run = 0 ORDER BY r.id",
+            (str(target_date), since),
+        ).fetchall()
+        library = [r[0] for r in con.execute(
+            "SELECT COALESCE(c.name, '?') FROM games g LEFT JOIN children c ON c.id = g.child_id "
+            "WHERE g.game_date = ? AND g.origin = 'library'", (str(target_date),))]
+    if not rows:
+        return None
+    rejected = sum(1 for r in rows if r[2] == "rejected")
+    lines = [f"Проверок: {len(rows)}, отклонено: {rejected} ({round(100 * rejected / len(rows))}%)."]
+    for child_id, name, outcome, errors_json in rows:
+        for item in json.loads(errors_json or "[]"):
+            if item.startswith("safety review: "):
+                lines.append(f"⛔ {name or child_id}: {item[len('safety review: '):][:200]}")
+            elif item.startswith("safety fix: "):
+                lines.append(f"✏️ {name or child_id}: {item[len('safety fix: '):][:200]}")
+    if library:
+        lines.append("📚 Из библиотеки: " + ", ".join(library))
+    return "\n".join(lines)
 
 
 def prepare_for_child(target_date, child, dry_run=False):

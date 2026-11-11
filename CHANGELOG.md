@@ -7,6 +7,19 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+### Changed
+- The safety reviewer splits its findings (`PREPARATION_REVIEW_TIERS=1`): a **block**
+  (the hazard is the activity itself) rejects the game and the retry repairs the same
+  game instead of inventing a new one; a **fix** (one caution about the surroundings or a
+  check before playing) is added to the game's safety notes and the game passes. Code
+  turns a fix that names a hazardous material (batteries, heat, toxic, magnets) into a
+  block, and more than two fixes into a block; under 6 months any toy with attached parts
+  is a block. Before, every finding rejected the game: 9 of 18 reviewed candidates were
+  rejected and on 2026-11-11 one child's day fell back to the library after six
+  attempts. A replay on the same 18 candidates rejects 3, each for a real hazard. While
+  the flag is on, every preparation run sends the owner a summary of blocks, fixes and
+  library days.
+
 ## [1.6.1] - 2026-11-10 — Attention is not difficulty
 
 Hotfix.
