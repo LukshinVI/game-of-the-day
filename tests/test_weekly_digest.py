@@ -205,3 +205,36 @@ class StarRequest(unittest.TestCase):
 
         wd.run(date(2026, 12, 13), db_path=self.db, sender=failing)
         self.assertIn("github.com", self.run_digest(date(2026, 12, 13)))
+
+
+class News(Digest):
+    def news(self, items):
+        path = Path(self.db).parent / "news.json"
+        import json
+        path.write_text(json.dumps(items, ensure_ascii=False))
+        return mock.patch.object(wd, "NEWS_PATH", path)
+
+    def test_news_of_the_week_ride_on_the_digest(self):
+        items = [{"date": "2026-11-11", "text": "игры станут короче, если малыш отвлекается"},
+                 {"date": "2026-11-01", "text": "старая новость"},
+                 {"date": "bad", "text": "битая запись"}]
+        with self.news(items), mock.patch.dict(os.environ, {"GAME_NEWS_LINK": "https://vk.com/wall-1_2"}):
+            self.run_digest(date(2026, 11, 15))
+        text = self.sent[0][2]
+        self.assertIn("🆕 Что нового:\n• Игры станут короче, если малыш отвлекается", text)
+        self.assertIn("Подробнее — в нашей группе: https://vk.com/wall-1_2", text)
+        self.assertNotIn("старая новость", text)
+
+    def test_no_news_no_section_and_a_broken_file_is_ignored(self):
+        with self.news([]):
+            self.run_digest(date(2026, 11, 15))
+        self.assertNotIn("Что нового", self.sent[0][2])
+        with mock.patch.object(wd, "NEWS_PATH", Path("/nonexistent/news.json")):
+            self.assertEqual(wd.news_for(date(2026, 11, 15)), [])
+
+    def test_the_shipped_news_file_is_valid(self):
+        import json
+        for item in json.loads(wd.NEWS_PATH.read_text(encoding="utf-8")):
+            date.fromisoformat(item["date"])
+            self.assertTrue(item["text"].strip())
+            self.assertLessEqual(len(item["text"]), 200)

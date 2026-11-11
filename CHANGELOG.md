@@ -7,6 +7,11 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+### Added
+- "What's new" for parents without extra messages: news written by hand in
+  `src/ops/news.json` ride on the Sunday digest of their week (at most two), with a link
+  to the community wall post when `GAME_NEWS_LINK` is set.
+
 ## [1.7.1] - 2026-11-11 — What it cost
 
 ### Added
