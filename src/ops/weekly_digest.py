@@ -13,6 +13,11 @@ Once per recipient, ever, a digest may also ask to star the project on GitHub �
 the child has had games for at least a month and the family's recent feedback is
 positive (see star_request_due). Off unless GAME_DIGEST_STAR_REQUEST=1. Never in the same digest as the monthly question.
 
+What is new for parents (src/ops/news.json, written by hand after a release that
+parents can notice) goes into the digest of the week it was dated, at most NEWS_MAX
+items, with a link to the community wall post when GAME_NEWS_LINK is set. No separate
+message ever: news ride on the digest that is sent anyway.
+
 Deterministic: no model call. Idempotent per child, recipient and week.
 
     python3 src/ops/weekly_digest.py run [--date YYYY-MM-DD] [--dry-run]
@@ -20,6 +25,7 @@ Deterministic: no model call. Idempotent per child, recipient and week.
 
 import argparse
 import hashlib
+import json
 import os
 import sqlite3
 import sys
@@ -146,6 +152,29 @@ def next_week_ideas(age, games, liked, today):
     return ideas
 
 
+NEWS_PATH = Path(__file__).resolve().parent / "news.json"
+NEWS_MAX = 2
+
+
+def news_for(today, path=None):
+    """News dated within the digest's week (today and the six days before)."""
+    try:
+        items = json.loads(Path(path or NEWS_PATH).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    week_start = today - timedelta(days=6)
+    fresh = []
+    for item in items:
+        try:
+            when = date.fromisoformat(str(item.get("date")))
+        except (ValueError, AttributeError):
+            continue
+        text = str(item.get("text") or "").strip()
+        if text and week_start <= when <= today:
+            fresh.append((when, text))
+    return [text for _, text in sorted(fresh, reverse=True)[:NEWS_MAX]]
+
+
 def compose(con, child, today):
     week_start = today - timedelta(days=6)
     games = con.execute(
@@ -173,6 +202,12 @@ def compose(con, child, today):
     ideas = next_week_ideas(age_months(child["birth_date"], today), games, liked, today)
     if ideas:
         lines += ["", "✨ Что попробовать на следующей неделе:", *[f"• {_cap(i)}" for i in ideas]]
+    news = news_for(today)
+    if news:
+        lines += ["", "🆕 Что нового:", *[f"• {_cap(n)}" for n in news]]
+        link = os.environ.get("GAME_NEWS_LINK", "").strip()
+        if link:
+            lines.append(f"Подробнее — в нашей группе: {link}")
     if today.day <= 7:
         lines += ["", "💡 Раз в месяц спрашиваем: чего не хватает в сервисе, что улучшить? "
                       "Ответьте на это сообщение одним предложением."]
