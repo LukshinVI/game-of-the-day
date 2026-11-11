@@ -201,7 +201,21 @@ CREATE TABLE migration_meta (
     value TEXT
 );
 
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '13');
+CREATE TABLE channel_links (
+    id INTEGER PRIMARY KEY,
+    code_hash TEXT NOT NULL UNIQUE,
+    from_channel TEXT NOT NULL CHECK(from_channel IN ('vk', 'telegram')),
+    from_address TEXT NOT NULL,
+    to_channel TEXT NOT NULL CHECK(to_channel IN ('vk', 'telegram')),
+    to_address TEXT,
+    status TEXT NOT NULL DEFAULT 'issued'
+        CHECK(status IN ('issued', 'requested', 'approved', 'rejected', 'replaced')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT NOT NULL,
+    requested_at TEXT,
+    decided_at TEXT
+);
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '14');
 
 -- One-time request to star the project on GitHub (src/ops/weekly_digest.py).
 CREATE TABLE star_requests (

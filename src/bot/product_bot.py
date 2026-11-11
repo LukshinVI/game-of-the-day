@@ -48,6 +48,7 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from src.bot import channel_link  # noqa: E402
 from src.db import children as ch  # noqa: E402
 from src.feedback import insights, reactions, storage  # noqa: E402
 
@@ -86,6 +87,7 @@ COMMANDS = [
     ("add_child", "добавить ребёнка"),
     ("pause", "приостановить игры"),
     ("resume", "возобновить игры"),
+    ("link_vk", "получать игры ещё и во ВКонтакте"),
     ("idea", "предложить, что улучшить в сервисе"),
     ("faq", "частые вопросы"),
 ]
@@ -244,6 +246,9 @@ class ProductBot:
 
         if member is not None and member["blocked_at"]:
             return None  # silently: a blocked member gets no signal to probe with
+        if command == "/start" and len(parts) > 1 and parts[1].startswith(channel_link.START_PREFIX):
+            # A family subscribed in VK adds this chat: works before the chat is a member.
+            return channel_link.redeem(con, parts[1][len(channel_link.START_PREFIX):], "telegram", chat_id)
         if member is None:
             if command == "/start" and len(parts) > 1:
                 return self.join(con, chat_id, parts[1], sender)
@@ -275,6 +280,9 @@ class ProductBot:
             return self.list_children(con, chat_id)
         if command in ("/pause", "/resume"):
             return self.set_active(con, chat_id, command == "/resume")
+        if command == "/link_vk":
+            return (channel_link.issue(con, "telegram", chat_id, "vk")
+                    or "Сначала подпишите ребёнка — /add_child, потом можно подключить ВКонтакте.")
         if command == "/idea":
             return self.idea(con, chat_id, text.split(maxsplit=1)[1] if len(parts) > 1 else "")
         if command:
@@ -633,6 +641,12 @@ def main():
         set_menu(token)
     except Exception as exc:  # noqa: BLE001 - a stale menu must not stop the bot
         print(f"menu not set: {type(exc).__name__}", flush=True)
+    con = ch.connect_db(DB_PATH)
+    try:
+        channel_link.remember_bot_username(con, username)  # the VK side builds t.me links with it
+        con.commit()
+    finally:
+        con.close()
     bot = ProductBot(DB_PATH, owner_id, username)
     offset = None
     last_success = time.time()
@@ -643,6 +657,11 @@ def main():
         except Exception as exc:  # noqa: BLE001 - never log tokens or URLs
             print(f"send failed: {type(exc).__name__}", flush=True)
 
+    from src.feedback import vk_inbound  # here: vk_inbound -> vk_dialog -> this module
+
+    def send_queued(address, text, _random_id):
+        telegram(token, "sendMessage", {"chat_id": address, "text": text[:3500]}, 20)
+
     while True:
         try:
             payload = {"timeout": POLL_TIMEOUT_SECONDS, "allowed_updates": ["message"]}
@@ -650,6 +669,10 @@ def main():
                 payload["offset"] = offset
             result = telegram(token, "getUpdates", payload, POLL_TIMEOUT_SECONDS + 10)
             last_success = time.time()
+            try:  # messages queued by other processes (e.g. a link approved in the ops bot)
+                vk_inbound.drain_outbox(send_queued, DB_PATH, channel="telegram")
+            except Exception as exc:  # noqa: BLE001 - the outbox must not stop the bot
+                print(f"outbox failed: {type(exc).__name__}", flush=True)
             for update in result.get("result", []):
                 offset = update["update_id"] + 1
                 try:

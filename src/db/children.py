@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -246,6 +246,26 @@ def columns(con, table):
     return {row[1] for row in con.execute(f"PRAGMA table_info({table})")}
 
 
+MIGRATION_14 = """
+-- A family already subscribed in one messenger adds the other (src/bot/channel_link.py):
+-- a one-time code issued in the first channel, redeemed in the second, approved by the owner.
+CREATE TABLE IF NOT EXISTS channel_links (
+    id INTEGER PRIMARY KEY,
+    code_hash TEXT NOT NULL UNIQUE,
+    from_channel TEXT NOT NULL CHECK(from_channel IN ('vk', 'telegram')),
+    from_address TEXT NOT NULL,
+    to_channel TEXT NOT NULL CHECK(to_channel IN ('vk', 'telegram')),
+    to_address TEXT,
+    status TEXT NOT NULL DEFAULT 'issued'
+        CHECK(status IN ('issued', 'requested', 'approved', 'rejected', 'replaced')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT NOT NULL,
+    requested_at TEXT,
+    decided_at TEXT
+);
+"""
+
+
 def migrate(con):
     """Bring an existing database to SCHEMA_VERSION. Idempotent and additive only."""
     con.executescript(MIGRATION_2)
@@ -257,6 +277,7 @@ def migrate(con):
     con.executescript(MIGRATION_9)
     con.executescript(MIGRATION_11)
     con.executescript(MIGRATION_12)
+    con.executescript(MIGRATION_14)
     widen_observation_kinds(con)
     # Mechanic tags (src/preparation/mechanics.py): similar ideas, not just equal titles.
     for table in ("games", "reserve_games"):

@@ -64,17 +64,17 @@ def route(event_id, address, raw_text, send, db_path=None, dialog=None):
     return "handled"
 
 
-def drain_outbox(send, db_path=None, limit=10):
-    """Send queued VK messages. Marked sent only after VK accepted them; a failure is
+def drain_outbox(send, db_path=None, limit=10, channel="vk"):
+    """Send queued messages of one channel (VK here; the product bot drains Telegram). Marked sent only after VK accepted them; a failure is
     retried on the next call, up to MAX_OUTBOX_ATTEMPTS. Returns the number sent."""
     con = connect(db_path)
     sent = 0
     try:
         try:
             rows = con.execute(
-                "SELECT id, address, text FROM outbox WHERE channel = 'vk' AND sent_at IS NULL "
+                "SELECT id, address, text FROM outbox WHERE channel = ? AND sent_at IS NULL "
                 "AND attempts < ? ORDER BY id LIMIT ?",
-                (MAX_OUTBOX_ATTEMPTS, limit),
+                (channel, MAX_OUTBOX_ATTEMPTS, limit),
             ).fetchall()
         except sqlite3.OperationalError:
             return 0  # not migrated yet

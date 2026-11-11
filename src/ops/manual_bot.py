@@ -35,7 +35,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.bot import vk_dialog  # noqa: E402
+from src.bot import channel_link, vk_dialog  # noqa: E402
 from src.db import children as ch  # noqa: E402
 from src.ops import llm_report, product_metrics, slo, users_report  # noqa: E402
 
@@ -118,9 +118,10 @@ def start_unit(unit):
 
 class Controller:
     def __init__(self, owner_id, run=run_delivery, start=start_unit, now=time.time, new_code=None,
-                 users=users_report.report, llm=llm_report.report, decide=None):
+                 users=users_report.report, llm=llm_report.report, decide=None, decide_link=None):
         self.owner_id = owner_id
         self.decide = decide or decide_application
+        self.decide_link = decide_link or decide_channel_link
         self.users = users
         self.llm = llm
         self.run = run
@@ -193,13 +194,17 @@ class Controller:
         return HELP
 
     def button(self, query):
-        """A tap on an application button: "app:<id>:ok" or "app:<id>:no"."""
+        """A tap on a decision button: "app:<id>:ok|no" (new family) or "lnk:<id>:ok|no"
+        (an existing family adds a second messenger)."""
         if (query.get("from") or {}).get("id") != self.owner_id:
             return None
         parts = (query.get("data") or "").split(":")
-        if len(parts) != 3 or parts[0] != "app" or not parts[1].isdigit() or parts[2] not in ("ok", "no"):
+        if (len(parts) != 3 or parts[0] not in ("app", "lnk") or not parts[1].isdigit()
+                or parts[2] not in ("ok", "no")):
             return None
         try:
+            if parts[0] == "lnk":
+                return self.decide_link(int(parts[1]), parts[2] == "ok")
             return self.decide(int(parts[1]), parts[2] == "ok")
         except Exception as exc:  # noqa: BLE001
             return f"Не удалось обработать заявку: {type(exc).__name__}"
@@ -276,11 +281,35 @@ def decide_application(app_id, approve, db_path=None):
         con.close()
 
 
-def application_buttons(app_id):
+def decide_channel_link(link_id, approve, db_path=None):
+    con = ch.connect_db(db_path or users_report.DB_PATH)
+    con.execute("PRAGMA busy_timeout = 10000")
+    try:
+        con.execute("BEGIN IMMEDIATE")
+        text = channel_link.decide(con, link_id, approve)
+        con.commit()
+        return text
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
+
+
+def application_buttons(app_id, prefix="app"):
     return {"inline_keyboard": [[
-        {"text": "✅ Одобрить", "callback_data": f"app:{app_id}:ok"},
-        {"text": "❌ Отклонить", "callback_data": f"app:{app_id}:no"},
+        {"text": "✅ Одобрить", "callback_data": f"{prefix}:{app_id}:ok"},
+        {"text": "❌ Отклонить", "callback_data": f"{prefix}:{app_id}:no"},
     ]]}
+
+
+DECISIONS = {"application": "app", "link": "lnk"}  # user_events kind prefix -> button prefix
+
+
+def decision(kind):
+    """("app"|"lnk", id) for an event that needs the owner's buttons, else None."""
+    head, _, ident = kind.partition(":")
+    return (DECISIONS[head], ident) if head in DECISIONS and ident else None
 
 
 def forward_user_events(reply, pending=users_report.pending_events, mark=users_report.mark_notified,
@@ -299,13 +328,14 @@ def forward_user_events(reply, pending=users_report.pending_events, mark=users_r
         return
     if not events:
         return
-    plain = [e for e in events if not str(e.get("kind") or "").startswith("application:")]
+    plain = [e for e in events if decision(str(e.get("kind") or "")) is None]
     for event in events:
-        kind = str(event.get("kind") or "")
-        if kind.startswith("application:") and ask is not None:
-            ask(event["text"], application_buttons(kind.split(":", 1)[1]))
+        found = decision(str(event.get("kind") or ""))
+        if found and ask is not None:
+            prefix, ident = found
+            ask(event["text"], application_buttons(ident, prefix))
             mark([event["id"]])
-        elif kind.startswith("application:"):
+        elif found:
             plain.append(event)
     if plain:
         reply("Продуктовый бот:\n" + "\n".join(f"{e['text']}" for e in plain))

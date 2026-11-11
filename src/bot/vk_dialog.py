@@ -19,6 +19,7 @@ Deterministic code only: no model call here.
 import os
 from datetime import date, datetime
 
+from src.bot import channel_link
 from src.bot import product_bot as pb
 
 CHANNEL = "vk"
@@ -53,6 +54,7 @@ HELP = (
     "«продолжить» — возобновить\n"
     "«мои дети» — кто подписан\n"
     "«добавить ребёнка» — подписать ещё одного малыша\n"
+    "«подключить телеграм» — получать игры ещё и в Telegram\n"
     "«отмена» — прервать анкету"
 ).format(time=pb.DELIVERY_TIME_MSK)
 
@@ -63,6 +65,8 @@ COMMANDS = {
     "добавить ребёнка": "add_child", "добавить ребенка": "add_child", "/add_child": "add_child",
     "помощь": "help", "/help": "help", "команды": "help",
     "отмена": "cancel", "/cancel": "cancel",
+    "подключить телеграм": "link_telegram", "подключить телеграмм": "link_telegram",
+    "подключить telegram": "link_telegram", "подключить тг": "link_telegram",
 }
 TELEGRAM_WORDS = ("телеграм", "телеграмм", "telegram", "тг")
 VK_WORDS = ("вконтакте", "вк", "vk")
@@ -115,6 +119,9 @@ class VkDialog:
         if member is not None and member["blocked_at"]:
             return None
         command = COMMANDS.get(normalize(text))
+        code = channel_link.vk_code(text)
+        if code:  # a family subscribed in Telegram adds this VK chat
+            return channel_link.redeem(con, code, "vk", peer)
         if self.is_recipient(con, peer):
             return self.family(con, peer, key, text, command)
         return self.stranger(con, peer, key, member, text, command)
@@ -132,6 +139,8 @@ class VkDialog:
         if command == "cancel":
             con.execute("DELETE FROM onboarding WHERE chat_id = ?", (key,))
             return "Отменено." if current else HELP
+        if command == "link_telegram":
+            return channel_link.issue(con, "vk", peer, "telegram")
         if command == "add_child":
             limit = self.child_limit(con, peer, key)
             if limit:
