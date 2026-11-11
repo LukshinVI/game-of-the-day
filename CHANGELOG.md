@@ -7,6 +7,8 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-11 — Cautions, not rejections
+
 ### Changed
 - The safety reviewer splits its findings (`PREPARATION_REVIEW_TIERS=1`): a **block**
   (the hazard is the activity itself) rejects the game and the retry repairs the same
@@ -281,6 +283,7 @@ messenger and nothing re-sent ([postmortem](https://github.com/LukshinVI/game-of
 - Daily delivery to VK from Google Sheets + Apps Script, with a retry window.
 - The first feedback agent and its eval harness.
 
+[1.7.0]: ../../compare/v1.6.1...v1.7.0
 [1.6.1]: ../../compare/v1.6.0...v1.6.1
 [1.6.0]: ../../compare/v1.5.0...v1.6.0
 [1.5.0]: ../../compare/v1.4.0...v1.5.0
