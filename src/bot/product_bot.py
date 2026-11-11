@@ -48,7 +48,7 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.bot import channel_link  # noqa: E402
+from src.bot import channel_link, swap  # noqa: E402
 from src.db import children as ch  # noqa: E402
 from src.feedback import insights, reactions, storage  # noqa: E402
 
@@ -87,6 +87,7 @@ COMMANDS = [
     ("add_child", "добавить ребёнка"),
     ("pause", "приостановить игры"),
     ("resume", "возобновить игры"),
+    ("another", "другая игра на сегодня"),
     ("link_vk", "получать игры ещё и во ВКонтакте"),
     ("idea", "предложить, что улучшить в сервисе"),
     ("faq", "частые вопросы"),
@@ -280,6 +281,12 @@ class ProductBot:
             return self.list_children(con, chat_id)
         if command in ("/pause", "/resume"):
             return self.set_active(con, chat_id, command == "/resume")
+        wants_swap, swap_name = swap.parse(text)
+        if wants_swap and (command == "/another" or not command) and self.step(con, chat_id) is None:
+            reply = swap.swap(con, "telegram", chat_id, swap_name, self.now().date(),
+                              lambda note: self.notify_owner(note, con, chat_id, "swap"))
+            if reply is not None:
+                return reply
         if command == "/link_vk":
             return (channel_link.issue(con, "telegram", chat_id, "vk")
                     or "Сначала подпишите ребёнка — /add_child, потом можно подключить ВКонтакте.")

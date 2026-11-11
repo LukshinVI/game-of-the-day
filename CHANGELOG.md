@@ -18,6 +18,11 @@ on the commit that completed each milestone.
   (the t.me link, or «код …» in the community messages). The owner approves in the ops
   bot; the request says plainly that the family exists and no child is created. Then the
   same children get the second recipient. Schema 14 (`channel_links`).
+- «другую» (VK) or `/another` (Telegram): today's game does not fit, so a replacement of
+  the child's age comes at once from the library of validated games or the reserve, never
+  one the child had, no model call. One swap per child per day; the games row holds the
+  replacement (feedback is about what was played), the original is kept in `swaps`, the
+  owner sees every swap.
 - The product bot sends queued Telegram messages (the outbox was VK only), so a family
   in Telegram hears back when its link is approved.
 

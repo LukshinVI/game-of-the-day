@@ -50,7 +50,7 @@ def period(con, start, end):
                 f"GROUP BY o.kind, o.value", (start, end)):
             obs[(kind, value)] = n
     reserve = con.execute(
-        f"SELECT count(*) FROM games g WHERE g.game_date BETWEEN ? AND ? AND COALESCE(g.origin, 'model') != 'model' "
+        f"SELECT count(*) FROM games g WHERE g.game_date BETWEEN ? AND ? AND COALESCE(g.origin, 'model') NOT IN ('model', 'swap') "
         f"{not_test}", (start, end)).fetchone()[0] if _has(con, "games", "origin") else 0
     reviews = flagged = 0
     if _has(con, "model_runs"):
