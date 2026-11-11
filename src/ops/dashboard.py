@@ -88,85 +88,215 @@ def collect(con, today, now=None):
 # --- rendering -------------------------------------------------------------------
 
 CSS = """
-:root { --bg:#fff8f1; --card:#ffffff; --ink:#4a3832; --soft:#8a7369; --line:#efe2d8;
-        --a:#f0806c; --b:#7ec4aa; --c:#78aadc; --d:#ffc454; --bad:#d9534f; }
+.viz-root { color-scheme: light;
+  --surface-0:#f4f4f2; --surface-1:#fcfcfb; --border:#e4e3df; --grid:#ecebe7;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#7a7974;
+  --series-1:#2a78d6; --series-1-fill:rgba(42,120,214,.12); --series-2:#eb6834; --series-3:#1baf7a;
+  --good:#0ca30c; --critical:#d03b3b; --good-text:#006300; --critical-text:#b3261e; }
 @media (prefers-color-scheme: dark) {
-  :root { --bg:#1f1a18; --card:#2a2320; --ink:#f3e9e2; --soft:#b9a69c; --line:#3a312c; } }
-* { box-sizing: border-box; }
-body { margin:0; padding:16px; background:var(--bg); color:var(--ink);
-       font:15px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; }
-h1 { font-size:22px; margin:0 0 4px; } .sub { color:var(--soft); margin:0 0 16px; }
-.grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-bottom:14px; }
-.card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }
-.kpi b { display:block; font-size:26px; } .kpi span { color:var(--soft); font-size:13px; }
-h2 { font-size:16px; margin:18px 0 8px; }
-svg { width:100%; height:auto; display:block; }
-table { width:100%; border-collapse:collapse; font-size:14px; }
-td, th { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); vertical-align:top; }
-th { color:var(--soft); font-weight:600; }
-.ok { color:#2e9d6f; } .bad { color:var(--bad); }
-.legend { color:var(--soft); font-size:12px; }
+  :root:where(:not([data-theme="light"])) .viz-root { color-scheme: dark;
+    --surface-0:#111110; --surface-1:#1a1a19; --border:#2e2e2b; --grid:#262624;
+    --text-primary:#f0efec; --text-secondary:#c3c2b7; --text-muted:#8f8e86;
+    --series-1:#3987e5; --series-1-fill:rgba(57,135,229,.18); --series-2:#d95926; --series-3:#199e70;
+    --good-text:#5fd35f; --critical-text:#f08080; } }
+* { box-sizing:border-box; }
+html, body { margin:0; background:var(--surface-0); }
+body { padding:20px 16px 32px; color:var(--text-primary);
+  font:14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.wrap { max-width:880px; margin:0 auto; }
+header { display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+h1 { font-size:20px; font-weight:650; letter-spacing:-.01em; margin:0; }
+.meta { color:var(--text-muted); font-size:13px; }
+.tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:1px;
+  background:var(--border); border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-bottom:16px; }
+.tile { background:var(--surface-1); padding:14px 16px; }
+.tile .label { color:var(--text-secondary); font-size:12px; }
+.tile .value { font-size:26px; font-weight:650; letter-spacing:-.02em; font-variant-numeric:tabular-nums; margin-top:2px; }
+.tile .delta { color:var(--text-muted); font-size:12px; font-variant-numeric:tabular-nums; }
+.grid2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px; margin-bottom:16px; }
+.panel { background:var(--surface-1); border:1px solid var(--border); border-radius:12px; padding:14px 16px 10px; }
+.panel h2 { font-size:13px; font-weight:600; margin:0; }
+.panel .sub { color:var(--text-muted); font-size:12px; margin:2px 0 6px; }
+svg { width:100%; height:auto; display:block; overflow:visible; }
+svg text { font-size:11px; fill:var(--text-muted); font-variant-numeric:tabular-nums; }
+.section { margin:22px 0 8px; font-size:13px; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.04em; }
+table { width:100%; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums; }
+th { text-align:left; font-weight:500; color:var(--text-muted); padding:8px 6px; border-bottom:1px solid var(--border); }
+td { padding:9px 6px; border-bottom:1px solid var(--grid); vertical-align:top; }
+tr:last-child td { border-bottom:0; }
+td.num { text-align:right; } th.num { text-align:right; }
+.pill { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:600; }
+.pill.ok { color:var(--good-text); } .pill.bad { color:var(--critical-text); }
+.pill i { width:8px; height:8px; border-radius:50%; display:inline-block; }
+.pill.ok i { background:var(--good); } .pill.bad i { background:var(--critical); }
+.stack { display:flex; height:10px; border-radius:5px; overflow:hidden; gap:2px; margin:6px 0 10px; }
+.legend { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:12px; color:var(--text-secondary); }
+.legend i { width:10px; height:10px; border-radius:3px; display:inline-block; margin-right:5px; vertical-align:-1px; }
+.muted { color:var(--text-muted); }
+footer { color:var(--text-muted); font-size:12px; margin-top:20px; }
 """
 
+SERIES = ("--series-1", "--series-2", "--series-3")
 
-def bars(values, color, days, unit=""):
-    """A small bar chart, 28 bars, with the max and the date range labelled."""
-    width, height, pad = 560, 120, 18
-    top = max(values) or 1
-    step = (width - 2 * pad) / len(values)
-    parts = [f'<svg viewBox="0 0 {width} {height + 28}" role="img">']
+
+def _ticks(top):
+    """A rounded top value and the three gridlines below it."""
+    if top <= 0:
+        return 1, [0, 1]
+    magnitude = 10 ** (len(str(int(top))) - 1) if top >= 1 else 0.1
+    for step in (1, 2, 2.5, 5, 10):
+        nice = step * magnitude
+        if nice * 4 >= top:
+            return nice * 4, [nice * i for i in range(5)]
+    return top, [0, top]
+
+
+def _fmt(v, unit):
+    if unit == "$":
+        return f"${v:.2f}" if v < 10 else f"${v:.0f}"
+    return f"{v:g}"
+
+
+def line_chart(values, days, unit=""):
+    """Area + 2px line, recessive grid, per-day hover targets (SVG <title>)."""
+    width, height, left, right, top_pad, bottom = 560, 150, 34, 8, 8, 22
+    top, ticks = _ticks(max(values))
+    inner_w, inner_h = width - left - right, height - top_pad - bottom
+    step = inner_w / (len(values) - 1)
+
+    def xy(i, v):
+        return left + i * step, top_pad + inner_h * (1 - v / top)
+
+    out = [f'<svg viewBox="0 0 {width} {height}" role="img">']
+    for t in ticks:
+        y = top_pad + inner_h * (1 - t / top)
+        out.append(f'<line x1="{left}" x2="{width - right}" y1="{y:.1f}" y2="{y:.1f}" style="stroke:var(--grid)"/>')
+        out.append(f'<text x="{left - 6}" y="{y + 4:.1f}" text-anchor="end">{_fmt(t, unit)}</text>')
+    points = [xy(i, v) for i, v in enumerate(values)]
+    path = " ".join(f"{x:.1f},{y:.1f}" for x, y in points)
+    base = top_pad + inner_h
+    out.append(f'<polygon points="{left},{base} {path} {points[-1][0]:.1f},{base}" style="fill:var(--series-1-fill)"/>')
+    out.append(f'<polyline points="{path}" fill="none" style="stroke:var(--series-1)" stroke-width="2" '
+               'stroke-linejoin="round" stroke-linecap="round"/>')
+    x, y = points[-1]
+    out.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" style="fill:var(--series-1);stroke:var(--surface-1)" stroke-width="2"/>')
+    for i, (px, _) in enumerate(points):
+        out.append(f'<rect x="{px - step / 2:.1f}" y="{top_pad}" width="{step:.1f}" height="{inner_h}" fill="transparent">'
+                   f'<title>{days[i][8:]}.{days[i][5:7]}: {_fmt(values[i], unit)}</title></rect>')
+    for i in (0, len(days) // 2, len(days) - 1):
+        anchor = "start" if i == 0 else ("end" if i == len(days) - 1 else "middle")
+        out.append(f'<text x="{points[i][0]:.1f}" y="{height - 4}" text-anchor="{anchor}">{days[i][8:]}.{days[i][5:7]}</text>')
+    out.append("</svg>")
+    return "".join(out)
+
+
+def bar_chart(values, days, unit=""):
+    """Thin bars anchored to the baseline, 2px gaps, hover titles."""
+    width, height, left, right, top_pad, bottom = 560, 150, 34, 8, 8, 22
+    top, ticks = _ticks(max(values))
+    inner_w, inner_h = width - left - right, height - top_pad - bottom
+    slot = inner_w / len(values)
+    out = [f'<svg viewBox="0 0 {width} {height}" role="img">']
+    for t in ticks:
+        y = top_pad + inner_h * (1 - t / top)
+        out.append(f'<line x1="{left}" x2="{width - right}" y1="{y:.1f}" y2="{y:.1f}" style="stroke:var(--grid)"/>')
+        out.append(f'<text x="{left - 6}" y="{y + 4:.1f}" text-anchor="end">{_fmt(t, unit)}</text>')
+    base = top_pad + inner_h
     for i, v in enumerate(values):
-        h = (height - 10) * v / top
-        x = pad + i * step
-        parts.append(f'<rect x="{x + 1:.1f}" y="{height - h:.1f}" width="{step - 2:.1f}" height="{h:.1f}" '
-                     f'rx="2" style="fill:var({color})"><title>{days[i]}: {v}{unit}</title></rect>')
-    parts.append(f'<line x1="{pad}" y1="{height}" x2="{width - pad}" y2="{height}" style="stroke:var(--line)"/>')
-    parts.append(f'<text x="{pad}" y="{height + 18}" font-size="12" style="fill:var(--soft)">{days[0][5:]}</text>')
-    parts.append(f'<text x="{width - pad}" y="{height + 18}" font-size="12" style="fill:var(--soft)" '
-                 f'text-anchor="end">{days[-1][5:]}</text>')
-    parts.append(f'<text x="{pad}" y="12" font-size="12" style="fill:var(--soft)">макс {top}{unit}</text>')
-    parts.append("</svg>")
-    return "".join(parts)
+        h = inner_h * v / top
+        x = left + i * slot
+        if h > 0:
+            r = min(4, h / 2, (slot - 2) / 2)
+            out.append(f'<path d="M{x + 1:.1f},{base} V{base - h + r:.1f} Q{x + 1:.1f},{base - h:.1f} {x + 1 + r:.1f},{base - h:.1f} '
+                       f'H{x + slot - 1 - r:.1f} Q{x + slot - 1:.1f},{base - h:.1f} {x + slot - 1:.1f},{base - h + r:.1f} V{base} Z" '
+                       'style="fill:var(--series-1)"/>')
+        out.append(f'<rect x="{x:.1f}" y="{top_pad}" width="{slot:.1f}" height="{inner_h}" fill="transparent">'
+                   f'<title>{days[i][8:]}.{days[i][5:7]}: {_fmt(v, unit)}</title></rect>')
+    for i in (0, len(days) // 2, len(days) - 1):
+        cx = left + i * slot + slot / 2
+        anchor = "start" if i == 0 else ("end" if i == len(days) - 1 else "middle")
+        out.append(f'<text x="{cx:.1f}" y="{height - 4}" text-anchor="{anchor}">{days[i][8:]}.{days[i][5:7]}</text>')
+    out.append("</svg>")
+    return "".join(out)
+
+
+def _delta(now, before, unit=""):
+    if before == 0 and now == 0:
+        return "как неделей ранее"
+    diff = now - before
+    sign = "+" if diff > 0 else ("−" if diff < 0 else "±")
+    shown = f"${abs(diff):.2f}" if unit == "$" else f"{abs(diff):g}"
+    return f"{sign}{shown} к прошлой неделе"
 
 
 def render(data):
     e = html.escape
-    sent7 = sum(data["sent"][-7:])
-    fb7 = sum(data["feedback"][-7:])
-    cost7 = sum(data["cost"][-7:])
+    week, prev = slice(-7, None), slice(-14, -7)
+    sent7, sent_prev = sum(data["sent"][week]), sum(data["sent"][prev])
+    fb7, fb_prev = sum(data["feedback"][week]), sum(data["feedback"][prev])
+    cost7, cost_prev = round(sum(data["cost"][week]), 2), round(sum(data["cost"][prev]), 2)
     on_good, on_total = data["slo"]["on_time"]
-    on_time = f"{on_good * 100 // on_total}%" if on_total else "—"
-    kpis = [(data["families"], "получателей"), (len(data["children"]), "детей"),
-            (sent7, "игр за 7 дней"), (fb7, "отзывов за 7 дней"),
-            (on_time, "вовремя, 28 дней"), (f"${cost7:.2f}", "квота за 7 дней*")]
-    rows = "".join(
-        f"<tr><td>{e(c['name'])}</td><td>{c['age']} мес</td><td>{e(c['channels'])}</td>"
-        f"<td>{e(c['last_game'])}</td><td>{c['feedback_7d']}</td></tr>" for c in data["children"])
+    tiles = [
+        ("Дети", str(len(data["children"])), f"{data['families']} получателей"),
+        ("Игр за 7 дней", str(sent7), _delta(sent7, sent_prev)),
+        ("Отзывов за 7 дней", str(fb7), _delta(fb7, fb_prev)),
+        ("Вовремя, 28 дней", f"{on_good * 100 // on_total}%" if on_total else "—", f"{on_good} из {on_total} дней"),
+        ("Квота за 7 дней", f"${cost7:.2f}", _delta(cost7, cost_prev, "$")),
+    ]
+    tiles_html = "".join(
+        f'<div class="tile"><div class="label">{e(l)}</div><div class="value">{e(v)}</div>'
+        f'<div class="delta">{e(d)}</div></div>' for l, v, d in tiles)
+
     slo_rows = ""
     for name, (title, target) in slo.OBJECTIVES.items():
         good, total = data["slo"][name]
-        share = good / total if total else None
-        mark = "—" if share is None else (f'<span class="ok">{share:.0%}</span>' if share >= target
-                                          else f'<span class="bad">{share:.0%}</span>')
-        slo_rows += f"<tr><td>{e(title)}</td><td>{mark} ({good}/{total})</td><td>{target:.0%}</td></tr>"
-    total_games = sum(data["origins"].values()) or 1
-    origin_rows = "".join(
-        f"<tr><td>{e(ORIGIN_LABELS.get(k, k))}</td><td>{v}</td><td>{v * 100 // total_games}%</td></tr>"
-        for k, v in sorted(data["origins"].items(), key=lambda kv: -kv[1]))
+        if not total:
+            status = '<span class="muted">нет данных</span>'
+            value = "—"
+        else:
+            share = good / total
+            ok = share >= target
+            status = (f'<span class="pill {"ok" if ok else "bad"}"><i></i>{"в норме" if ok else "ниже цели"}</span>')
+            value = f"{share:.0%}"
+        slo_rows += (f"<tr><td>{e(title)}</td><td class='num'>{value}</td><td class='num muted'>{good}/{total}</td>"
+                     f"<td class='num muted'>{target:.0%}</td><td>{status}</td></tr>")
+
+    origins = sorted(data["origins"].items(), key=lambda kv: -kv[1])
+    total_games = sum(v for _, v in origins) or 1
+    colors = {k: SERIES[i] if i < len(SERIES) else "--text-muted" for i, (k, _) in enumerate(origins)}
+    stack = "".join(f'<div style="flex:{v};background:var({colors[k]})" title="{e(ORIGIN_LABELS.get(k, k))}: {v}"></div>'
+                    for k, v in origins)
+    legend = "".join(f'<span><i style="background:var({colors[k]})"></i>{e(ORIGIN_LABELS.get(k, k))} — {v} '
+                     f'({v * 100 // total_games}%)</span>' for k, v in origins)
+
+    kids = "".join(
+        f"<tr><td>{e(c['name'])}</td><td class='num'>{c['age']} мес</td><td>{e(c['channels'])}</td>"
+        f"<td>{e(c['last_game'])}</td><td class='num'>{c['feedback_7d']}</td></tr>" for c in data["children"])
+
+    def panel(title, sub, chart):
+        return f'<div class="panel"><h2>{e(title)}</h2><div class="sub">{e(sub)}</div>{chart}</div>'
+
+    days = data["days"]
     return f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Игра дня — дашборд</title><style>{CSS}</style></head><body>
-<h1>Игра дня — дашборд</h1><p class="sub">на {e(data['today'])}, окно {DAYS} дней</p>
-<div class="grid">{''.join(f'<div class="card kpi"><b>{e(str(v))}</b><span>{e(t)}</span></div>' for v, t in kpis)}</div>
-<div class="card"><h2>Доставлено игр в день</h2>{bars(data['sent'], '--a', data['days'])}</div>
-<div class="card"><h2>Отзывы в день</h2>{bars(data['feedback'], '--b', data['days'])}</div>
-<div class="card"><h2>Расход модели в день, $ (эквивалент API)</h2>{bars(data['cost'], '--c', data['days'], '$')}</div>
-<div class="card"><h2>Отклонено проверкой безопасности</h2>{bars(data['rejected'], '--d', data['days'])}</div>
-<h2>Надёжность</h2><div class="card"><table><tr><th>цель</th><th>факт</th><th>норма</th></tr>{slo_rows}</table></div>
-<h2>Откуда игры</h2><div class="card"><table><tr><th>источник</th><th>игр</th><th>доля</th></tr>{origin_rows}</table></div>
-<h2>Дети</h2><div class="card"><table><tr><th>имя</th><th>возраст</th><th>каналы</th><th>последняя игра</th><th>отзывов 7д</th></tr>{rows}</table></div>
-<p class="legend">* доллары — эквивалент цены API; на подписке это расход квоты, а не деньги.</p>
-</body></html>"""
+<title>Игра дня — дашборд</title><style>{CSS}</style></head>
+<body class="viz-root"><div class="wrap">
+<header><h1>Игра дня</h1><div class="meta">на {e(data['today'][8:])}.{e(data['today'][5:7])}.{e(data['today'][:4])} · окно {DAYS} дней</div></header>
+<div class="tiles">{tiles_html}</div>
+<div class="grid2">
+{panel("Доставлено игр", "игр в день, без тестовых детей", line_chart(data["sent"], days))}
+{panel("Отзывы", "отзывов в день", line_chart(data["feedback"], days))}
+{panel("Расход модели", "в день, эквивалент цены API", bar_chart(data["cost"], days, "$"))}
+{panel("Отклонено проверкой", "кандидатов в день", bar_chart(data["rejected"], days))}
+</div>
+<div class="section">Надёжность</div>
+<div class="panel"><table><tr><th>цель</th><th class="num">факт</th><th class="num">события</th><th class="num">норма</th><th>статус</th></tr>{slo_rows}</table></div>
+<div class="section">Откуда игры</div>
+<div class="panel"><div class="stack">{stack}</div><div class="legend">{legend}</div></div>
+<div class="section">Дети</div>
+<div class="panel"><table><tr><th>имя</th><th class="num">возраст</th><th>каналы</th><th>последняя игра</th><th class="num">отзывов 7д</th></tr>{kids}</table></div>
+<footer>Доллары — эквивалент цены API; на подписке это расход квоты, а не деньги. Наведите или нажмите на график, чтобы увидеть значение за день.</footer>
+</div></body></html>"""
 
 
 def build(db_path=None, today=None, now=None):
