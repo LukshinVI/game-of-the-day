@@ -11,6 +11,7 @@ Commands, accepted only from the owner's private chat:
   /ideas           wishes about the service, from feedback and /idea
   /metrics         product metrics: feedback share, liked, difficulty, pauses, reserve days
   /slo             reliability objectives over 28 days and their error budgets
+  /dash            the dashboard as an HTML file (charts, children, reliability)
   /llm             the last 7 days of game selection: attempts, latency, tokens, cost, rejections
 
 It also forwards owner-facing events the product bot records in SQLite (new member,
@@ -37,7 +38,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.bot import channel_link, vk_dialog  # noqa: E402
 from src.db import children as ch  # noqa: E402
-from src.ops import llm_report, product_metrics, slo, users_report  # noqa: E402
+from src.ops import dashboard, llm_report, product_metrics, slo, users_report  # noqa: E402
 
 DELIVERY = ROOT / "src" / "delivery" / "game_delivery.py"
 API = "https://api.telegram.org"
@@ -66,6 +67,7 @@ HELP = (
     "/ideas - пожелания пользователей\n"
     "/metrics - продуктовые метрики за неделю"
     "\n/slo - надёжность за 28 дней: цели и запас ошибок"
+    "\n/dash - дашборд файлом: графики, дети, надёжность"
 )
 
 EXPLANATIONS = {
@@ -176,6 +178,14 @@ class Controller:
             except Exception as exc:  # noqa: BLE001
                 return f"Не удалось построить отчёт: {type(exc).__name__}"
 
+        if command == "/dash":
+            try:
+                page, data = dashboard.build()
+            except Exception as exc:  # noqa: BLE001
+                return f"Не удалось построить дашборд: {type(exc).__name__}"
+            name = f"dashboard-{data['today']}.html"
+            return {"document": (name, page.encode("utf-8")), "caption": dashboard.summary(data)}
+
         if command == "/ideas":
             try:
                 return users_report.wishes()
@@ -262,6 +272,21 @@ def telegram(token, method, payload, timeout):
         method="POST",
     )
 
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read())
+
+
+def send_document(token, chat_id, filename, content, caption, timeout=30):
+    """sendDocument with a multipart body (stdlib only)."""
+    boundary = "gotd" + secrets.token_hex(12)
+    fields = [("chat_id", str(chat_id)), ("caption", caption[:1000])]
+    body = b""
+    for key, value in fields:
+        body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n{value}\r\n").encode()
+    body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"document\"; filename=\"{filename}\"\r\n"
+             "Content-Type: text/html; charset=utf-8\r\n\r\n").encode() + content + f"\r\n--{boundary}--\r\n".encode()
+    request = urllib.request.Request(f"{API}/bot{token}/sendDocument", data=body, method="POST",
+                                     headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read())
 
@@ -408,6 +433,9 @@ def main():
                 if text and "callback_query" in update:
                     print(f"owner button handled update_id={update['update_id']}", flush=True)
                     answered(update["callback_query"], text)
+                elif isinstance(text, dict):
+                    print(f"owner command handled update_id={update['update_id']}", flush=True)
+                    send_document(token, owner_id, *text["document"], text["caption"])
                 elif text:
                     print(f"owner command handled update_id={update['update_id']}", flush=True)
                     reply(text)
