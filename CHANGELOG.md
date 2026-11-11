@@ -12,6 +12,13 @@ on the commit that completed each milestone.
   `src/ops/news.json` ride on the Sunday digest of their week (at most two), with a link
   to the community wall post when `GAME_NEWS_LINK` is set.
 
+### Changed
+- Every product service runs in `game-of-the-day.slice`, capped together at 1.2 GB of
+  memory and 1.5 of the 2 CPUs, so a runaway job cannot starve the VPN and sshd that
+  share the host. Model runs are capped at 600 MB each, long-running bots at 128 MB;
+  a unit that hits its ceiling fails and alerts instead of taking the host down.
+  `deploy.sh` installs `.slice` units.
+
 ## [1.7.1] - 2026-11-11 — What it cost
 
 ### Added

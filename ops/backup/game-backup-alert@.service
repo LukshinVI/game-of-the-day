@@ -3,6 +3,7 @@ Description=Game of the Day - alert: unit %i failed
 # Owner-facing alert text is Russian on purpose (like the delivery and preparation alerts).
 
 [Service]
+Slice=game-of-the-day.slice
 Type=oneshot
 # Not root: the script lives in a directory the service user can write to. systemd
 # reads EnvironmentFile as root before dropping privileges, so the token stays

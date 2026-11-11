@@ -1,0 +1,13 @@
+[Unit]
+Description=Game of the Day - every product service, capped together
+Documentation=file:///srv/game-of-the-day/ops/README.md
+
+# The host also runs the VPN. Whatever the product does (a runaway model CLI, a
+# leaking bot), it gets at most this share of a 2 CPU / 4 GB box and the rest
+# stays with the VPN and sshd. Observed peaks: preparation ~265M, bots ~16M.
+[Slice]
+CPUQuota=150%
+CPUWeight=50
+MemoryHigh=900M
+MemoryMax=1200M
+TasksMax=256

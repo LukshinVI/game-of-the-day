@@ -5,6 +5,10 @@ Wants=network-online.target
 OnFailure=game-backup-alert@%n.service
 
 [Service]
+Slice=game-of-the-day.slice
+# Runs the model CLI; observed peak ~265M.
+MemoryHigh=450M
+MemoryMax=600M
 Type=oneshot
 User=gotd
 Group=gotd

@@ -5,6 +5,7 @@ Wants=network-online.target
 OnFailure=game-backup-alert@%n.service
 
 [Service]
+Slice=game-of-the-day.slice
 Type=oneshot
 User=gotd
 Group=gotd

@@ -5,6 +5,10 @@ Wants=network-online.target
 OnFailure=game-backup-alert@%n.service
 
 [Service]
+Slice=game-of-the-day.slice
+# Long-running; observed peak ~16M. A leak restarts this unit, not the host.
+MemoryHigh=96M
+MemoryMax=128M
 Type=simple
 # Its own identity, not the application user: this process faces the public. As a
 # different uid it cannot read the environment (tokens) of the delivery, preparation

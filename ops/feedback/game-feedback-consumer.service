@@ -5,6 +5,10 @@ Wants=network-online.target
 OnFailure=game-backup-alert@%n.service
 
 [Service]
+Slice=game-of-the-day.slice
+# Long-running; observed peak ~16M. A leak restarts this unit, not the host.
+MemoryHigh=96M
+MemoryMax=128M
 Type=simple
 User=gotd
 Group=gotd

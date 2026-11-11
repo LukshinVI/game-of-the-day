@@ -3,6 +3,7 @@ Description=Game of the Day - verify the newest backup is fresh and valid
 OnFailure=game-backup-alert@%n.service
 
 [Service]
+Slice=game-of-the-day.slice
 Type=oneshot
 User=gotd
 Group=gotd
