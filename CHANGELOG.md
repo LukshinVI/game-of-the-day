@@ -7,6 +7,15 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+### Added
+- A family already subscribed in one messenger adds the other: «подключить телеграм» in
+  VK or `/link_vk` in Telegram gives a one-time code (24 h), redeemed in the second chat
+  (the t.me link, or «код …» in the community messages). The owner approves in the ops
+  bot; the request says plainly that the family exists and no child is created. Then the
+  same children get the second recipient. Schema 14 (`channel_links`).
+- The product bot sends queued Telegram messages (the outbox was VK only), so a family
+  in Telegram hears back when its link is approved.
+
 ## [1.8.0] - 2026-11-11 — Measured and fenced
 
 ### Added
