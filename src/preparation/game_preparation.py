@@ -1048,6 +1048,13 @@ def review_summary(target_date, since):
         library = [r[0] for r in con.execute(
             "SELECT COALESCE(c.name, '?') FROM games g LEFT JOIN children c ON c.id = g.child_id "
             "WHERE g.game_date = ? AND g.origin = 'library'", (str(target_date),))]
+        spend = con.execute(
+            "SELECT r.model LIKE 'review:%', count(*), COALESCE(sum(r.input_tokens), 0) "
+            "+ COALESCE(sum(r.cache_read_tokens), 0) + COALESCE(sum(r.cache_write_tokens), 0), "
+            "COALESCE(sum(r.output_tokens), 0), COALESCE(sum(r.cost_usd), 0) FROM model_runs r "
+            "WHERE r.target_date = ? AND r.at >= ? AND r.dry_run = 0 GROUP BY 1 ORDER BY 1",
+            (str(target_date), since),
+        ).fetchall()
     if not rows:
         return None
     rejected = sum(1 for r in rows if r[2] == "rejected")
@@ -1060,6 +1067,14 @@ def review_summary(target_date, since):
                 lines.append(f"✏️ {name or child_id}: {item[len('safety fix: '):][:200]}")
     if library:
         lines.append("📚 Из библиотеки: " + ", ".join(library))
+    k = lambda n: f"{n / 1000:.0f}k" if n >= 1000 else str(n)  # noqa: E731
+    total = 0.0
+    for is_review, calls, tokens_in, tokens_out, cost in spend:
+        total += cost
+        what = "проверка" if is_review else "подготовка"
+        lines.append(f"💰 {what}: {calls} вызовов, токены {k(tokens_in)} вход / {k(tokens_out)} выход, ${cost:.3f}")
+    if spend:
+        lines.append(f"💰 итого за прогон: ${total:.3f}")
     return "\n".join(lines)
 
 

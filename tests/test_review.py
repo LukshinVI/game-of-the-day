@@ -151,6 +151,10 @@ class Summary(unittest.TestCase):
             con.execute("INSERT INTO model_runs(at, target_date, child_id, attempt, outcome, model, errors_json, dry_run) "
                         "VALUES ('2026-11-11 04:05:15', '2026-11-11', ?, 1, 'rejected', 'review:haiku', ?, 0)",
                         (child, '["safety review: Батарейки в фонарике"]'))
+            con.execute("INSERT INTO model_runs(at, target_date, child_id, attempt, outcome, model, input_tokens, "
+                        "cache_read_tokens, output_tokens, cost_usd, dry_run) "
+                        "VALUES ('2026-11-11 04:05:15', '2026-11-11', ?, 1, 'pass', 'sonnet', 1500, 20000, 3000, 0.07, 0)",
+                        (child,))
             con.execute("INSERT INTO model_runs(at, target_date, child_id, attempt, outcome, model, errors_json, dry_run) "
                         "VALUES ('2026-11-11 04:05:15', '2026-11-11', ?, 2, 'pass', 'review:haiku', ?, 0)",
                         (child, '["safety fix: Снимите ленту после игры"]'))
@@ -165,3 +169,5 @@ class Summary(unittest.TestCase):
         self.assertIn("⛔ Всеволод: Батарейки в фонарике", text)
         self.assertIn("✏️ Всеволод: Снимите ленту после игры", text)
         self.assertIn("📚 Из библиотеки: Всеволод", text)
+        self.assertIn("💰 подготовка: 1 вызовов, токены 22k вход / 3k выход, $0.070", text)
+        self.assertIn("💰 итого за прогон: $0.070", text)
