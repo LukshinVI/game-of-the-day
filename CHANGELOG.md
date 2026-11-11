@@ -7,6 +7,12 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-11-11 — What it cost
+
+### Added
+- The morning safety-review summary also shows what the run cost: model calls, tokens
+  (input with cache / output) and dollars, for preparation and for the review apart.
+
 ## [1.7.0] - 2026-11-11 — Cautions, not rejections
 
 ### Changed
@@ -283,6 +289,7 @@ messenger and nothing re-sent ([postmortem](https://github.com/LukshinVI/game-of
 - Daily delivery to VK from Google Sheets + Apps Script, with a retry window.
 - The first feedback agent and its eval harness.
 
+[1.7.1]: ../../compare/v1.7.0...v1.7.1
 [1.7.0]: ../../compare/v1.6.1...v1.7.0
 [1.6.1]: ../../compare/v1.6.0...v1.6.1
 [1.6.0]: ../../compare/v1.5.0...v1.6.0
