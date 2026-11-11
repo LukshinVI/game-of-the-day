@@ -3,6 +3,7 @@ Description=Game of the Day - SQLite backup
 OnFailure=game-backup-alert@%n.service
 
 [Service]
+Slice=game-of-the-day.slice
 Type=oneshot
 # The account that owns the database today. After the service-user migration
 # (issue #39) run this under a dedicated identity with read-only access to data/.

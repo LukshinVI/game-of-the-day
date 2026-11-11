@@ -75,7 +75,7 @@ while IFS= read -r unit; do
         install -m 644 "$unit" "$target"
         changed_units+=("$name")
     fi
-done < <(find "$APP/ops" -name '*.service' -o -name '*.timer')
+done < <(find "$APP/ops" -name '*.service' -o -name '*.timer' -o -name '*.slice')
 for name in "${new_units[@]}"; do
     install -m 644 "$(find "$APP/ops" -name "$name" | head -n 1)" "/etc/systemd/system/$name"
 done

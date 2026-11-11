@@ -6,6 +6,7 @@ OnFailure=game-backup-alert@%n.service
 ConditionPathExists=/etc/game-of-the-day/offsite.env
 
 [Service]
+Slice=game-of-the-day.slice
 Type=oneshot
 # Root, not the application user: the repository key may be broader than one repository
 # and must stay out of reach of the bots, which run as the application user.

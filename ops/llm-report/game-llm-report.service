@@ -3,6 +3,7 @@ Description=Game of the Day - weekly LLM report (game selection quality, latency
 OnFailure=game-backup-alert@%n.service
 
 [Service]
+Slice=game-of-the-day.slice
 Type=oneshot
 User=gotd
 Group=gotd
