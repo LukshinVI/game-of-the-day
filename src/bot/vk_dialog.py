@@ -19,7 +19,7 @@ Deterministic code only: no model call here.
 import os
 from datetime import date, datetime
 
-from src.bot import channel_link
+from src.bot import channel_link, swap
 from src.bot import product_bot as pb
 
 CHANNEL = "vk"
@@ -54,6 +54,7 @@ HELP = (
     "«продолжить» — возобновить\n"
     "«мои дети» — кто подписан\n"
     "«добавить ребёнка» — подписать ещё одного малыша\n"
+    "«другую» — другая игра на сегодня, если эта не подходит\n"
     "«подключить телеграм» — получать игры ещё и в Telegram\n"
     "«отмена» — прервать анкету"
 ).format(time=pb.DELIVERY_TIME_MSK)
@@ -152,6 +153,12 @@ class VkDialog:
             if pb.reactions.is_reaction(text):
                 return "Ответьте, пожалуйста, текстом 🙂"
             return self.questionnaire(con, peer, key, current, text, family=True)
+        wants_swap, swap_name = swap.parse(text)
+        if wants_swap:
+            reply = swap.swap(con, "vk", peer, swap_name, self.now().date(),
+                              lambda note: pb.ProductBot.notify_owner(note, con, key, "swap"))
+            if reply is not None:
+                return reply
         if con.execute("SELECT 1 FROM deliveries WHERE channel = 'vk' AND recipient = ? AND status = 'sent'",
                        (peer,)).fetchone() is None:
             return "Первая игра ещё не пришла — отзыв можно будет написать после неё 🙂"

@@ -215,6 +215,18 @@ CREATE TABLE channel_links (
     requested_at TEXT,
     decided_at TEXT
 );
+CREATE TABLE swaps (
+    id INTEGER PRIMARY KEY,
+    child_id INTEGER NOT NULL REFERENCES children(id),
+    game_id INTEGER NOT NULL REFERENCES games(id),
+    game_date TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    original_json TEXT NOT NULL,
+    replacement_source TEXT,
+    at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(child_id, game_date)
+);
 INSERT INTO migration_meta(key, value) VALUES ('schema_version', '14');
 
 -- One-time request to star the project on GitHub (src/ops/weekly_digest.py).

@@ -109,7 +109,8 @@ def library_candidate(con, history, age_months, target_date, child_id=None):
 
 
 def describe(origin, reason):
-    labels = {"model": "подбор моделью", "fallback_model": "резервная модель", "library": "библиотека (резерв)"}
+    labels = {"model": "подбор моделью", "fallback_model": "резервная модель", "library": "библиотека (резерв)",
+              "swap": "замена по просьбе семьи"}
     return labels.get(origin, origin) + (f" — {reason}" if reason else "")
 
 

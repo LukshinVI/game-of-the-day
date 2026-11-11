@@ -115,7 +115,8 @@ def collect(con, start, end, now=None):
         "on_time": (on_time, len(days)),
         "same_day": (same_day, len(days)),
         "feedback": (fresh_feedback, len(feedback)),
-        "fresh": (sum(1 for (origin,) in origins if origin == "model"), len(origins)),
+        # a swap asked by the family replaced a model game: the day itself was fresh
+        "fresh": (sum(1 for (origin,) in origins if origin in ("model", "swap")), len(origins)),
     }
 
 
