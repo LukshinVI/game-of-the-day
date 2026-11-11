@@ -14,7 +14,8 @@
     "source_name",
     "source_url",
     "message_text",
-    "mechanic_tag"
+    "mechanic_tag",
+    "theme"
   ],
   "properties": {
     "title": {
@@ -110,6 +111,21 @@
         "self_care_routine",
         "faces_emotions"
       ]
+    },
+    "theme": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "new_year",
+        "winter",
+        "spring",
+        "summer",
+        "autumn",
+        null
+      ],
+      "description": "the key of INPUT CONTEXT `theme` when the game uses it, otherwise null"
     }
   }
 }

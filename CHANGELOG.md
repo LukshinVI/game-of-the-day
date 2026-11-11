@@ -23,6 +23,12 @@ on the commit that completed each milestone.
   one the child had, no model call. One swap per child per day; the games row holds the
   replacement (feedback is about what was played), the original is kept in `swaps`, the
   owner sees every swap.
+- Seasonal themes as a seasoning (`src/preparation/themes.py`): autumn, New Year
+  (15.12–10.01), winter, spring, summer. Offered on about one day in three and at most
+  twice a week per child; the model uses one only when it fits the skill (`theme` in the
+  candidate, else null). Under 6 months a theme lives only in words, songs and colours.
+  Each theme has its own banned words (tinsel, garlands, candles, ice, acorns…) enforced
+  by the validator.
 - The product bot sends queued Telegram messages (the outbox was VK only), so a family
   in Telegram hears back when its link is approved.
 

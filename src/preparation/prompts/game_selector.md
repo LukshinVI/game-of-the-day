@@ -18,6 +18,10 @@ Requirements:
   lively, in small steps, with movement or bright objects, without making the skill
   easier; when `child_profile.required_next` is present, the game must train exactly that
   skill, one step harder or easier (as `direction` says) than the game named in `after`;
+- when INPUT CONTEXT has `theme`, it is an optional seasoning, not a requirement: follow
+  its `rules`, use it only if it fits the chosen skill naturally, and never use anything
+  in `never_use`; set `theme` to its `key` only if the game really uses it, otherwise null
+  (also null when there is no `theme`);
 - safe under direct adult supervision;
 - do not repeat a previous game's title or core mechanics;
 - set `mechanic_tag` to the one key from `mechanic_tags` that best describes what the child

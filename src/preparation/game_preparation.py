@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.db.children import active_children, has_children  # noqa: E402
 from src.feedback import profile as child_profile  # noqa: E402
-from src.preparation import fallback, review, skills  # noqa: E402
+from src.preparation import fallback, review, skills, themes  # noqa: E402
 from src.preparation import mechanics as mechanic_tags  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -145,6 +145,7 @@ def build_prompt(history, age_months, today=None):
         "mechanic_tags": {tag: label for tag, label in mechanic_tags.TAGS.items() if tag not in mechanic_tags.recent(history)},
         "recent_mechanic_tags": mechanic_tags.recent(history),
         **({"child_profile": PROFILE_CONTEXT} if PROFILE_CONTEXT else {}),
+        **({"theme": THEME_CONTEXT} if THEME_CONTEXT else {}),
         "previous_games": history,
     }
 
@@ -181,6 +182,8 @@ def run_model(prompt):
 MODEL_OVERRIDE = None  # set by obtain_candidate() for the fallback model
 # The child's profile from feedback (src/feedback/profile.py), set by prepare_for_child().
 PROFILE_CONTEXT = {}
+# The seasonal theme offered for this child today (src/preparation/themes.py), or None.
+THEME_CONTEXT = None
 
 
 def claude_command(schema):
@@ -365,6 +368,7 @@ def validate_candidate(candidate, history, expected_age_months):
 
     errors.extend(skills.violations(candidate.get("skill"), expected_age_months, history))
     errors.extend(mechanic_tags.violations(candidate.get("mechanic_tag"), history))
+    errors.extend(themes.violations(candidate))
 
     title = normalize(candidate.get("title", ""))
     mechanics = normalize(candidate.get("mechanics", ""))
@@ -1101,10 +1105,18 @@ def prepare_for_child(target_date, child, dry_run=False):
     print(f"Исторических игр: {len(history)}")
     print(f"Целевая дата: {target_date}")
 
-    global PROFILE_CONTEXT
+    global PROFILE_CONTEXT, THEME_CONTEXT
     with connect_db() as con:
         PROFILE_CONTEXT = child_profile.load(con, child_id)
         required = child_profile.required_next(con, child_id, history)
+        try:
+            THEME_CONTEXT = themes.context(con, child_id, date.fromisoformat(str(target_date)),
+                                           child_age_months(target_date, child["birth_date"] if child else None))
+        except Exception as exc:  # noqa: BLE001 - a theme is optional; never fail the day over it
+            print(f"WARN: theme unavailable: {type(exc).__name__}", file=sys.stderr)
+            THEME_CONTEXT = None
+    if THEME_CONTEXT:
+        print(f"Тема дня предложена: {THEME_CONTEXT['label']}")
     if required:
         PROFILE_CONTEXT = {**PROFILE_CONTEXT, "required_next": required}
     if PROFILE_CONTEXT:
@@ -1115,6 +1127,7 @@ def prepare_for_child(target_date, child, dry_run=False):
         candidate, attempts, origin, origin_reason = obtain_candidate(history, target_date, child)
     finally:
         PROFILE_CONTEXT = {}
+        THEME_CONTEXT = None
         persist_runs(target_date, child_id, dry_run)
     print(f"Источник: {fallback.describe(origin, origin_reason)}")
 
