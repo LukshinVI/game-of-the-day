@@ -82,7 +82,114 @@ def collect(con, today, now=None):
         "WHERE r.active = 1 AND c.active = 1 AND c.is_test = 0").fetchone()[0]
     return {"today": today.isoformat(), "days": days, "sent": sent, "feedback": feedback, "cost": cost,
             "rejected": rejected, "origins": origins, "children": children, "slo": slo_counts,
-            "families": families}
+            "families": families, **more(con, today, days)}
+
+
+def _count(con, sql, params=()):
+    try:
+        return con.execute(sql, params).fetchone()[0] or 0
+    except sqlite3.OperationalError:
+        return 0  # a table this database does not have yet
+
+
+def more(con, today, days):
+    """The richer metrics: funnel, heatmap, skills, reactions, model quality, events."""
+    span = (days[0], days[-1])
+    week_ago = (today - timedelta(days=6)).isoformat()
+    real = "c.is_test = 0"
+
+    funnel = [
+        ("Заявки и входы", _count(con, "SELECT count(*) FROM applications")
+         + _count(con, "SELECT count(*) FROM user_events WHERE kind = 'join'")),
+        ("Подписано детей", _count(con, f"SELECT count(*) FROM children c WHERE {real}")),
+        ("Получили игру", _count(con, f"""SELECT count(DISTINCT g.child_id) FROM games g JOIN children c ON c.id = g.child_id
+                                          JOIN deliveries d ON d.game_id = g.id WHERE d.status = 'sent' AND {real}""")),
+        ("Оставили отзыв", _count(con, f"""SELECT count(DISTINCT g.child_id) FROM feedback f JOIN games g ON g.id = f.game_id
+                                           JOIN children c ON c.id = g.child_id WHERE {real}""")),
+        ("Отзыв за 7 дней", _count(con, f"""SELECT count(DISTINCT g.child_id) FROM feedback f JOIN games g ON g.id = f.game_id
+                                            JOIN children c ON c.id = g.child_id WHERE {real} AND g.game_date >= ?""",
+                                   (week_ago,))),
+    ]
+
+    # child x day: fb (feedback), sent, swap, miss; None before the child's first game
+    heat = []
+    for cid, name, first in con.execute(
+            f"""SELECT c.id, c.name, min(g.game_date) FROM children c JOIN games g ON g.child_id = c.id
+                WHERE {real} AND c.active = 1 GROUP BY c.id ORDER BY c.id"""):
+        state = {}
+        for day, origin, was_sent, fb in con.execute(
+                """SELECT g.game_date, g.origin,
+                          EXISTS (SELECT 1 FROM deliveries d WHERE d.game_id = g.id AND d.status = 'sent'),
+                          EXISTS (SELECT 1 FROM feedback f WHERE f.game_id = g.id)
+                   FROM games g WHERE g.child_id = ? AND g.game_date BETWEEN ? AND ?""", (cid, *span)):
+            state[day] = "fb" if fb else ("swap" if origin == "swap" and was_sent else ("sent" if was_sent else "miss"))
+        cells = [None if d < first else state.get(d, "miss" if d < today.isoformat() else None) for d in days]
+        heat.append({"name": name, "cells": cells})
+
+    skill_rows = con.execute(
+        f"""SELECT g.skill, count(*) FROM games g JOIN children c ON c.id = g.child_id
+            WHERE g.game_date BETWEEN ? AND ? AND {real} AND g.skill IS NOT NULL GROUP BY 1 ORDER BY 2 DESC""",
+        span).fetchall()
+    try:
+        from src.preparation import skills as skill_names
+        labels = skill_names.LABELS
+    except Exception:  # noqa: BLE001
+        labels = {}
+    skills = [(labels.get(k, k), n) for k, n in skill_rows]
+
+    reactions = {}
+    try:
+        for kind, value, n in con.execute(
+                f"""SELECT o.kind, o.value, count(*) FROM observations o JOIN games g ON g.id = o.game_id
+                    JOIN children c ON c.id = g.child_id
+                    WHERE g.game_date BETWEEN ? AND ? AND {real} AND o.kind IN ('outcome', 'difficulty', 'attention')
+                    GROUP BY 1, 2""", span):
+            reactions[f"{kind}:{value}"] = n
+    except sqlite3.OperationalError:
+        pass
+
+    quality = {"games": 0, "first_pass": 0, "attempts": 0, "wall_median_s": None, "searches": 0.0,
+               "reviews": 0, "review_rejected": 0}
+    try:
+        runs = con.execute(
+            """SELECT target_date, child_id, attempt, outcome, wall_ms, web_searches FROM model_runs
+               WHERE dry_run = 0 AND model NOT LIKE 'review:%' AND target_date BETWEEN ? AND ?""", span).fetchall()
+        by_game = {}
+        for day, child, attempt, outcome, wall, searches in runs:
+            by_game.setdefault((day, child), []).append((attempt, outcome, wall or 0, searches or 0))
+        walls = sorted(sum(r[2] for r in rs) for rs in by_game.values())
+        quality.update(
+            games=len(by_game),
+            first_pass=sum(1 for rs in by_game.values() if any(a == 1 and o == "pass" for a, o, _, _ in rs)),
+            attempts=round(sum(len(rs) for rs in by_game.values()) / len(by_game), 1) if by_game else 0,
+            wall_median_s=round(walls[len(walls) // 2] / 1000) if walls else None,
+            searches=round(sum(r[3] for rs in by_game.values() for r in rs) / len(by_game), 1) if by_game else 0,
+        )
+        quality["reviews"], quality["review_rejected"] = con.execute(
+            "SELECT count(*), COALESCE(sum(outcome = 'rejected'), 0) FROM model_runs "
+            "WHERE dry_run = 0 AND model LIKE 'review:%' AND target_date BETWEEN ? AND ?", span).fetchone()
+    except sqlite3.OperationalError:
+        pass
+
+    sent_times = sorted(
+        datetime.fromisoformat(str(r[0]).replace(" ", "T")).astimezone(MOSCOW).strftime("%H:%M")
+        for r in con.execute(
+            f"""SELECT d.sent_at FROM deliveries d JOIN games g ON g.id = d.game_id JOIN children c ON c.id = g.child_id
+                WHERE d.status = 'sent' AND d.sent_at IS NOT NULL AND g.game_date BETWEEN ? AND ? AND {real}""", span))
+    events = {
+        "swaps": _count(con, "SELECT count(*) FROM swaps WHERE game_date BETWEEN ? AND ?", span),
+        "links": _count(con, "SELECT count(*) FROM channel_links WHERE status IN ('requested', 'approved')"),
+        "wishes": _count(con, "SELECT count(*) FROM wishes WHERE date(created_at) BETWEEN ? AND ?", span),
+        "pauses": _count(con, "SELECT count(*) FROM user_events WHERE kind = 'pause' AND date(at) BETWEEN ? AND ?", span),
+        "outbox_stuck": _count(con, "SELECT count(*) FROM outbox WHERE sent_at IS NULL AND attempts > 0"),
+        "median_sent": sent_times[len(sent_times) // 2] if sent_times else None,
+    }
+    try:
+        events["backup_hours"] = slo.backup_age_hours()
+    except Exception:  # noqa: BLE001
+        events["backup_hours"] = None
+    return {"funnel": funnel, "heat": heat, "skills": skills, "reactions": reactions,
+            "quality": quality, "events": events}
 
 
 # --- rendering -------------------------------------------------------------------
@@ -299,14 +406,22 @@ def render(data):
 </div></body></html>"""
 
 
-def build(db_path=None, today=None, now=None):
+def build(db_path=None, today=None, now=None, view=None):
     today = today or datetime.now(MOSCOW).date()
     con = sqlite3.connect(f"file:{db_path or DB_PATH}?mode=ro", uri=True, timeout=10)
     try:
         data = collect(con, today, now=now or datetime.now(timezone.utc))
     finally:
         con.close()
-    return render(data), data
+    return render_view(data, view), data
+
+
+def render_view(data, view=None):
+    """The chosen look: "classic" (render above) or one of dashboard_views.VIEWS."""
+    from src.ops import dashboard_views
+    if view in dashboard_views.VIEWS:
+        return dashboard_views.VIEWS[view](data)
+    return render(data)
 
 
 def summary(data):

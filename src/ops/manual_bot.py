@@ -67,7 +67,7 @@ HELP = (
     "/ideas - пожелания пользователей\n"
     "/metrics - продуктовые метрики за неделю"
     "\n/slo - надёжность за 28 дней: цели и запас ошибок"
-    "\n/dash - дашборд файлом: графики, дети, надёжность"
+    "\n/dash - дашборд файлом: графики, дети, надёжность (вид: /dash ops | report | product)"
 )
 
 EXPLANATIONS = {
@@ -180,7 +180,7 @@ class Controller:
 
         if command == "/dash":
             try:
-                page, data = dashboard.build()
+                page, data = dashboard.build(view=parts[1].lower() if len(parts) > 1 else None)
             except Exception as exc:  # noqa: BLE001
                 return f"Не удалось построить дашборд: {type(exc).__name__}"
             name = f"dashboard-{data['today']}.html"

@@ -47,6 +47,17 @@ class Dashboard(unittest.TestCase):
         self.assertIn("<svg", page)
         self.assertIn("детей 1", dashboard.summary(data))
 
+    def test_every_view_is_self_contained(self):
+        from src.ops import dashboard_views
+        for view in (None, *dashboard_views.VIEWS):
+            with self.subTest(view=view):
+                page, data = dashboard.build(self.db, today=TODAY, now=NOW, view=view)
+                self.assertNotIn("<script", page)
+                self.assertIn("&lt;Сева&gt;", page)
+                self.assertNotIn("Тест", page)
+        self.assertEqual(data["funnel"][1], ("Подписано детей", 1))
+        self.assertEqual(data["heat"][0]["cells"][-2:], ["fb", "sent"])
+
     def test_ops_bot_answers_dash_with_a_document(self):
         controller = manual_bot.Controller(42, now=lambda: 1000)
         with mock.patch.object(dashboard, "DB_PATH", self.db):
