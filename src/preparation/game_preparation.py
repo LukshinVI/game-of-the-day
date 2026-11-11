@@ -530,6 +530,17 @@ def build_retry_prompt(original_prompt, candidate, errors):
         "rejected_candidate": candidate,
         "deterministic_validation_errors": errors,
     }
+    if review.tiers_enabled() and errors and all(e.startswith("safety review:") for e in errors):
+        # Only the safety reviewer objected: repair this game instead of inventing a new
+        # one with new risks (production 2026-11-11: six new games, six new objections).
+        return (
+            original_prompt
+            + "\n\nIMPORTANT: The candidate below passed every check except the safety review.\n"
+            + "Keep the same activity, skill, mechanic and source. Change only what is needed "
+              "to remove each safety problem listed (replace or drop the risky material or "
+              "step), keep the rest as it is, and return the corrected candidate.\n\n"
+            + json.dumps(feedback, ensure_ascii=False, indent=2)
+        )
 
     return (
         original_prompt
@@ -854,7 +865,20 @@ def select_candidate(history, target_date, birth_date=None, age_months=None):
             errors = [f"after the parent's feedback on «{required['after']}» the next game must train "
                       f"{required['skill']} ({required['direction']} than before), not {candidate.get('skill')}"]
             RUN_LOG[-1]["outcome"], RUN_LOG[-1]["errors"] = "rejected", errors
-        if not errors:
+        if not errors and review.tiers_enabled():
+            problems, fixes, meta = review.review_tiered(candidate, age_months)
+            if meta is not None:
+                RUN_LOG.append({**meta, "attempt": attempt, "outcome": "rejected" if problems else
+                                ("error" if meta["error"] else "pass"),
+                                "errors": [f"safety review: {p}" for p in problems]
+                                + [f"safety fix: {f}" for f in fixes if not problems]
+                                or ([meta["error"]] if meta["error"] else [])})
+            errors = [f"safety review: {p}" for p in problems]
+            if not errors and fixes:
+                for fix in fixes:
+                    print(f"SAFETY FIX: {fix}")
+                candidate = with_rendered_message(review.with_fixes(candidate, fixes))
+        elif not errors:
             problems, meta = review.review(candidate, age_months)
             if meta is not None:
                 RUN_LOG.append({**meta, "attempt": attempt, "outcome": "rejected" if problems else
