@@ -133,3 +133,35 @@ class Tiers(Reviewer):
         self.assertFalse(review.tiers_enabled())
         prompt = gp.build_retry_prompt("P", candidate(), ["safety review: x"])
         self.assertNotIn("Keep the same activity", prompt)
+
+
+class Summary(unittest.TestCase):
+    def test_the_morning_summary_lists_blocks_fixes_and_library_days(self):
+        import sqlite3
+        import tempfile
+        from src.db import children as ch
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "t.db"
+            con = sqlite3.connect(db)
+            con.executescript((root / "src/db/schema.sql").read_text())
+            con.close()
+            con = ch.connect_db(db)
+            child = ch.add_child(con, "Всеволод", "2025-09-03")
+            con.execute("INSERT INTO model_runs(at, target_date, child_id, attempt, outcome, model, errors_json, dry_run) "
+                        "VALUES ('2026-11-11 04:05:15', '2026-11-11', ?, 1, 'rejected', 'review:haiku', ?, 0)",
+                        (child, '["safety review: Батарейки в фонарике"]'))
+            con.execute("INSERT INTO model_runs(at, target_date, child_id, attempt, outcome, model, errors_json, dry_run) "
+                        "VALUES ('2026-11-11 04:05:15', '2026-11-11', ?, 2, 'pass', 'review:haiku', ?, 0)",
+                        (child, '["safety fix: Снимите ленту после игры"]'))
+            con.execute("INSERT INTO games(legacy_id, game_date, title, skill, child_id, origin) "
+                        "VALUES ('x', '2026-11-11', 'T', 'sensory', ?, 'library')", (child,))
+            con.commit()
+            con.close()
+            with mock.patch.object(gp, "DB_PATH", db):
+                text = gp.review_summary("2026-11-11", "2026-11-11 04:00:00")
+                self.assertIsNone(gp.review_summary("2026-11-11", "2026-11-11 05:00:00"))
+        self.assertIn("Проверок: 2, отклонено: 1 (50%)", text)
+        self.assertIn("⛔ Всеволод: Батарейки в фонарике", text)
+        self.assertIn("✏️ Всеволод: Снимите ленту после игры", text)
+        self.assertIn("📚 Из библиотеки: Всеволод", text)
