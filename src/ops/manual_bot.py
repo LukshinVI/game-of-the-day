@@ -10,6 +10,7 @@ Commands, accepted only from the owner's private chat:
   /users           product-bot families: children, subscription, last game, feedback
   /ideas           wishes about the service, from feedback and /idea
   /metrics         product metrics: feedback share, liked, difficulty, pauses, reserve days
+  /slo             reliability objectives over 28 days and their error budgets
   /llm             the last 7 days of game selection: attempts, latency, tokens, cost, rejections
 
 It also forwards owner-facing events the product bot records in SQLite (new member,
@@ -36,7 +37,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.bot import vk_dialog  # noqa: E402
 from src.db import children as ch  # noqa: E402
-from src.ops import llm_report, product_metrics, users_report  # noqa: E402
+from src.ops import llm_report, product_metrics, slo, users_report  # noqa: E402
 
 DELIVERY = ROOT / "src" / "delivery" / "game_delivery.py"
 API = "https://api.telegram.org"
@@ -64,6 +65,7 @@ HELP = (
     "/llm - подбор игр за неделю: попытки, время, токены, стоимость\n"
     "/ideas - пожелания пользователей\n"
     "/metrics - продуктовые метрики за неделю"
+    "\n/slo - надёжность за 28 дней: цели и запас ошибок"
 )
 
 EXPLANATIONS = {
@@ -164,6 +166,12 @@ class Controller:
         if command == "/metrics":
             try:
                 return product_metrics.report()
+            except Exception as exc:  # noqa: BLE001
+                return f"Не удалось построить отчёт: {type(exc).__name__}"
+
+        if command == "/slo":
+            try:
+                return slo.report()
             except Exception as exc:  # noqa: BLE001
                 return f"Не удалось построить отчёт: {type(exc).__name__}"
 

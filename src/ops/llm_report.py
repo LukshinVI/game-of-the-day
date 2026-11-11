@@ -136,6 +136,11 @@ def main(argv=None):
         text = product_metrics.report(days=args.days) + "\n\n" + text
     except Exception as exc:  # noqa: BLE001 - the model report still goes out
         print(f"product metrics unavailable: {type(exc).__name__}", file=sys.stderr)
+    try:
+        from src.ops import slo
+        text = text + "\n\n" + slo.report()
+    except Exception as exc:  # noqa: BLE001 - the rest of the report still goes out
+        print(f"slo unavailable: {type(exc).__name__}", file=sys.stderr)
     print(text)
     if args.send:
         title, _, details = text.partition("\n")

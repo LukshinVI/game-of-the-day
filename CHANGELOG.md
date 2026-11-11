@@ -7,10 +7,17 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-11 — Measured and fenced
+
 ### Added
 - "What's new" for parents without extra messages: news written by hand in
   `src/ops/news.json` ride on the Sunday digest of their week (at most two), with a link
   to the community wall post when `GAME_NEWS_LINK` is set.
+- Reliability objectives (`src/ops/slo.py`, `/slo` in the ops bot, and in the Monday
+  report): game delivered by 10:15 Moscow time (target 95%), the game made by the model
+  rather than taken from the library or reserve (90%), written feedback answered within
+  an hour (95%), plus the age of the newest backup. Rolling 28 days, with the error
+  budget left for each.
 
 ### Changed
 - Every product service runs in `game-of-the-day.slice`, capped together at 1.2 GB of
@@ -301,6 +308,8 @@ messenger and nothing re-sent ([postmortem](https://github.com/LukshinVI/game-of
 - Daily delivery to VK from Google Sheets + Apps Script, with a retry window.
 - The first feedback agent and its eval harness.
 
+[Unreleased]: ../../compare/v1.8.0...HEAD
+[1.8.0]: ../../compare/v1.7.1...v1.8.0
 [1.7.1]: ../../compare/v1.7.0...v1.7.1
 [1.7.0]: ../../compare/v1.6.1...v1.7.0
 [1.6.1]: ../../compare/v1.6.0...v1.6.1
