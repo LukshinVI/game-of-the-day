@@ -83,8 +83,9 @@ that is silent for 26 hours.
 
 ## Not built yet
 
-- The SLIs are computed by hand with the query above; they are not yet part of `/metrics`
-  and the Monday report, and burn rate does not alert.
+- The SLIs are computed by `src/ops/slo.py` (`/slo` in the ops bot, and the Monday
+  report), together with the share of games made by the model rather than the library or
+  reserve and the age of the newest backup. Burn rate does not alert yet.
 - Pauses are logged as owner-facing events per chat, not as per-child intervals, so a
   paused child-day cannot be excluded by the query yet; it covers children that were
   never paused.

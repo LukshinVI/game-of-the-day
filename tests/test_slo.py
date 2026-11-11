@@ -3,7 +3,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +24,8 @@ class Objectives(unittest.TestCase):
         con.executescript((ROOT / "src/db/schema.sql").read_text())
         con.execute("INSERT INTO children (id, name, birth_date) VALUES (1, 'А', '2025-01-01')")
         con.execute("INSERT INTO children (id, name, birth_date, is_test) VALUES (9, 'Тест', '2025-01-01', 1)")
+        con.execute("INSERT INTO recipients (child_id, channel, address) VALUES (1, 'vk', '1')")
+        con.execute("INSERT INTO recipients (child_id, channel, address) VALUES (9, 'vk', '9')")
         con.commit()
         self.con = con
         self.addCleanup(con.close)
@@ -36,19 +38,32 @@ class Objectives(unittest.TestCase):
         self.con.commit()
         return cur.lastrowid
 
-    def counts(self):
+    def counts(self, start="2026-11-01", end="2026-11-10"):
         con = sqlite3.connect(self.db)
         try:
-            return slo.collect(con, "2026-11-01", TODAY.isoformat())
+            return slo.collect(con, start, end, now=datetime(2026, 11, 11, 12, 0, tzinfo=timezone.utc))
         finally:
             con.close()
 
-    def test_on_time_is_by_the_moscow_deadline_on_the_game_date(self):
-        self.game("2026-11-10", sent_at="2026-11-10T10:00:43+03:00")
-        self.game("2026-11-09", sent_at="2026-11-09T07:20:00+00:00")   # 10:20 MSK: late
-        self.game("2026-11-08", sent_at="2026-11-09T09:00:00+03:00")   # next day: late
-        self.game("2026-11-07", status="failed")
-        self.assertEqual(self.counts()["on_time"], (1, 4))
+    def test_child_days_count_misses_and_the_evening_before_is_on_time(self):
+        self.game("2026-11-07", status="failed")                          # first day: missed
+        self.game("2026-11-08", sent_at="2026-11-07T19:00:00+03:00")      # evening before: on time
+        self.game("2026-11-09", sent_at="2026-11-09T07:20:00+00:00")      # 10:20 MSK: late, same day
+        self.game("2026-11-10", sent_at="2026-11-11T09:00:00+03:00")      # next day: late, not same day
+        counts = self.counts()
+        self.assertEqual(counts["on_time"], (1, 4))   # 07..10, from the child's first game
+        self.assertEqual(counts["same_day"], (2, 4))
+
+    def test_today_counts_only_after_its_deadline(self):
+        self.game("2026-11-11", status="pending")
+        con = sqlite3.connect(self.db)
+        try:
+            early = slo.collect(con, "2026-11-11", "2026-11-11", now=datetime(2026, 11, 11, 6, 0, tzinfo=timezone.utc))
+            late = slo.collect(con, "2026-11-11", "2026-11-11", now=datetime(2026, 11, 11, 8, 0, tzinfo=timezone.utc))
+        finally:
+            con.close()
+        self.assertEqual(early["on_time"], (0, 0))
+        self.assertEqual(late["on_time"], (0, 1))
 
     def test_reserve_and_library_are_not_fresh_and_test_children_do_not_count(self):
         self.game("2026-11-10")
@@ -57,13 +72,14 @@ class Objectives(unittest.TestCase):
         self.game("2026-11-08", child=9, origin="reserve")
         self.assertEqual(self.counts()["fresh"], (1, 3))
 
-    def test_feedback_reply_within_the_hour_mixed_timestamp_formats(self):
+    def test_feedback_insights_within_the_hour_deferred_left_out(self):
         game = self.game("2026-11-10", sent_at="2026-11-10T10:00:00+03:00")
-        for received, replied in (("2026-11-10T17:39:15+00:00", "2026-11-10 17:52:45"),
-                                  ("2026-11-10T06:00:00+00:00", "2026-11-10 07:30:00"),
-                                  ("2026-11-10T06:00:00+00:00", None)):
-            self.con.execute("INSERT INTO feedback (game_id, raw_text, received_at, reply_sent_at) VALUES (?, 'x', ?, ?)",
-                             (game, received, replied))
+        for received, done, status in (("2026-11-10T17:39:15+00:00", "2026-11-10T17:52:41+00:00", "done"),
+                                       ("2026-11-10T06:00:00+00:00", "2026-11-10 07:30:00", "done"),
+                                       ("2026-11-10T06:00:00+00:00", None, None),
+                                       ("2026-11-10T06:00:00+00:00", None, "deferred")):
+            self.con.execute("INSERT INTO feedback (game_id, raw_text, received_at, insights_at, insights_status) "
+                             "VALUES (?, 'x', ?, ?, ?)", (game, received, done, status))
         self.con.commit()
         self.assertEqual(self.counts()["feedback"], (1, 3))
 

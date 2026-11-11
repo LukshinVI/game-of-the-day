@@ -7,6 +7,11 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+### Fixed
+- `/slo` follows `docs/slo.md`: it counts child-days, so a day with no game is a miss
+  rather than invisible, and a game sent the evening before is on time. Adds same-day
+  delivery (99 %); feedback freshness is the insights run within an hour, as documented.
+
 ### Added
 - A family already subscribed in one messenger adds the other: «подключить телеграм» in
   VK or `/link_vk` in Telegram gives a one-time code (24 h), redeemed in the second chat
