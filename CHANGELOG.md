@@ -29,6 +29,10 @@ on the commit that completed each milestone.
   candidate, else null). Under 6 months a theme lives only in words, songs and colours.
   Each theme has its own banned words (tinsel, garlands, candles, ice, acorns…) enforced
   by the validator.
+- `/dash` in the ops bot: a self-contained HTML dashboard sent as a file (inline SVG, no
+  scripts or external resources, nothing published): games, feedback, model spend and
+  safety rejections per day for 28 days, reliability objectives, where games came from,
+  and every child with channels, last game and recent feedback.
 - The product bot sends queued Telegram messages (the outbox was VK only), so a family
   in Telegram hears back when its link is approved.
 
