@@ -59,6 +59,12 @@ on the commit that completed each milestone.
   starting with the digit is the answer, the rest a comment, anything else stays
   feedback. The owner sees every answer, the metrics the average. Off unless
   `GAME_DIGEST_PULSE=1`. Schema 16 (`pulses`).
+- A reminder for families who never write or went quiet (`src/feedback/nudge.py`): it
+  replaces the usual feedback line under the day's game, after 5 games without a written
+  answer, or after 21 days of silence with games going out. At most once in 30 days and
+  three times per child, never on Sunday; a sticker is not an answer, a «полезно ли?»
+  score is. The metrics show how many reminders went out and how many got an answer
+  within a week. Off unless `GAME_FEEDBACK_NUDGE=1`. Schema 17 (`nudges`).
 
 ### Changed
 - Off-site backups keep 14 days, not 30 copies, and the branch is a single commit

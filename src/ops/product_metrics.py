@@ -23,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from src.feedback import nudge  # noqa: E402
 from src.ops import cohorts, pulse  # noqa: E402
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
@@ -88,7 +89,7 @@ def report(db_path=DB_PATH, days=7, today=None):
     try:
         cur = period(con, cur_start, today.isoformat())
         prev = period(con, prev_start, prev_end)
-        value = [cohorts.report(con, today), usefulness(con, today)]
+        value = [cohorts.report(con, today), usefulness(con, today), reminders(con, today)]
     finally:
         con.close()
 
@@ -128,6 +129,13 @@ def usefulness(con, today):
         return f"📊 Полезность (1–5, за 90 дн.): спросили {asked}, ответов пока нет"
     spread = " ".join(f"{s}×{dist[s]}" for s in sorted(dist, reverse=True))
     return f"📊 Полезность (1–5, за 90 дн.): в среднем {average:.1f}, ответили {answered} из {asked} ({spread})"
+
+
+def reminders(con, today):
+    sent, answered = nudge.summary(con, today)
+    if not sent:
+        return "💬 Напоминания молчащим (за 30 дн.): не было"
+    return f"💬 Напоминания молчащим (за 30 дн.): {sent}, после них написали за неделю {pct(answered, sent)} ({answered})"
 
 
 def main(argv=None):

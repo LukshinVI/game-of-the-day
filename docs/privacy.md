@@ -17,6 +17,7 @@ short version in `/faq` (`src/bot/faq.txt`) and the VK help.
 | games and deliveries | `games`, `deliveries` | no repeats, delivery state |
 | why a family left (optional) | `exit_surveys` | product decisions; not linked to a child or a chat |
 | «полезно ли?» score 1–5 and comment (optional, monthly) | `pulses` | is the service useful |
+| which games carried a reminder to write | `nudges` | not more than once in 30 days, three times in all |
 
 **Not stored:** photos, videos, voice messages, stickers. Only a label (`[фото]`) is
 kept: these are pictures of children, the fact that they arrived is enough
