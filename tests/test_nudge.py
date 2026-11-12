@@ -160,12 +160,33 @@ class Nudge(unittest.TestCase):
         erasure.put_back(self.con, archive)
         self.assertEqual(self.con.execute("SELECT count(*) FROM nudges").fetchone()[0], 1)
 
-    def test_summary_counts_answers_within_a_week(self):
-        self.history(5)
-        self.deliver()
-        self.game(THURSDAY + timedelta(days=1))
-        self.wrote(THURSDAY + timedelta(days=1))
-        self.assertEqual(nudge.summary(self.con, THURSDAY + timedelta(days=2)), (1, 1))
+    def test_conversion_first_and_repeat_and_open_reminders(self):
+        from src.ops import product_metrics
+        start = THURSDAY - timedelta(days=75)
+        self.history(5, until=start)
+        days = []
+        for k in range(3):
+            day = start + timedelta(days=31 * k)
+            day += timedelta(days=day.weekday() == 6)
+            self.deliver(day)
+            days.append(day)
+            for i in range(1, 31):
+                self.game(day + timedelta(days=i))
+            if k == 0:
+                self.wrote(day + timedelta(days=2))  # answered the first («never»)
+                self.wrote(day + timedelta(days=9))  # after the week: not the reminder's merit
+        # the second (repeat) got no answer; the third is younger than a week
+        today = days[2] + timedelta(days=3)
+        st = nudge.stats(self.con, today, days=90)
+        self.assertEqual((st["shown"], st["pending"], st["families"], st["answered"]), (3, 1, 1, 1))
+        self.assertEqual((st["first"], st["repeat"]), ((1, 1), (0, 1)))
+        self.assertEqual(st["conversion"], 1.0)
+        self.assertEqual(st["groups"]["never"], {"shown": 1, "families": 1, "answered": 1})
+        self.assertEqual(st["groups"]["quiet"], {"shown": 2, "families": 1, "answered": 0})
+        text = product_metrics.reminders(self.con, days[1] + timedelta(days=10))
+        self.assertIn("feedback_nudge_conversion", text)
+        self.assertIn("повторные", text)
+        self.assertIn("писали и замолчали", text)
 
 
 if __name__ == "__main__":

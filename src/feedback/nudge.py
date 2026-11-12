@@ -17,7 +17,7 @@ when the owner decides. Deterministic; runs in the delivery's own transaction.
 """
 
 import os
-from datetime import date
+from datetime import date, timedelta
 
 ENABLED_ENV = "GAME_FEEDBACK_NUDGE"
 FIRST_AFTER_GAMES = 5
@@ -102,18 +102,63 @@ def footer(con, game):
     return TEXTS[kind]
 
 
-def summary(con, today, days=30):
-    """(reminders sent, of them followed by a written answer within 7 days) in `days`."""
-    if not _has(con, "nudges"):
-        return 0, 0
-    rows = con.execute(
-        "SELECT n.child_id, g.game_date FROM nudges n JOIN games g ON g.id = n.game_id "
-        "WHERE g.game_date >= date(?, ?) "
-        "AND EXISTS (SELECT 1 FROM deliveries d WHERE d.game_id = n.game_id AND d.status = 'sent')",
-        (today.isoformat(), f"-{days} days")).fetchall()
-    answered = sum(1 for child, day in rows if con.execute(
+ANSWER_DAYS = 7
+
+
+def _answered(con, child_id, day):
+    """A written answer about this child within ANSWER_DAYS after a reminder on `day`."""
+    return con.execute(
         "SELECT 1 FROM feedback f JOIN games g ON g.id = f.game_id WHERE g.child_id = ? "
         "AND coalesce(f.insights_status, '') != 'reaction' "
-        "AND coalesce(date(f.received_at), g.game_date) BETWEEN ? AND date(?, '+7 days')",
-        (child, day, day)).fetchone())
-    return len(rows), answered
+        "AND coalesce(date(f.received_at), g.game_date) BETWEEN ? AND date(?, ?)",
+        (child_id, day, day, f"+{ANSWER_DAYS} days")).fetchone() is not None
+
+
+def stats(con, today, days=30):
+    """Does the reminder work, or only add messages? For reminders shown in `days`:
+
+    shown, families reminded, families that answered within ANSWER_DAYS after a reminder,
+    feedback_nudge_conversion (their share), and the conversion of first and of repeated
+    reminders separately, as (answered, counted). A reminder younger than ANSWER_DAYS is
+    still open: it is in `shown` and `pending`, not in any conversion.
+
+    `groups` splits the same by why the family is silent: 'never' (never wrote) and
+    'quiet' (wrote, then stopped) are different stories, each with
+    {"shown", "families", "answered"}. A family can be in both over time.
+    """
+    out = {"shown": 0, "pending": 0, "families": 0, "answered": 0, "conversion": None,
+           "first": (0, 0), "repeat": (0, 0),
+           "groups": {k: {"shown": 0, "families": 0, "answered": 0} for k in TEXTS}}
+    if not _has(con, "nudges"):
+        return out
+    rows = con.execute(
+        "SELECT n.child_id, g.game_date, n.kind FROM nudges n JOIN games g ON g.id = n.game_id "
+        "WHERE EXISTS (SELECT 1 FROM deliveries d WHERE d.game_id = n.game_id AND d.status = 'sent') "
+        "ORDER BY n.child_id, g.game_date").fetchall()
+    since = (today - timedelta(days=days)).isoformat()
+    open_after = (today - timedelta(days=ANSWER_DAYS)).isoformat()
+    seen, families, answered = {}, set(), set()
+    first, repeat = [0, 0], [0, 0]
+    by_kind = {k: (set(), set()) for k in TEXTS}
+    for child, day, kind in rows:
+        ordinal = seen[child] = seen.get(child, 0) + 1
+        if day < since:
+            continue
+        out["shown"] += 1
+        out["groups"][kind]["shown"] += 1
+        if day > open_after:
+            out["pending"] += 1
+            continue
+        families.add(child)
+        by_kind[kind][0].add(child)
+        bucket = first if ordinal == 1 else repeat
+        bucket[1] += 1
+        if _answered(con, child, day):
+            bucket[0] += 1
+            answered.add(child)
+            by_kind[kind][1].add(child)
+    for kind, (reminded, wrote) in by_kind.items():
+        out["groups"][kind].update(families=len(reminded), answered=len(wrote))
+    out.update(families=len(families), answered=len(answered), first=tuple(first), repeat=tuple(repeat),
+               conversion=len(answered) / len(families) if families else None)
+    return out

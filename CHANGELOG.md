@@ -63,8 +63,10 @@ on the commit that completed each milestone.
   replaces the usual feedback line under the day's game, after 5 games without a written
   answer, or after 21 days of silence with games going out. At most once in 30 days and
   three times per child, never on Sunday; a sticker is not an answer, a «полезно ли?»
-  score is. The metrics show how many reminders went out and how many got an answer
-  within a week. Off unless `GAME_FEEDBACK_NUDGE=1`. Schema 17 (`nudges`).
+  score is. The metrics check that it works rather than only adds messages: reminders
+  shown, families that wrote within a week and their share (`feedback_nudge_conversion`),
+  the first reminder and the repeated ones apart, and the two groups apart (never wrote,
+  wrote then stopped). A reminder younger than a week is not counted yet. Off unless `GAME_FEEDBACK_NUDGE=1`. Schema 17 (`nudges`).
 
 ### Changed
 - Off-site backups keep 14 days, not 30 copies, and the branch is a single commit

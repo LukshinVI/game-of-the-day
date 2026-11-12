@@ -132,10 +132,25 @@ def usefulness(con, today):
 
 
 def reminders(con, today):
-    sent, answered = nudge.summary(con, today)
-    if not sent:
-        return "💬 Напоминания молчащим (за 30 дн.): не было"
-    return f"💬 Напоминания молчащим (за 30 дн.): {sent}, после них написали за неделю {pct(answered, sent)} ({answered})"
+    """feedback_nudge_conversion and its parts (src/feedback/nudge.py)."""
+    st = nudge.stats(con, today)
+    head = "💬 Напоминания молчащим (за 30 дн.)"
+    if not st["shown"]:
+        return f"{head}: не было"
+
+    def cell(pair):
+        return f"{pct(*pair)} ({pair[0]} из {pair[1]})" if pair[1] else "—"
+
+    lines = [f"{head}:",
+             f"• показано: {st['shown']}" + (f" (ещё ждём ответа на {st['pending']})" if st["pending"] else ""),
+             f"• feedback_nudge_conversion: {cell((st['answered'], st['families']))} семей написали "
+             f"в течение {nudge.ANSWER_DAYS} дн.",
+             f"• первое напоминание: {cell(st['first'])}",
+             f"• повторные: {cell(st['repeat'])}"]
+    for kind, label in (("never", "ни разу не писали"), ("quiet", "писали и замолчали")):
+        g = st["groups"][kind]
+        lines.append(f"• {label}: показано {g['shown']}, написали {cell((g['answered'], g['families']))}")
+    return "\n".join(lines)
 
 
 def main(argv=None):
