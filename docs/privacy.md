@@ -16,6 +16,7 @@ short version in `/faq` (`src/bot/faq.txt`) and the VK help.
 | conclusions | `observations` (kind/value), `child_profiles` | the next games adapt |
 | games and deliveries | `games`, `deliveries` | no repeats, delivery state |
 | why a family left (optional) | `exit_surveys` | product decisions; not linked to a child or a chat |
+| «полезно ли?» score 1–5 and comment (optional, monthly) | `pulses` | is the service useful |
 
 **Not stored:** photos, videos, voice messages, stickers. Only a label (`[фото]`) is
 kept: these are pictures of children, the fact that they arrived is enough
@@ -41,7 +42,7 @@ kept: these are pictures of children, the fact that they arrived is enough
 | unfinished questionnaire | 7 days | deleted | `retention.collect` |
 | rejected application, queued and handled messages, unused link codes, VK visitors who never subscribed | 30 days | deleted | `retention.collect` |
 | owner-facing event texts | 90 days | text and chat removed; the kind stays for the counts | `retention.collect` |
-| exit survey free text | 180 days | removed; the reason stays | `retention.collect` |
+| exit survey free text, «полезно ли?» comment | 180 days | removed; the reason or the score stays | `retention.collect` |
 | local backups | 14 days (at least 7 copies) | rotated | `ops/backup/game-backup.sh` |
 | off-site backups | 14 days, one commit without history | rotated | `ops/backup/offsite-git.sh` |
 

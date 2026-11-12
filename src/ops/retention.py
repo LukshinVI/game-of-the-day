@@ -98,6 +98,10 @@ def collect(con, now):
         counts["quotes"] += _run(con, "UPDATE exit_surveys SET text = NULL WHERE text IS NOT NULL AND at < ?",
                                  (text_cutoff,))
 
+    if _has(con, "pulses"):
+        counts["quotes"] += _run(con, "UPDATE pulses SET comment = NULL WHERE comment IS NOT NULL AND asked_at < ?",
+                                 (text_cutoff,))
+
     families = inactive_families(con, now)
     for kids, addrs in families:
         erasure.remove(con, kids, addrs)

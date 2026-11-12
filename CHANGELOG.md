@@ -50,6 +50,16 @@ on the commit that completed each milestone.
 - `docs/privacy.md`: what is stored, who sees it, the terms, how deletion works and what
   cannot be deleted. The FAQ says the same in short.
 
+- Is it useful, do families stay: `/metrics` and the Monday report show retention by
+  monthly cohort (reached day 7 / 30 / 60, families that deleted their data included so
+  departures do not inflate it) and the share of families that answered in 30 days
+  (`src/ops/cohorts.py`).
+- «Полезно ли?» once a month (`src/ops/pulse.py`): the third-Sunday digest asks for a
+  1–5 score, only after two weeks of games and never with the star request; a reply
+  starting with the digit is the answer, the rest a comment, anything else stays
+  feedback. The owner sees every answer, the metrics the average. Off unless
+  `GAME_DIGEST_PULSE=1`. Schema 16 (`pulses`).
+
 ### Changed
 - Off-site backups keep 14 days, not 30 copies, and the branch is a single commit
   force-pushed every night: an old copy is gone from the history too, so a deletion

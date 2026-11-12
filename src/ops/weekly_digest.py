@@ -13,6 +13,9 @@ Once per recipient, ever, a digest may also ask to star the project on GitHub �
 the child has had games for at least a month and the family's recent feedback is
 positive (see star_request_due). Off unless GAME_DIGEST_STAR_REQUEST=1. Never in the same digest as the monthly question.
 
+On the third Sunday of a month the digest may ask «насколько полезно?» (1-5, src/ops/pulse.py),
+off unless GAME_DIGEST_PULSE=1; never together with the star request.
+
 What is new for parents (src/ops/news.json, written by hand after a release that
 parents can notice) goes into the digest of the week it was dated, at most NEWS_MAX
 items, with a link to the community wall post when GAME_NEWS_LINK is set. No separate
@@ -38,6 +41,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.delivery import game_delivery  # noqa: E402
+from src.ops import pulse  # noqa: E402
 from src.preparation import skills  # noqa: E402
 
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
@@ -287,8 +291,10 @@ def run(today=None, dry_run=False, db_path=None, sender=send):
                                    (child["id"], r["channel"], r["address"], week)).fetchone()
                 if done:
                     continue
-                ask_star = star_request_due(con, child, r["channel"], r["address"], today)
-                message = f"{text}\n\n{STAR_TEXT}" if ask_star else text
+                ask_pulse = pulse.due(con, child["id"], r["channel"], r["address"], today)
+                ask_star = not ask_pulse and star_request_due(con, child, r["channel"], r["address"], today)
+                message = (f"{text}\n\n{pulse.QUESTION}" if ask_pulse
+                           else f"{text}\n\n{STAR_TEXT}" if ask_star else text)
                 if dry_run:
                     print(f"--- {child['name']} → {r['channel']}\n{message}\n")
                     continue
@@ -299,6 +305,8 @@ def run(today=None, dry_run=False, db_path=None, sender=send):
                     continue
                 con.execute("INSERT INTO digests(child_id, channel, address, week) VALUES (?, ?, ?, ?)",
                             (child["id"], r["channel"], r["address"], week))
+                if ask_pulse:
+                    pulse.asked(con, child["id"], r["channel"], r["address"], today)
                 if ask_star:
                     con.execute("INSERT OR IGNORE INTO star_requests(channel, address, child_id) VALUES (?, ?, ?)",
                                 (r["channel"], r["address"], child["id"]))
