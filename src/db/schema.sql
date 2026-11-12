@@ -277,7 +277,16 @@ CREATE TABLE pulses (
     answered_at TEXT,
     UNIQUE(channel, address, month)
 );
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '16');
+-- A reminder that a few words improve the games, under the day's game for a family that
+-- never wrote or went quiet (src/feedback/nudge.py). One row per game that carried it.
+-- Off unless GAME_FEEDBACK_NUDGE=1.
+CREATE TABLE nudges (
+    game_id INTEGER PRIMARY KEY REFERENCES games(id),
+    child_id INTEGER NOT NULL REFERENCES children(id),
+    kind TEXT NOT NULL CHECK(kind IN ('never', 'quiet')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '17');
 
 -- One-time request to star the project on GitHub (src/ops/weekly_digest.py).
 CREATE TABLE star_requests (

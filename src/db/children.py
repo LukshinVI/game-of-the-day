@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -333,6 +333,18 @@ CREATE TABLE IF NOT EXISTS pulses (
 );
 """
 
+MIGRATION_17 = """
+-- A reminder that a few words improve the games, under the day's game for a family that
+-- never wrote or went quiet (src/feedback/nudge.py). One row per game that carried it.
+-- Off unless GAME_FEEDBACK_NUDGE=1.
+CREATE TABLE IF NOT EXISTS nudges (
+    game_id INTEGER PRIMARY KEY REFERENCES games(id),
+    child_id INTEGER NOT NULL REFERENCES children(id),
+    kind TEXT NOT NULL CHECK(kind IN ('never', 'quiet')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 
 def migrate(con):
     """Bring an existing database to SCHEMA_VERSION. Idempotent and additive only."""
@@ -348,6 +360,7 @@ def migrate(con):
     con.executescript(MIGRATION_14)
     con.executescript(MIGRATION_15)
     con.executescript(MIGRATION_16)
+    con.executescript(MIGRATION_17)
     # Schema 16: an erased family still counts in the retention cohorts (src/ops/cohorts.py).
     for column in ("first_game", "last_game"):
         if column not in columns(con, "erasures"):

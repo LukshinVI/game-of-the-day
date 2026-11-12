@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.delivery import greetings  # noqa: E402
+from src.feedback import nudge  # noqa: E402
 
 DB_PATH = Path(__file__).resolve().parents[2] / "data" / "game-of-the-day.db"
 MOSCOW = ZoneInfo("Europe/Moscow")
@@ -75,8 +76,10 @@ def today_deliveries(con):
 
 
 def delivery_by_id(con, delivery_id):
+    has_child = any(row[1] == "child_id" for row in con.execute("PRAGMA table_info(games)"))
+    child_column = "g.child_id" if has_child else "NULL"
     return con.execute(
-        """
+        f"""
         SELECT
             g.id AS game_id,
             g.legacy_id,
@@ -89,7 +92,8 @@ def delivery_by_id(con, delivery_id):
             d.idempotency_key,
             d.updated_at,
             d.channel,
-            d.recipient
+            d.recipient,
+            {child_column} AS child_id
         FROM deliveries d
         JOIN games g ON g.id = d.game_id
         WHERE d.id = ?
@@ -261,7 +265,9 @@ def deliver_one(delivery_id, retry_failed=False):
 
         random_id = deterministic_random_id(game["idempotency_key"])
         game = dict(game)
-        game["message_text"] = child_header(con, game) + game["message_text"] + feedback_footer(game["message_text"])
+        reminder = nudge.footer(con, game)
+        game["message_text"] = (child_header(con, game) + game["message_text"]
+                                + ("\n\n" + reminder if reminder else feedback_footer(game["message_text"])))
 
         changed = con.execute(
             """
