@@ -63,6 +63,7 @@ controls. They share nothing but the database.
 | Reports | `src/ops/llm_report.py`, `users_report.py` | Mondays 10:30; on demand | model quality, latency, tokens, cost, reserve days; families; wishes |
 | Parents' digest | `src/ops/weekly_digest.py` | Sundays 19:00 | the week's games and skills, what went well, one or two home ideas for next week (no age norms), a monthly question; optionally (off unless `GAME_DIGEST_STAR_REQUEST=1`) a one-time request to star the project on GitHub |
 | Warm reserve | `src/preparation/fallback.py` | Sundays 04:30 | keeps at least three validated games for each child's next two months |
+| Retention | `ops/retention` | 03:10 | personal data past its term removed (`docs/privacy.md`) |
 | Backups | `ops/backup` | 03:30 local, 03:45 off-site, Sundays restore test | SQLite online backup → age-encrypted copy in a private repository → weekly restore into a sandbox |
 | Deploy | `ops/deploy.sh` | by hand | backup → fast-forward → tests → migrate → units → restart → health |
 
@@ -92,6 +93,7 @@ environment.
 ## 4. A day
 
 ```text
+03:10  retention terms (docs/privacy.md)
 03:30  local backup (integrity check, retention)      03:45  encrypted off-site copy
 07:00  preparation for every active child (08:00, 09:00 retry only what is missing)
 10:00  delivery to every recipient                    10:12  catch-up and reconciliation

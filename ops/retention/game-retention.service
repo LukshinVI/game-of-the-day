@@ -1,0 +1,22 @@
+[Unit]
+Description=Game of the Day - retention: remove personal data past its term (docs/privacy.md)
+OnFailure=game-backup-alert@%n.service
+
+[Service]
+Slice=game-of-the-day.slice
+Type=oneshot
+User=gotd
+Group=gotd
+WorkingDirectory=/srv/game-of-the-day
+EnvironmentFile=/etc/game-of-the-day/game.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/ops/retention.py run
+TimeoutStartSec=5min
+MemoryHigh=96M
+MemoryMax=128M
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/srv/game-of-the-day/data

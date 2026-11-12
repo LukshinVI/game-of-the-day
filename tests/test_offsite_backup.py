@@ -42,10 +42,10 @@ class OffsiteGit(unittest.TestCase):
             self.backups.append(path)
 
     def sh(self, *args, **extra):
-        env = {**extra, 
+        env = {
             "PATH": os.environ["PATH"], "HOME": str(self.root), "TMPDIR": str(self.root),
             "GAME_OFFSITE_REPO": f"file://{self.remote}", "GAME_OFFSITE_DIR": str(self.state),
-            "GAME_OFFSITE_KEEP": "2",
+            "GAME_OFFSITE_KEEP": "2", "GAME_OFFSITE_MAX_DAYS": "36500", **extra,
         }
         return subprocess.run([str(SCRIPT), *args], env=env, capture_output=True, text=True)
 
@@ -67,6 +67,20 @@ class OffsiteGit(unittest.TestCase):
                 content = self.git("show", f"{rev}:{name}")
                 self.assertNotIn("СекретноеНазвание".encode(), content)
                 self.assertNotIn(b"SQLite format", content)
+
+    def test_the_branch_has_no_history_so_old_copies_are_gone(self):
+        for path in self.backups:
+            self.assertEqual(self.sh(str(path)).returncode, 0)
+        commits = self.git("rev-list", "db-backups").decode().split()
+        self.assertEqual(len(commits), 1)
+        # the dropped copy is unreachable, not just out of the tip
+        self.assertNotIn(b"20261108", self.git("rev-list", "--objects", "--all"))
+
+    def test_copies_older_than_the_term_are_dropped_but_never_the_newest(self):
+        for path in self.backups:
+            self.assertEqual(self.sh(str(path), GAME_OFFSITE_KEEP="10", GAME_OFFSITE_MAX_DAYS="1").returncode, 0)
+        tip = self.git("ls-tree", "-r", "--name-only", "db-backups").decode().split()
+        self.assertEqual(tip, ["README", "backups/game-20261110T000000Z.db.gz.age"])
 
     def test_push_latest_follows_the_local_manifest(self):
         local = self.root / "local"

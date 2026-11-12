@@ -19,14 +19,21 @@
 #   GAME_OFFSITE_SSH_KEY    SSH key for the repository                  ($GAME_OFFSITE_DIR/deploy_key)
 #   GAME_BACKUP_DIR         local backups, for push-latest              (/var/backups/game-of-the-day)
 #   GAME_OFFSITE_RECIPIENT  age public key; default: derived from age.key
-#   GAME_OFFSITE_KEEP       copies kept in the branch tip                (30; history keeps older ones)
+#   GAME_OFFSITE_KEEP       at most this many copies                     (14)
+#   GAME_OFFSITE_MAX_DAYS   copies older than this are dropped           (14)
+#
+# The branch is a single commit with no parents, force-pushed every night: an old copy
+# leaves the branch and its history at once, so data deleted from the database (a
+# family that asked to be forgotten, src/bot/erasure.py) is gone from the off-site copies
+# within GAME_OFFSITE_MAX_DAYS (docs/privacy.md). The newest copy is never dropped.
 set -euo pipefail
 umask 077
 
 REPO=${GAME_OFFSITE_REPO:-}
 BRANCH=${GAME_OFFSITE_BRANCH:-db-backups}
 STATE=${GAME_OFFSITE_DIR:-/var/lib/game-of-the-day/offsite}
-KEEP=${GAME_OFFSITE_KEEP:-30}
+KEEP=${GAME_OFFSITE_KEEP:-14}
+MAX_DAYS=${GAME_OFFSITE_MAX_DAYS:-14}
 IDENTITY="$STATE/age.key"
 SSH_KEY=${GAME_OFFSITE_SSH_KEY:-$STATE/deploy_key}
 LOCAL=${GAME_BACKUP_DIR:-/var/backups/game-of-the-day}
@@ -40,6 +47,7 @@ trap cleanup EXIT
 
 [ -n "$REPO" ] || die "GAME_OFFSITE_REPO is not set"
 case "$KEEP" in ''|*[!0-9]*|0) die "GAME_OFFSITE_KEEP must be a positive integer" ;; esac
+case "$MAX_DAYS" in ''|*[!0-9]*|0) die "GAME_OFFSITE_MAX_DAYS must be a positive integer" ;; esac
 for tool in age git gzip sqlite3; do command -v "$tool" > /dev/null || die "$tool is not installed"; done
 [ -r "$SSH_KEY" ] || die "SSH key missing: $SSH_KEY"
 [ -r "$KNOWN_HOSTS" ] || die "pinned host keys missing: $KNOWN_HOSTS"
@@ -66,7 +74,7 @@ check_db() { # plain sqlite file -> prints a summary or dies
 }
 
 push() {
-    local src=$1 name enc remote_has
+    local src=$1 name enc remote_has cutoff tree commit lease=()
     [ -s "$src" ] || die "backup file missing or empty: $src"
     gzip -t "$src" || die "not a valid gzip: $src"
     WORK=$(mktemp -d "${TMPDIR:-/tmp}/offsite.XXXXXX")
@@ -85,20 +93,27 @@ push() {
     if [ -n "$remote_has" ]; then
         git_ -C "$WORK/repo" fetch -q --depth=1 origin "$BRANCH"
         git_ -C "$WORK/repo" checkout -q -B "$BRANCH" FETCH_HEAD
+        # Replace exactly what we fetched: a concurrent push makes ours fail, not vanish.
+        lease=("--force-with-lease=$BRANCH:$(git_ -C "$WORK/repo" rev-parse FETCH_HEAD)")
     else
         git_ -C "$WORK/repo" checkout -q --orphan "$BRANCH"
-        printf '%s\n' "Encrypted SQLite backups of Game of the Day (age). Written by ops/backup/offsite-git.sh." > "$WORK/repo/README"
-        git_ -C "$WORK/repo" add README
     fi
+    printf '%s\n' "Encrypted SQLite backups of Game of the Day (age). Written by ops/backup/offsite-git.sh." \
+        "One commit, no history: copies older than the retention term are gone, not just hidden." > "$WORK/repo/README"
+    git_ -C "$WORK/repo" add README
     mkdir -p "$WORK/repo/backups"
     mv "$enc" "$WORK/repo/backups/$name"
     git_ -C "$WORK/repo" add "backups/$name"
-    # Keep the newest KEEP copies in the tip; names sort chronologically.
-    ls -1 "$WORK/repo/backups" | sort -r | tail -n +$((KEEP + 1)) | while IFS= read -r old; do
+    # Names sort chronologically (game-YYYYMMDDTHHMMSSZ...): keep the newest KEEP copies
+    # and none older than MAX_DAYS, but always the newest one.
+    cutoff="game-$(date -u -d "-$MAX_DAYS days" +%Y%m%dT%H%M%SZ)"
+    ls -1 "$WORK/repo/backups" | sort -r | awk -v keep="$KEEP" -v cutoff="$cutoff" \
+        'NR > 1 && (NR > keep || $0 < cutoff)' | while IFS= read -r old; do
         git_ -C "$WORK/repo" rm -q "backups/$old"
     done
-    git_ -C "$WORK/repo" commit -q -m "backup $name"
-    git_ -C "$WORK/repo" push -q origin "$BRANCH" || die "push failed"
+    tree=$(git_ -C "$WORK/repo" write-tree)
+    commit=$(git_ -C "$WORK/repo" commit-tree "$tree" -m "backups up to $name") || die "commit failed"
+    git_ -C "$WORK/repo" push -q "${lease[@]}" origin "+$commit:refs/heads/$BRANCH" || die "push failed"
     log "pushed $name"
 }
 
