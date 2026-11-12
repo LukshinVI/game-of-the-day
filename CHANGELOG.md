@@ -7,6 +7,8 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-12 — Families decide
+
 ### Fixed
 - `/slo` follows `docs/slo.md`: it counts child-days, so a day with no game is a miss
   rather than invisible, and a game sent the evening before is on time. Adds same-day
@@ -374,7 +376,8 @@ messenger and nothing re-sent ([postmortem](https://github.com/LukshinVI/game-of
 - Daily delivery to VK from Google Sheets + Apps Script, with a retry window.
 - The first feedback agent and its eval harness.
 
-[Unreleased]: ../../compare/v1.8.0...HEAD
+[Unreleased]: ../../compare/v1.9.0...HEAD
+[1.9.0]: ../../compare/v1.8.0...v1.9.0
 [1.8.0]: ../../compare/v1.7.1...v1.8.0
 [1.7.1]: ../../compare/v1.7.0...v1.7.1
 [1.7.0]: ../../compare/v1.6.1...v1.7.0
