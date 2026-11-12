@@ -16,6 +16,7 @@ Members:
   /pause       stop the daily games for this chat (from the next game)
   /resume      start them again
   /faq         what it is, who picks the games, what data is kept (src/bot/faq.txt)
+  /forget      delete the family's data (src/bot/erasure.py: archive, way back, purge)
   /help
   any other text: feedback on the latest game sent to this chat
 
@@ -48,7 +49,7 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.bot import channel_link, swap  # noqa: E402
+from src.bot import channel_link, erasure, swap  # noqa: E402
 from src.db import children as ch  # noqa: E402
 from src.feedback import insights, reactions, storage  # noqa: E402
 
@@ -91,6 +92,7 @@ COMMANDS = [
     ("link_vk", "получать игры ещё и во ВКонтакте"),
     ("idea", "предложить, что улучшить в сервисе"),
     ("faq", "частые вопросы"),
+    ("forget", "удалить наши данные"),
 ]
 HELP = (
     f"Каждый день в {DELIVERY_TIME_MSK} по Москве я присылаю одну развивающую игру по возрасту ребёнка.\n"
@@ -247,6 +249,11 @@ class ProductBot:
 
         if member is not None and member["blocked_at"]:
             return None  # silently: a blocked member gets no signal to probe with
+        # Before the member check: an archived family is no longer a member, yet may come back.
+        gone = erasure.handle(con, "telegram", chat_id, text, self.now(),
+                              lambda note, kind: self.notify_owner(note, con, None, kind))
+        if gone is not None:
+            return gone
         if command == "/start" and len(parts) > 1 and parts[1].startswith(channel_link.START_PREFIX):
             # A family subscribed in VK adds this chat: works before the chat is a member.
             return channel_link.redeem(con, parts[1][len(channel_link.START_PREFIX):], "telegram", chat_id)

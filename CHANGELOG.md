@@ -35,6 +35,25 @@ on the commit that completed each milestone.
   and every child with channels, last game and recent feedback.
 - The product bot sends queued Telegram messages (the outbox was VK only), so a family
   in Telegram hears back when its link is approved.
+- A family can delete its data (`docs/privacy.md`): `/forget` in Telegram, «удалить наши
+  данные» in VK. After «удалить» the whole family (its children and every chat receiving
+  them) leaves the live tables for a 14-day archive: games stop at once and reports no
+  longer see it. «вернуть» within 14 days restores every row; «удалить сейчас» or the
+  end of the term purges it, keeping only a hash of the address and the counts. One
+  optional exit question (why are you leaving), stored without a child or a chat; the
+  owner sees departures and reasons, also in the Monday report. Schema 15 (`erasures`,
+  `erasure_addresses`, `exit_surveys`).
+- Retention terms, applied nightly at 03:10 MSK by `src/ops/retention.py`
+  (`game-retention.timer`, new: enable on deploy): feedback texts and quotes 180 days
+  (conclusions stay), a family inactive for a year deleted, service rows 7–90 days. The
+  owner gets a summary with counts only; `--dry-run` changes nothing.
+- `docs/privacy.md`: what is stored, who sees it, the terms, how deletion works and what
+  cannot be deleted. The FAQ says the same in short.
+
+### Changed
+- Off-site backups keep 14 days, not 30 copies, and the branch is a single commit
+  force-pushed every night: an old copy is gone from the history too, so a deletion
+  reaches the off-site copies within 14 days (`GAME_OFFSITE_MAX_DAYS`, `GAME_OFFSITE_KEEP`).
 
 ## [1.8.0] - 2026-11-11 — Measured and fenced
 

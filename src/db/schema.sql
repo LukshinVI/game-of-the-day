@@ -227,7 +227,41 @@ CREATE TABLE swaps (
     at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(child_id, game_date)
 );
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '14');
+-- "Удалить наши данные" (src/bot/erasure.py): the family's rows leave the live tables for an
+-- archive kept ERASURE_GRACE_DAYS, so the family can come back; then the archive is purged
+-- and the address is kept only as a hash (for the counts). erasure_addresses: every chat of
+-- the family, so a message from any of them finds the archive.
+CREATE TABLE erasures (
+    id INTEGER PRIMARY KEY,
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'confirming'
+        CHECK(status IN ('confirming', 'archived', 'restored', 'purged')),
+    requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    archived_at TEXT,
+    purge_after TEXT,
+    closed_at TEXT,
+    children INTEGER NOT NULL DEFAULT 0,
+    survey TEXT,
+    archive_json TEXT
+);
+CREATE TABLE erasure_addresses (
+    erasure_id INTEGER NOT NULL REFERENCES erasures(id),
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    PRIMARY KEY (channel, address)
+);
+-- Why families leave: one optional question after "удалить". Not linked to a child or a
+-- chat, so it outlives the family's data; the free text follows the feedback-text term.
+CREATE TABLE exit_surveys (
+    id INTEGER PRIMARY KEY,
+    at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    channel TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    text TEXT,
+    days_used INTEGER
+);
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '15');
 
 -- One-time request to star the project on GitHub (src/ops/weekly_digest.py).
 CREATE TABLE star_requests (

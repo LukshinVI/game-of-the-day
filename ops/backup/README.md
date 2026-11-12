@@ -92,8 +92,11 @@ Existing backups stay in `/var/backups/game-of-the-day`.
 
 `offsite-git.sh` encrypts the newest verified `.db.gz` with [age](https://age-encryption.org),
 proves the round trip, and pushes the ciphertext to a branch of a private repository. Only
-ciphertext leaves the host; GitHub's host keys are pinned (`github_known_hosts`). The newest
-30 copies stay in the branch tip.
+ciphertext leaves the host; GitHub's host keys are pinned (`github_known_hosts`). The branch
+is one commit with no parents, force-pushed every night: it holds the copies of the last
+`GAME_OFFSITE_MAX_DAYS` (14) days, at most `GAME_OFFSITE_KEEP` (14), and nothing older lives
+in its history. This is what lets a deletion (docs/privacy.md) reach the off-site copies.
+GitHub may keep unreachable objects until its own garbage collection; they are ciphertext.
 
 | unit | when | what |
 |---|---|---|

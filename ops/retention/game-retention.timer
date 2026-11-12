@@ -1,0 +1,9 @@
+[Unit]
+Description=Game of the Day - nightly retention, before the 03:30 backup
+
+[Timer]
+OnCalendar=*-*-* 03:10:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target

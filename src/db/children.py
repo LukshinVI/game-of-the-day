@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -279,6 +279,43 @@ CREATE TABLE IF NOT EXISTS swaps (
 );
 """
 
+MIGRATION_15 = """
+-- "Удалить наши данные" (src/bot/erasure.py): the family's rows leave the live tables for an
+-- archive kept ERASURE_GRACE_DAYS, so the family can come back; then the archive is purged
+-- and the address is kept only as a hash (for the counts). erasure_addresses: every chat of
+-- the family, so a message from any of them finds the archive.
+CREATE TABLE IF NOT EXISTS erasures (
+    id INTEGER PRIMARY KEY,
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'confirming'
+        CHECK(status IN ('confirming', 'archived', 'restored', 'purged')),
+    requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    archived_at TEXT,
+    purge_after TEXT,
+    closed_at TEXT,
+    children INTEGER NOT NULL DEFAULT 0,
+    survey TEXT,
+    archive_json TEXT
+);
+CREATE TABLE IF NOT EXISTS erasure_addresses (
+    erasure_id INTEGER NOT NULL REFERENCES erasures(id),
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    PRIMARY KEY (channel, address)
+);
+-- Why families leave: one optional question after "удалить". Not linked to a child or a
+-- chat, so it outlives the family's data; the free text follows the feedback-text term.
+CREATE TABLE IF NOT EXISTS exit_surveys (
+    id INTEGER PRIMARY KEY,
+    at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    channel TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    text TEXT,
+    days_used INTEGER
+);
+"""
+
 
 def migrate(con):
     """Bring an existing database to SCHEMA_VERSION. Idempotent and additive only."""
@@ -292,6 +329,7 @@ def migrate(con):
     con.executescript(MIGRATION_11)
     con.executescript(MIGRATION_12)
     con.executescript(MIGRATION_14)
+    con.executescript(MIGRATION_15)
     widen_observation_kinds(con)
     # Mechanic tags (src/preparation/mechanics.py): similar ideas, not just equal titles.
     for table in ("games", "reserve_games"):

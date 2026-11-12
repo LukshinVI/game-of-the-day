@@ -141,6 +141,13 @@ def main(argv=None):
         text = text + "\n\n" + slo.report()
     except Exception as exc:  # noqa: BLE001 - the rest of the report still goes out
         print(f"slo unavailable: {type(exc).__name__}", file=sys.stderr)
+    try:
+        from src.ops import retention
+        exits = retention.exits_report(days=args.days)
+        if exits:
+            text = text + "\n\n" + exits
+    except Exception as exc:  # noqa: BLE001 - the rest of the report still goes out
+        print(f"exits unavailable: {type(exc).__name__}", file=sys.stderr)
     print(text)
     if args.send:
         title, _, details = text.partition("\n")

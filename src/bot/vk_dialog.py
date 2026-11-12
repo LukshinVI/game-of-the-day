@@ -19,7 +19,7 @@ Deterministic code only: no model call here.
 import os
 from datetime import date, datetime
 
-from src.bot import channel_link, swap
+from src.bot import channel_link, erasure, swap
 from src.bot import product_bot as pb
 
 CHANNEL = "vk"
@@ -56,6 +56,7 @@ HELP = (
     "«добавить ребёнка» — подписать ещё одного малыша\n"
     "«другую» — другая игра на сегодня, если эта не подходит\n"
     "«подключить телеграм» — получать игры ещё и в Telegram\n"
+    "«удалить наши данные» — отписаться и стереть данные\n"
     "«отмена» — прервать анкету"
 ).format(time=pb.DELIVERY_TIME_MSK)
 
@@ -119,6 +120,10 @@ class VkDialog:
         member = con.execute("SELECT * FROM members WHERE chat_id = ?", (key,)).fetchone()
         if member is not None and member["blocked_at"]:
             return None
+        gone = erasure.handle(con, CHANNEL, peer, text, self.now(),
+                              lambda note, kind: pb.ProductBot.notify_owner(note, con, None, kind))
+        if gone is not None:
+            return gone
         command = COMMANDS.get(normalize(text))
         code = channel_link.vk_code(text)
         if code:  # a family subscribed in Telegram adds this VK chat
