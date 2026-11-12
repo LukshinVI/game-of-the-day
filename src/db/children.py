@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -316,6 +316,23 @@ CREATE TABLE IF NOT EXISTS exit_surveys (
 );
 """
 
+MIGRATION_16 = """
+-- "Полезно ли?" once a month in the Sunday digest (src/ops/pulse.py): a 1-5 score and an
+-- optional comment, per recipient and month. Off unless GAME_DIGEST_PULSE=1.
+CREATE TABLE IF NOT EXISTS pulses (
+    id INTEGER PRIMARY KEY,
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    child_id INTEGER REFERENCES children(id),
+    month TEXT NOT NULL,
+    asked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    score INTEGER CHECK(score BETWEEN 1 AND 5),
+    comment TEXT,
+    answered_at TEXT,
+    UNIQUE(channel, address, month)
+);
+"""
+
 
 def migrate(con):
     """Bring an existing database to SCHEMA_VERSION. Idempotent and additive only."""
@@ -330,6 +347,11 @@ def migrate(con):
     con.executescript(MIGRATION_12)
     con.executescript(MIGRATION_14)
     con.executescript(MIGRATION_15)
+    con.executescript(MIGRATION_16)
+    # Schema 16: an erased family still counts in the retention cohorts (src/ops/cohorts.py).
+    for column in ("first_game", "last_game"):
+        if column not in columns(con, "erasures"):
+            con.execute(f"ALTER TABLE erasures ADD COLUMN {column} TEXT")
     widen_observation_kinds(con)
     # Mechanic tags (src/preparation/mechanics.py): similar ideas, not just equal titles.
     for table in ("games", "reserve_games"):

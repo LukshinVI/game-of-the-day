@@ -52,6 +52,7 @@ sys.path.insert(0, str(ROOT))
 from src.bot import channel_link, erasure, swap  # noqa: E402
 from src.db import children as ch  # noqa: E402
 from src.feedback import insights, reactions, storage  # noqa: E402
+from src.ops import pulse  # noqa: E402
 
 DB_PATH = ch.DB_PATH
 API = "https://api.telegram.org"
@@ -288,6 +289,11 @@ class ProductBot:
             return self.list_children(con, chat_id)
         if command in ("/pause", "/resume"):
             return self.set_active(con, chat_id, command == "/resume")
+        if not command and self.step(con, chat_id) is None:
+            scored = pulse.answer(con, "telegram", chat_id, text, self.now(),
+                                  lambda note: self.notify_owner(note, con, chat_id, "pulse"))
+            if scored is not None:
+                return scored
         wants_swap, swap_name = swap.parse(text)
         if wants_swap and (command == "/another" or not command) and self.step(con, chat_id) is None:
             reply = swap.swap(con, "telegram", chat_id, swap_name, self.now().date(),

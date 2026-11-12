@@ -243,7 +243,9 @@ CREATE TABLE erasures (
     closed_at TEXT,
     children INTEGER NOT NULL DEFAULT 0,
     survey TEXT,
-    archive_json TEXT
+    archive_json TEXT,
+    first_game TEXT,
+    last_game TEXT
 );
 CREATE TABLE erasure_addresses (
     erasure_id INTEGER NOT NULL REFERENCES erasures(id),
@@ -261,7 +263,21 @@ CREATE TABLE exit_surveys (
     text TEXT,
     days_used INTEGER
 );
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '15');
+-- "Полезно ли?" once a month in the Sunday digest (src/ops/pulse.py): a 1-5 score and an
+-- optional comment, per recipient and month. Off unless GAME_DIGEST_PULSE=1.
+CREATE TABLE pulses (
+    id INTEGER PRIMARY KEY,
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    child_id INTEGER REFERENCES children(id),
+    month TEXT NOT NULL,
+    asked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    score INTEGER CHECK(score BETWEEN 1 AND 5),
+    comment TEXT,
+    answered_at TEXT,
+    UNIQUE(channel, address, month)
+);
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '16');
 
 -- One-time request to star the project on GitHub (src/ops/weekly_digest.py).
 CREATE TABLE star_requests (

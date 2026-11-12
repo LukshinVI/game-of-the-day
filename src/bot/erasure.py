@@ -59,6 +59,7 @@ FAMILY_TABLES = (
     ("swaps", "child_id IN ({kids})", {"child_id": "children", "game_id": "games"}),
     ("applications", "child_id IN ({kids}) OR (channel || ':' || address) IN ({addrs})", {"child_id": "children"}),
     ("star_requests", "(channel || ':' || address) IN ({addrs})", {"child_id": "children"}),
+    ("pulses", "(channel || ':' || address) IN ({addrs}) OR child_id IN ({kids})", {"child_id": "children"}),
     ("members", "chat_id IN ({keys})", {}),
     ("onboarding", "chat_id IN ({keys})", {}),
     ("channel_links", "(from_channel || ':' || from_address) IN ({addrs}) "
@@ -238,6 +239,9 @@ def archive(con, row, now, notify):
     kids, addrs = family(con, row["channel"], row["address"])
     first = con.execute(f"SELECT min(created_at) FROM children WHERE id IN ({_in(kids)})").fetchone()[0]
     days_used = (now.astimezone(timezone.utc).replace(tzinfo=None) - datetime.fromisoformat(first)).days if first else 0
+    span = con.execute(
+        f"SELECT min(g.game_date), max(g.game_date) FROM games g JOIN deliveries d ON d.game_id = g.id "
+        f"WHERE g.child_id IN ({_in(kids)}) AND d.status = 'sent'").fetchone()
     data = snapshot(con, kids, addrs)
     remove(con, kids, addrs)
     if not kids:  # nothing to come back to: a questionnaire or an application at most
@@ -246,8 +250,8 @@ def archive(con, row, now, notify):
     purge_after = _utc(now + timedelta(days=ERASURE_GRACE_DAYS))
     con.execute(
         "UPDATE erasures SET status = 'archived', archived_at = ?, purge_after = ?, children = ?, survey = 'asked', "
-        "archive_json = ? WHERE id = ?",
-        (_utc(now), purge_after, len(kids),
+        "first_game = ?, last_game = ?, archive_json = ? WHERE id = ?",
+        (_utc(now), purge_after, len(kids), span[0], span[1],
          json.dumps({"days_used": max(days_used, 0), "rows": data}, ensure_ascii=False), row["id"]))
     for channel, address in addrs:
         con.execute("INSERT OR REPLACE INTO erasure_addresses(erasure_id, channel, address) VALUES (?, ?, ?)",

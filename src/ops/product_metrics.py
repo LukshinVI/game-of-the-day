@@ -6,7 +6,8 @@ Compares the last `days` with the `days` before (test children excluded):
 - outcomes (liked / disliked) and difficulty (too easy / right / too hard) from
   observations: "too easy" falling after the adaptation means personalization works;
 - pauses and blocks; wishes about the service;
-- days served from the reserve, and how often the safety reviewer rejected a candidate.
+- days served from the reserve, and how often the safety reviewer rejected a candidate;
+- retention by monthly cohort (src/ops/cohorts.py) and the «полезно ли?» score (src/ops/pulse.py).
 
 Read-only. Shown by /metrics in the ops bot and in the Monday report.
 
@@ -15,10 +16,14 @@ Read-only. Shown by /metrics in the ops bot and in the Monday report.
 
 import argparse
 import sqlite3
+import sys
 from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+from src.ops import cohorts, pulse  # noqa: E402
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 
@@ -83,6 +88,7 @@ def report(db_path=DB_PATH, days=7, today=None):
     try:
         cur = period(con, cur_start, today.isoformat())
         prev = period(con, prev_start, prev_end)
+        value = [cohorts.report(con, today), usefulness(con, today)]
     finally:
         con.close()
 
@@ -109,7 +115,19 @@ def report(db_path=DB_PATH, days=7, today=None):
         line("пожелания", cur["wishes"], prev["wishes"]),
         line("дней из резерва", cur["reserve"], prev["reserve"]),
         line("ревьюер отклонил", f"{cur['flagged']} из {cur['reviews']}", f"{prev['flagged']} из {prev['reviews']}"),
+        "",
+        *value,
     ])
+
+
+def usefulness(con, today):
+    answered, asked, average, dist = pulse.summary(con, today)
+    if not asked:
+        return "📊 Полезность (1–5, за 90 дн.): ещё не спрашивали"
+    if not answered:
+        return f"📊 Полезность (1–5, за 90 дн.): спросили {asked}, ответов пока нет"
+    spread = " ".join(f"{s}×{dist[s]}" for s in sorted(dist, reverse=True))
+    return f"📊 Полезность (1–5, за 90 дн.): в среднем {average:.1f}, ответили {answered} из {asked} ({spread})"
 
 
 def main(argv=None):

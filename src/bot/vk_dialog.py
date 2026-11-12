@@ -21,6 +21,7 @@ from datetime import date, datetime
 
 from src.bot import channel_link, erasure, swap
 from src.bot import product_bot as pb
+from src.ops import pulse
 
 CHANNEL = "vk"
 # Strangers who may start a questionnaire per day: bounds a flood of fake applications
@@ -158,6 +159,10 @@ class VkDialog:
             if pb.reactions.is_reaction(text):
                 return "Ответьте, пожалуйста, текстом 🙂"
             return self.questionnaire(con, peer, key, current, text, family=True)
+        scored = pulse.answer(con, "vk", peer, text, self.now(),
+                              lambda note: pb.ProductBot.notify_owner(note, con, key, "pulse"))
+        if scored is not None:
+            return scored
         wants_swap, swap_name = swap.parse(text)
         if wants_swap:
             reply = swap.swap(con, "vk", peer, swap_name, self.now().date(),

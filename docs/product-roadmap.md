@@ -52,6 +52,16 @@ problem never costs a day.
   family dialogs told apart) and reaction labels; Telegram feedback joins the semantic
   agent.
 
+## Backlog (agreed, not scheduled)
+
+- **Voice feedback, transcribed.** Today a voice message is only a label (`[голос]`,
+  nothing stored). Transcribing it needs a speech-to-text step and a decision on where the
+  audio goes; the privacy terms (`docs/privacy.md`) come first.
+- **Referral.** A family invites another; needs a limit and the owner's approval like any
+  application, so it never becomes open sign-up.
+- **Image cards.** Illustrations made in the ChatGPT style the VK community already uses,
+  composed by code into a card for the game; a separate release.
+
 ## Later
 
 **V4 — Activity and development history.** A caregiver-facing history of activities and
