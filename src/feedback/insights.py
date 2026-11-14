@@ -370,7 +370,7 @@ def run(db_path=None, now=None, reply=True, model=run_model, sender=send_reply):
                             feedback_id=group[-1]["id"], who=who(con, group[0]))
             mark(con, group, "done", now)
             if child_id is not None:
-                profile.rebuild(con, child_id)
+                profile.rebuild(con, child_id, now)
             con.commit()
             done += 1
             print(f"feedback {[r['id'] for r in group]}: {len(observations)} observations")

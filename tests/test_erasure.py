@@ -56,11 +56,12 @@ class Base(unittest.TestCase):
             fid = con.execute("INSERT INTO feedback (game_id, channel, raw_text, received_at) "
                               "VALUES (?, 'telegram', 'понравилось, смеялся', '2026-11-11T12:00:00')",
                               (game_id,)).lastrowid
-            con.execute("INSERT INTO observations (feedback_id, child_id, game_id, kind, value, evidence) "
-                        "VALUES (?, ?, ?, 'like', 'yes', 'смеялся')", (fid, child, game_id))
+            # Fixed dates, not the wall clock: retention terms are measured from NOW.
+            con.execute("INSERT INTO observations (feedback_id, child_id, game_id, kind, value, evidence, created_at) "
+                        "VALUES (?, ?, ?, 'like', 'yes', 'смеялся', '2026-11-11 12:00:00')", (fid, child, game_id))
             con.execute("INSERT INTO child_profiles (child_id, profile_json) VALUES (?, '{}')", (child,))
-        con.execute("INSERT INTO wishes (source, child_id, chat_id, text) VALUES ('command', 1, ?, 'больше на улице')",
-                    (TG,))
+        con.execute("INSERT INTO wishes (source, child_id, chat_id, text, created_at) "
+                    "VALUES ('command', 1, ?, 'больше на улице', '2026-11-11 12:00:00')", (TG,))
         con.execute("INSERT INTO user_events (chat_id, kind, text) VALUES (?, 'join', '👋 Мама Тёмы')", (TG,))
         con.execute("INSERT INTO model_runs (target_date, child_id, attempt, outcome, cost_usd) "
                     "VALUES ('2026-11-11', 1, 1, 'pass', 0.1)")
