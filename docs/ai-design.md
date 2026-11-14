@@ -9,8 +9,7 @@ a deterministic check after it, a fallback when it fails, a budget, and a measur
 |---|---|---|---|---|---|
 | propose the day's activity | Claude Sonnet (Claude Code headless, web search) | age in months, skills offered at that age with recent counts, history, the child's profile | candidate JSON (schema) | the gate: schema, age, duration, safety terms, safety length, skill band and rotation, duplicates; corrective retry with the reasons | Haiku under the same gate, then a library game chosen by code |
 | review safety after the gate | Claude Haiku | the activity, the child's age | serious, concrete problems only | a finding rejects like a gate error and reaches the retry; a reviewer outage never blocks | the gate result stands |
-| extract observations from feedback | Claude Haiku | the feedback text, the game | observations with verbatim quotes; wishes about the service | quote must be verbatim in the text; enums; caps per child and per day | feedback stays pending, retried next run |
-| classify VK feedback semantically | Gemma 4 on Workers AI | application-segmented feedback | classification of existing segments | deterministic validation, policy, guarded target linking | raw feedback remains stored |
+| extract observations from feedback (VK and Telegram) | Claude Haiku | the feedback text, the game | observations with verbatim quotes; wishes about the service | quote must be verbatim in the text; enums; caps per child and per day | feedback stays pending, retried next run |
 | judge evals (offline) | Claude Opus | an activity and the case intent | age fit, clarity, value, safety concerns, profile fit | — | — |
 
 The child's name and birth date never reach a model; only the age in months does.
@@ -54,15 +53,13 @@ is a like and goes to the profile; a wish about the service itself ("send them i
 evening") is routed to the owner, not to the profile. The parent gets one reply saying what
 was taken into account, built by code from the kept observations.
 
-## The semantic feedback agent (VK)
+## One analyzer for both channels
 
-```text
-feedback text → deterministic segmentation and provenance → model classifies the
-application's segments → deterministic validation → policy → guarded target linking
-```
-
-The model cannot create evidence spans; metadata is context, not evidence; an unresolved
-reference stays unresolved instead of being guessed.
+VK feedback used to get a second analysis: a semantic agent in the Cloudflare Worker
+(deterministic segmentation, then a classifier on Workers AI). Once the observations above
+drove personalization, nothing read the agent's output, so it was retired in favour of one
+analyzer for VK and Telegram ([ADR 0005](adr/0005-one-feedback-analyzer.md)). The Worker
+now makes no model call.
 
 ## Measuring
 
@@ -73,8 +70,6 @@ reference stays unresolved instead of being guessed.
   mouthing age, a long history, a profile) through the real selection path, scored by the
   gate, deterministic lint and a model judge. They decided the switch from Opus to Sonnet
   (same gate results, close quality, half the quota) and verified the safety prompt.
-- **Feedback agent evals** (`worker/evals`): deterministic segmentation on every push, LLM
-  evals on demand across models.
 
 ## Cost
 

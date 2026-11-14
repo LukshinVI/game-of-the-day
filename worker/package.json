@@ -1,11 +1,9 @@
 {
   "name": "game-of-the-day-worker",
   "version": "1.0.0",
-  "description": "Cloudflare Worker: VK callback ingress and the semantic feedback agent",
+  "description": "Cloudflare Worker: VK callback ingress and durable hand-off to the host",
   "scripts": {
-    "test": "node evals/runSegmentationEvals.js && node evals/runReactionTests.js && node evals/runRoutingTests.js",
-    "evals:segmentation": "node evals/runSegmentationEvals.js",
-    "evals:llm:dev": "wrangler dev --remote -c wrangler.evals.jsonc"
+    "test": "node tests/reactionLabels.test.js && node tests/routing.test.js"
   },
   "license": "MIT",
   "type": "module",

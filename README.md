@@ -18,8 +18,8 @@ It runs in production for real families (VK and a Telegram bot, invite-only). It
 | A model outage or an exhausted quota must not cost the family a day | Primary model → cheaper fallback model under the same gate → a validated game from the library, chosen by code; a daily model budget; the owner is told which path made the day. |
 | Model outage must not lose user input | Raw feedback is persisted **before** any model call and crosses a durable queue boundary. A model failure leaves feedback retryable, not lost. |
 | Personalization without giving the model memory | A small model only extracts observations from feedback, each with a verbatim quote checked by code; code builds the child's profile; the selection prompt follows it; evals score profile fit. |
-| The model must not invent evidence | Feedback is segmented deterministically first. The model classifies the application's segments; it cannot create its own evidence spans. Unresolved references stay unresolved instead of being guessed. |
-| Prompt and model changes regress silently | Eval suites: deterministic segmentation evals on every push, LLM evals against real Workers AI models on demand, with side-by-side model comparison. |
+| The model must not invent evidence | Every observation carries a quote, and code keeps it only if the quote is verbatim in the parent's message. One analyzer reads feedback from both channels ([ADR 0005](docs/adr/0005-one-feedback-analyzer.md)). |
+| Prompt and model changes regress silently | Selection evals run the real selection path on demand, with side-by-side model comparison (they moved selection from Opus to Sonnet on evidence); every production model attempt is recorded. |
 | "It ran" is not "the user got the game" | An independent daily-outcome check verifies that today's activity actually exists and was delivered, separately from the per-process alerts. |
 | Onboarding without the operator | Telegram: a one-time invite link to the product bot. VK: anyone who writes to the community fills the same questionnaire in the chat, and the owner approves the application with one button in the ops bot, so a stranger cannot start model spending. Either way the family enters the birth date itself; the age is computed, confirmed and stored. No model is involved. |
 | Parents should see the point | A Sunday digest: the week's games and skills, what went well from feedback, one or two home ideas for next week (deliberately no age norms: they read as a test parents can fail), and a monthly question about what is missing. |
@@ -40,15 +40,14 @@ flowchart TD
     QA --> W2[Worker: forward to host]
     W2 --> QB[[Queue: storage]]
     QB --> STORE[Feedback storage] --> DB
-    STORE -. raw persisted, then analysed .-> QC[[Queue: enrichment]]
-    QC --> F[Feedback agent]
-    F <--> AI[Workers AI]
-    F --> QB
+    TG[Telegram product bot] -->|caregiver feedback| STORE
+    DB --> INS[Feedback insights<br/>one analyzer for both channels]
+    INS --> DB
 ```
 
 - **Host runtime** (Python, systemd, SQLite): game preparation, delivery, feedback storage, backups, the daily outcome check, and the ops bot.
-- **Edge** (Cloudflare Workers + Queues): callback validation, durable hand-off to the host, and the semantic feedback agent on Workers AI.
-- Feedback goes through three separate queues (ingress, storage, enrichment). The storage queue carries both the raw event and, later, its analysis.
+- **Edge** (Cloudflare Workers + Queues): VK callback validation and a durable hand-off to the host. The Worker makes no model call.
+- VK feedback crosses two queues (ingress, storage); Telegram feedback is stored by the product bot directly. Both land in the same table and are analysed by the same code.
 
 Details: [Deployment](docs/deployment.md) · [Architecture](docs/architecture.md) · [Decisions (ADR)](docs/adr/) · [Reliability model](docs/reliability.md) · [SLOs](docs/slo.md) · [Scaling](docs/scaling.md) · [AI design](docs/ai-design.md) · [Product roadmap](docs/product-roadmap.md)
 
@@ -59,24 +58,16 @@ Details: [Deployment](docs/deployment.md) · [Architecture](docs/architecture.md
 **LLMs are used for:**
 - **Daily preparation:** proposing an activity candidate as structured output. It is then validated, and retried with the reasons if rejected ([`src/preparation`](src/preparation)).
 - **Feedback insights:** a small model extracts observations with verbatim quotes; code builds the child's profile ([`src/feedback`](src/feedback)).
-- **Feedback agent:** classifying free-form caregiver feedback and resolving which activity it refers to, inside an application-controlled candidate space ([`worker/src/agents`](worker/src/agents)). Production model: `@cf/google/gemma-4-26b-a4b-it` on Workers AI.
+- **Safety review:** a small model reviews each activity that passed the deterministic gate against an age checklist.
 
-```text
-feedback text
-→ deterministic segmentation and provenance
-→ AI classification of existing segments
-→ deterministic validation
-→ deterministic policy
-→ guarded target linking
-```
+The Cloudflare Worker makes no model call: VK and Telegram feedback reach the same analyzer on the host ([ADR 0005](docs/adr/0005-one-feedback-analyzer.md)).
 
 ## Testing and evals
 
 | Suite | What it covers | Runs |
 |---|---|---|
-| `tests/` (Python, 253 tests) | delivery state machine, feedback storage idempotency, preparation validation and message layout, child age, model backends, backup script, outcome check, ops bot, multi-child, product bot onboarding | every push (CI) |
-| `worker/evals/runSegmentationEvals.js` | deterministic segmentation and relation detection | every push (CI) |
-| `worker/evals/feedbackCases.js` (16 cases) | end-to-end semantic feedback analysis against a real model; compares `baseline` / `gemma` / `glm` | manual workflow ([LLM evals](.github/workflows/llm-evals.yml)) |
+| `tests/` (Python, 380+ tests) | delivery state machine, feedback storage idempotency, preparation validation and message layout, child age, model backends, backup script, outcome check, ops bot, multi-child, product bot onboarding | every push (CI) |
+| `worker/tests/` | VK callback routing (private dialogs only, sender passed on) and reaction labels | every push (CI) |
 | `evals/preparation/` (6 synthetic cases) | the real selection path (prompt → model → validator → retries) scored by the gate, deterministic lint and an optional model judge; compares models (e.g. Opus vs Sonnet) | manual, on the host (spends quota) |
 | ShellCheck | backup scripts | every push (CI) |
 
@@ -88,14 +79,10 @@ LLM evals are manual on purpose. The project has a strict no-unplanned-spend pol
 # Python unit tests (install the sqlite3 CLI to run the backup tests too)
 python3 -m unittest discover -s tests -v
 
-# Worker: deterministic evals
+# Worker tests
 cd worker
 npm ci
 npm test
-
-# Worker: LLM evals against Workers AI (needs a Cloudflare account)
-npm run evals:llm:dev            # wrangler dev --remote with the evals config
-curl "http://127.0.0.1:8787/__evals/feedback?model=baseline"
 ```
 
 Configuration lives in environment variables; see [`.env.example`](.env.example). Worker secrets are set with `wrangler secret put`.
@@ -111,8 +98,8 @@ src/
   bot/           product Telegram bot: invites, onboarding, feedback
   db/            schema, additive migrations, children and recipients
 worker/
-  src/           Cloudflare Worker: callback ingress and the feedback agent
-  evals/         deterministic and LLM eval suites
+  src/           Cloudflare Worker: VK callback ingress
+  tests/         routing and reaction-label tests
 ops/             systemd units, timers and runbooks (preparation, delivery, feedback, backup, bot, outcome check)
 evals/           selection evals and model comparison reports
 docs/            architecture, reliability, AI design, deployment, roadmap, postmortems

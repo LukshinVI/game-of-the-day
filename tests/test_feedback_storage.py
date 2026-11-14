@@ -34,7 +34,7 @@ def require_temp_db(path):
 
 _import_dir = tempfile.mkdtemp(prefix="feedback-import-")
 os.environ["FEEDBACK_DB_PATH"] = str(Path(_import_dir) / "import-guard.db")
-for _name in ("CF_ACCOUNT_ID", "CF_STORAGE_QUEUE_ID", "CF_ENRICHED_QUEUE_ID", "CF_QUEUE_API_TOKEN"):
+for _name in ("CF_ACCOUNT_ID", "CF_STORAGE_QUEUE_ID", "CF_QUEUE_API_TOKEN"):
     os.environ[_name] = "dummy"  # never bind real credentials; queue_consumer reads these at import time
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -393,7 +393,7 @@ def _message(payload, lease="lease-1"):
 
 
 class ConsumerPersistenceBoundary(FeedbackTestCase):
-    """queue_consumer.process_message: what gets acked, pushed and retried.
+    """queue_consumer.process_message: what gets acked and retried.
 
     The invariant: a message is acked only after its data is durably in SQLite;
     every failure must propagate (so run() retries) and must not ack.
@@ -403,24 +403,23 @@ class ConsumerPersistenceBoundary(FeedbackTestCase):
         super().setUp()
         self.add_game(1, "001", "2026-09-01")
         self.ack = self._patch("ack")
-        self.push = self._patch("push_enriched", return_value={"result": {}})
+        self.api = self._patch("api_post")
 
     def _patch(self, name, **kw):
         patcher = mock.patch.object(consumer, name, **kw)
         self.addCleanup(patcher.stop)
         return patcher.start()
 
-    def test_raw_only_message_pushes_enriched_with_game_and_acks(self):
+    def test_raw_message_is_stored_for_insights_and_acked_with_no_other_call(self):
         consumer.process_message(_message(_envelope()))
-        self.push.assert_called_once()
-        pushed = self.push.call_args[0][0]
-        self.assertEqual((pushed["version"], pushed["event_id"], pushed["game"]["id"]), ("feedback-enriched-v1", "e1", "001"))
+        self.api.assert_not_called()  # no enrichment hop: insights.py analyses both channels
         self.ack.assert_called_once_with("lease-1")
-        self.assertEqual(len(self.feedback_rows()), 1)
+        row = self.feedback_row()
+        self.assertEqual((row["processed"], row["insights_at"]), (0, None))
 
-    def test_message_with_analysis_persists_processes_and_acks_without_enrichment(self):
+    def test_legacy_analysis_envelope_is_still_persisted_and_acked(self):
         consumer.process_message(_message(_envelope(analysis={"decision": "NO_PREFERENCE"})))
-        self.push.assert_not_called()
+        self.api.assert_not_called()
         self.ack.assert_called_once_with("lease-1")
         row = self.feedback_row()
         self.assertEqual(row["processed"], 1)
@@ -439,7 +438,6 @@ class ConsumerPersistenceBoundary(FeedbackTestCase):
             consumer.process_message(_message(_envelope()))
         self.assertEqual((ctx.exception.status, ctx.exception.code), (409, "feedback_target_not_found"))
         self.ack.assert_not_called()
-        self.push.assert_not_called()
         self.assertEqual(self.feedback_rows(), [])
 
     def test_conflicting_redelivery_never_acks(self):
@@ -449,34 +447,6 @@ class ConsumerPersistenceBoundary(FeedbackTestCase):
             consumer.process_message(_message(_envelope(text="changed"), lease="lease-2"))
         self.ack.assert_not_called()
         self.assertEqual(self.feedback_row()["raw_text"], "original")
-
-    def test_enrichment_push_failure_keeps_raw_and_does_not_ack_then_recovers_on_retry(self):
-        self.push.side_effect = consumer.QueueApiError("cloudflare down")
-        with self.assertRaises(consumer.QueueApiError):
-            consumer.process_message(_message(_envelope()))
-        self.ack.assert_not_called()
-        self.assertEqual(len(self.feedback_rows()), 1)  # raw is durable before the failure
-        self.push.side_effect = None
-        self.push.return_value = {"result": {}}
-        consumer.process_message(_message(_envelope(), lease="lease-2"))
-        self.ack.assert_called_once_with("lease-2")
-        self.assertEqual(len(self.feedback_rows()), 1)
-
-    def test_redelivery_of_an_already_analysed_event_does_not_re_enqueue_enrichment(self):
-        consumer.process_message(_message(_envelope()))
-        storage.save_analysis(self.analysis_payload({"decision": "NO_PREFERENCE"}))
-        self.push.reset_mock()
-        self.ack.reset_mock()
-        consumer.process_message(_message(_envelope(), lease="lease-2"))
-        self.push.assert_not_called()
-        self.ack.assert_called_once_with("lease-2")
-
-    def test_ack_happens_after_enrichment_push(self):
-        order = mock.Mock()
-        order.attach_mock(self.push, "push")
-        order.attach_mock(self.ack, "ack")
-        consumer.process_message(_message(_envelope()))
-        self.assertEqual([c[0] for c in order.mock_calls], ["push", "ack"])
 
     def test_malformed_messages_fail_before_touching_the_db_and_never_ack(self):
         bad_messages = {

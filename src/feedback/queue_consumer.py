@@ -27,7 +27,6 @@ API_ROOT = "https://api.cloudflare.com/client/v4"
 
 ACCOUNT_ID = os.environ["CF_ACCOUNT_ID"]
 QUEUE_ID = os.environ["CF_STORAGE_QUEUE_ID"]
-ENRICHED_QUEUE_ID = os.environ["CF_ENRICHED_QUEUE_ID"]
 API_TOKEN = os.environ["CF_QUEUE_API_TOKEN"]
 
 BATCH_SIZE = 1
@@ -46,8 +45,6 @@ def queue_url(action, queue_id=QUEUE_ID):
         f"/queues/{queue_id}/messages/{action}"
     )
 
-
-def push_url(queue_id): return f"{API_ROOT}/accounts/{ACCOUNT_ID}/queues/{queue_id}/messages"
 
 def api_post(action, payload, queue_id=QUEUE_ID, url=None):
     request = urllib.request.Request(
@@ -100,18 +97,6 @@ def api_post(action, payload, queue_id=QUEUE_ID, url=None):
         )
 
     return result
-
-
-def push_enriched(payload):
-    return api_post(
-        None,
-        {
-            "body": payload,
-            "content_type": "json",
-        },
-        queue_id=ENRICHED_QUEUE_ID,
-        url=push_url(ENRICHED_QUEUE_ID),
-    )
 
 
 def pull():
@@ -265,6 +250,9 @@ def persist(payload):
             "save_raw returned unexpected status"
         )
 
+    # Analysis envelopes came from the Worker's semantic feedback agent, retired in
+    # favour of one analyzer for both channels (src/feedback/insights.py). They are
+    # still accepted so messages already in flight at the cutover are stored.
     if "analysis" not in payload: return raw_result, None
     analysis_result = save_analysis(
         {
@@ -304,36 +292,6 @@ def process_message(message):
             return
 
     raw_result, analysis_result = persist(payload)
-
-    if analysis_result is None and not raw_result.get("processed"):
-        game = raw_result.get("game")
-
-        if not isinstance(game, dict):
-            raise RuntimeError(
-                "save_raw returned no game context"
-            )
-
-        push_result = push_enriched(
-            {
-                "version": "feedback-enriched-v1",
-                "event_id": payload["event_id"],
-                "channel": payload["channel"],
-                "raw_text": payload["raw_text"],
-                "game": game,
-            }
-        )
-        push_metrics = (
-            (push_result.get("result") or {})
-            .get("metadata", {})
-            .get("metrics", {})
-        )
-        LOG.info(
-            "Enriched feedback queued "
-            "event_id=%s backlog_count=%s backlog_bytes=%s",
-            payload["event_id"],
-            push_metrics.get("backlog_count"),
-            push_metrics.get("backlog_bytes"),
-        )
 
     ack(lease_id)
 

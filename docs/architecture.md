@@ -21,8 +21,7 @@ flowchart LR
     end
     subgraph Edge["Cloudflare"]
         W[Worker: VK callback]
-        Q[[Queues: ingress · storage · enrichment]]
-        AI[Workers AI: feedback agent]
+        Q[[Queues: ingress · storage]]
     end
     CC[Claude Code headless<br/>Sonnet · Haiku]
     VK[VK]
@@ -33,7 +32,6 @@ flowchart LR
     PREP --> DB
     DB --> DEL --> VK & TG
     VK -->|reply| W --> Q --> CON --> DB
-    Q <--> AI
     TG <-->|reply, /commands| PB --> DB
     INS <--> CC
     INS --> DB
@@ -123,8 +121,10 @@ Mon    LLM report                                     Sun    reserve top-up, res
 ```text
 channel event → validate → durable queue (VK) / direct (Telegram)
 → persist raw feedback → insights (observations, profile, wish) → one reply
-                       ↘ semantic feedback agent (VK, Workers AI)
 ```
+
+Both channels meet at the `feedback` table and one analyzer (`src/feedback/insights.py`)
+reads them; the Worker makes no model call.
 
 - raw feedback is durable before any model call; a model failure leaves it pending;
 - an external event identity makes ingestion idempotent;
@@ -142,14 +142,13 @@ workflow state, idempotency, retries and recovery, persistence and record linkin
 skills offered at each age, the safety gate, the fallback chain and the library choice,
 the child's profile, budgets and caps, and every external side effect.
 
-Models are used for exactly three things, each behind a schema and a deterministic check:
+Models are used for exactly two things, each behind a schema and a deterministic check:
 
 1. proposing the day's activity (Claude Sonnet; Haiku as fallback), and reviewing its
    safety after the gate (Haiku);
-2. extracting observations and wishes from feedback (Claude Haiku);
-3. classifying VK feedback in the semantic feedback agent (Gemma on Workers AI).
+2. extracting observations and wishes from feedback, for VK and Telegram alike (Claude Haiku).
 
-A fourth, offline use is the evals judge (Opus), which never touches production state.
+A third, offline use is the evals judge (Opus), which never touches production state.
 The model is never the application's memory, workflow engine or source of truth.
 
 ## 8. Families and channels

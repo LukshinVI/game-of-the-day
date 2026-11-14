@@ -46,17 +46,21 @@ prompt; selection evals that chose Sonnet over Opus on evidence; per-attempt met
 weekly report; a fallback chain (fallback model → library and warm reserve) so a model
 problem never costs a day.
 
+**One feedback path for both channels.** The Worker passes the VK sender (test and family
+dialogs told apart) and reaction labels; VK and Telegram feedback land in one table and one
+analyzer (`src/feedback/insights.py`) reads both. The Worker's separate semantic agent on
+Workers AI was retired: its analysis was stored but nothing read it.
+
 ## Next
 
-- **One feedback path for both channels.** The Worker passes the VK peer id (test and
-  family dialogs told apart) and reaction labels; Telegram feedback joins the semantic
-  agent.
+- **Voice feedback, transcribed.** Today a voice message is only a label (`[голосовое]`,
+  nothing stored). Plan: the host downloads the audio (Telegram file, VK audio link),
+  transcribes it with Whisper on Workers AI, stores only the text as `[голосовое] …`, and
+  never keeps the audio; on failure the label stays and the family is asked for a few
+  words. The privacy terms (`docs/privacy.md`) and the FAQ change first.
 
 ## Backlog (agreed, not scheduled)
 
-- **Voice feedback, transcribed.** Today a voice message is only a label (`[голос]`,
-  nothing stored). Transcribing it needs a speech-to-text step and a decision on where the
-  audio goes; the privacy terms (`docs/privacy.md`) come first.
 - **Referral.** A family invites another; needs a limit and the owner's approval like any
   application, so it never becomes open sign-up.
 - **Image cards.** Illustrations made in the ChatGPT style the VK community already uses,

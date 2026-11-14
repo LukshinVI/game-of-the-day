@@ -37,7 +37,7 @@ what it needs. Variable names are listed in [`.env.example`](../.env.example).
 |---|---|---|
 | `game.env` | preparation, delivery | `CHILD_BIRTH_DATE`, `VK_TOKEN`, `VK_PEER_ID` |
 | `preparation.env` | preparation | `PREPARATION_BACKEND`, `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` |
-| `feedback.env` | feedback consumer | `CF_ACCOUNT_ID`, `CF_STORAGE_QUEUE_ID`, `CF_ENRICHED_QUEUE_ID`, `CF_QUEUE_API_TOKEN` |
+| `feedback.env` | feedback consumer | `CF_ACCOUNT_ID`, `CF_STORAGE_QUEUE_ID`, `CF_QUEUE_API_TOKEN` |
 | `ops-bot.env` | alerts, ops bot | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
 
 ### Children and recipients

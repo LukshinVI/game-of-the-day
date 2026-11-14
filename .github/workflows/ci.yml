@@ -28,7 +28,7 @@ jobs:
         run: python -m unittest discover -s tests -v
 
   worker:
-    name: Worker — deterministic evals
+    name: Worker — tests
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -41,7 +41,7 @@ jobs:
           cache: npm
           cache-dependency-path: worker/package-lock.json
       - run: npm ci
-      - name: Feedback segmentation evals (no model calls)
+      - name: Routing and reaction-label tests
         run: npm test
 
   shell:

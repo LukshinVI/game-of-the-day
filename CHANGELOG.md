@@ -7,6 +7,23 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+### Changed
+- One feedback analyzer for both channels: VK feedback is stored and analysed by
+  `src/feedback/insights.py` exactly like Telegram feedback. The Worker validates the VK
+  callback and hands the message to the host; it makes no model call
+  ([ADR 0005](docs/adr/0005-one-feedback-analyzer.md)).
+
+### Removed
+- The Worker's semantic feedback agent on Workers AI, the enrichment queue hop, its
+  segmentation and LLM evals and the manual LLM-evals workflow: its analysis was stored
+  but nothing read it. Analysis envelopes in flight at the cutover are still stored;
+  existing `analysis_json` values stay. `CF_ENRICHED_QUEUE_ID` is no longer read.
+
+### Fixed
+- Feedback insights build the child's profile at the run's own time, not the wall clock,
+  so a run for a given moment gives the same profile (two tests failed as the calendar
+  moved on). The retention test uses fixed dates for observations and wishes.
+
 ## [1.9.0] - 2026-11-12 — Families decide
 
 ### Fixed

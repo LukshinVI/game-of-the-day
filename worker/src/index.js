@@ -1,5 +1,3 @@
-import { analyzeFeedback } from './agents/feedbackAgent.js';
-
 // Community ID is deployment-specific: set with `wrangler secret put VK_GROUP_ID`.
 // If it is missing, Number(undefined) is NaN and every callback is rejected (fail closed).
 
@@ -245,14 +243,6 @@ export default {
                         env,
                         payload
                     );
-                } else if (
-                    batch.queue ===
-                    'game-of-the-day-feedback-enriched-prod'
-                ) {
-                    await processEnrichedFeedback(
-                        env,
-                        payload
-                    );
                 } else {
                     throw new Error(
                         'UNKNOWN_QUEUE: ' +
@@ -314,9 +304,9 @@ async function processQueuedFeedback(
     /*
      * Production feedback ingress.
      *
-     * From this point persistence and enrichment are handled
-     * by the VPS storage consumer. Google Feedback API is no
-     * longer part of the production feedback path.
+     * From this point the VPS storage consumer persists the message
+     * and src/feedback/insights.py analyses it, the same as Telegram
+     * feedback. The Worker makes no model call.
      */
     try {
         await env
@@ -341,85 +331,6 @@ async function processQueuedFeedback(
     );
 }
 
-
-async function processEnrichedFeedback(
-    env,
-    payload
-) {
-    const eventId =
-        typeof payload?.event_id === 'string'
-            ? payload.event_id
-            : '';
-
-    const feedbackText =
-        typeof payload?.raw_text === 'string'
-            ? payload.raw_text.trim()
-            : '';
-
-    const game =
-        payload?.game &&
-        typeof payload.game === 'object'
-            ? payload.game
-            : null;
-
-    if (
-        payload?.version !== 'feedback-enriched-v1' ||
-        !eventId ||
-        !feedbackText ||
-        !game
-    ) {
-        throw new Error(
-            'ENRICHED_FEEDBACK_INVALID_PAYLOAD'
-        );
-    }
-
-    let analysis;
-
-    try {
-        analysis = await analyzeFeedback(
-            env,
-            {
-                game,
-                feedback: {
-                    text: feedbackText
-                }
-            }
-        );
-    } catch (error) {
-        throw new Error(
-            'FEEDBACK_AI_FAILED: ' +
-            safeErrorMessage(error)
-        );
-    }
-
-    try {
-        await env
-            .FEEDBACK_STORAGE_QUEUE
-            .send({
-                version: 'feedback-storage-v1',
-                event_id: eventId,
-                channel: 'vk',
-                raw_text: feedbackText,
-                analysis
-            });
-    } catch (error) {
-        throw new Error(
-            'ANALYSIS_STORAGE_QUEUE_FAILED: ' +
-            safeErrorMessage(error)
-        );
-    }
-
-    console.log(
-        'Enriched feedback analyzed and queued for storage:',
-        {
-            eventId,
-            decision: analysis.decision,
-            model: analysis.meta?.model,
-            modelCalls:
-                analysis.meta?.model_calls
-        }
-    );
-}
 
 function buildFeedbackEventId(
     event,

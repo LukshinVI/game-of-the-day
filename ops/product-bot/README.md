@@ -76,7 +76,5 @@ Group chats are ignored; there is no inbound port (long polling).
 
 ## Known gaps
 
-- Telegram feedback is stored raw (`processed = 0`). Semantic analysis currently runs only
-  for VK events, which reach the enrichment queue through the Worker.
 - `/pause` applies from the next preparation; a game already prepared for today is still sent.
 - No self-service data deletion yet: the owner removes a family by hand on request.

@@ -46,6 +46,12 @@ try {
     // An event queued before this change (no address) is stored without one.
     await worker.queue({ queue: 'game-of-the-day-feedback-prod', messages: [{ body: { eventId: 'old', feedbackText: 'x' } }] }, env);
     assert.equal('address' in env.stored.at(-1), false);
+
+    // The Worker makes no model call: the retired enrichment queue is not consumed here.
+    await assert.rejects(
+        worker.queue({ queue: 'game-of-the-day-feedback-enriched-prod', messages: [{ body: {} }] }, env),
+        /UNKNOWN_QUEUE/
+    );
 } finally {
     console.log = silent;
 }

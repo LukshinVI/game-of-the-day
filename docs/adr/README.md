@@ -12,5 +12,6 @@ are made.
 | [0002](0002-llm-proposes-code-decides.md) | The model proposes, deterministic code decides | accepted |
 | [0003](0003-degrade-instead-of-paid-overage.md) | Degrade to a library instead of paying for overage | accepted |
 | [0004](0004-separate-product-and-ops-bots.md) | Separate product and ops bots, invite-only onboarding | accepted |
+| [0005](0005-one-feedback-analyzer.md) | One feedback analyzer for both channels | accepted |
 
 Format: context → options → decision → consequences → when to revisit.
