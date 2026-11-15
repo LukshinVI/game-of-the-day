@@ -18,7 +18,13 @@ Requirements:
   child was not interested, so do not repeat that kind of activity and reach the skill
   from a different angle; `no_materials`: the family lacked something, so use only things
   found in any home (no craft supplies, nothing to buy); `prep_heavy`: preparation was
-  too much, so pick a game that needs almost no preparation; when `short_attention` is present, keep the game short (about 5 minutes) and
+  too much, so pick a game that needs almost no preparation; `play_setting` says where or
+  when the family plays lately: `bedtime`: a calm, quiet game for the evening (no running,
+  jumping, chasing or loud sounds; soft voice, slow movements, cuddles, looking and
+  listening), `outdoors`: a game that works outside on a walk with what is found there,
+  `on_the_go`: no preparation and nothing beyond hands, voice and one toy from the bag;
+  `recent_trend: worse`: the last games worked less well, so lean on what is in `likes`
+  and `liked_games` rather than trying something new; when `short_attention` is present, keep the game short (about 5 minutes) and
   lively, in small steps, with movement or bright objects, without making the skill
   easier; when `child_profile.required_next` is present, the game must train exactly that
   skill, one step harder or easier (as `direction` says) than the game named in `after`;

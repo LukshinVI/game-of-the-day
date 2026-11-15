@@ -15,6 +15,17 @@ on the commit that completed each milestone.
 - «Ответить» on a game in VK attaches the feedback to that exact game, as in Telegram:
   the Worker passes only the replied message's id, never its text.
 
+### Added
+- Feedback in context (`GAME_FEEDBACK_CONTEXT`: `1` for every child, `test` for test
+  children only): the analyzer sees the child's games of the last three weeks and its
+  own observations of the last three days. An impression goes to the game it is about
+  («та игра с мячиками была классная»), not to the newest one; a general remark («потом
+  всё стало не очень») becomes `recent_trend` in the profile and the reply asks what is
+  wrong; where and when the family plays («играем перед сном») is a `play_setting` the
+  selector follows (calm games at bedtime), never a dislike; and «нет, не так» takes
+  back the observation it corrects. Every game id and retraction is checked against what
+  the model was shown. Schema 20 widens the observation kinds.
+
 ### Fixed
 - A second message about the same game (a follow-up, a voice note after a tap) was
   dropped after the queue's retries when the dialog's games all had feedback; it now

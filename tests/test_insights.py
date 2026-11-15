@@ -352,3 +352,102 @@ class Replies(InsightsSetup):
             insights.send_reply(None, [dict(group[0], external_event_id="tg:942:77")], "Спасибо")
         self.assertNotIn("reply_parameters", sent[0])
         self.assertEqual(sent[1]["reply_parameters"]["message_id"], 77)
+
+
+class Context(InsightsSetup):
+    """GAME_FEEDBACK_CONTEXT: recent games, settings, the general trend and corrections."""
+
+    def setUp(self):
+        super().setUp()
+        con = ch.connect_db(self.db)
+        con.execute("UPDATE games SET child_id = ?", (self.child,))
+        self.balls = con.execute(
+            "INSERT INTO games(legacy_id, game_date, age_months, title, skill, mechanics, child_id) "
+            "VALUES ('2', '2026-11-05', 14, 'Мячики в корзинку', 'coordination', 'бросает мяч', ?)",
+            (self.child,)).lastrowid
+        con.execute("INSERT INTO deliveries(game_id, channel, recipient, status, idempotency_key) "
+                    "VALUES (?, 'vk', '3000001', 'sent', 'k2')", (self.balls,))
+        con.commit()
+        con.close()
+        patcher = mock.patch.dict(os.environ, {"GAME_FEEDBACK_CONTEXT": "1"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def run_context(self, output):
+        def model(prompt, context=False):
+            self.prompts.append(prompt)
+            self.assertTrue(context)
+            return output
+        return insights.run(self.db, now=NOW, model=model,
+                            sender=lambda con, group, text: self.replies.append(text))
+
+    def rows(self, sql):
+        con = sqlite3.connect(self.db)
+        try:
+            return con.execute(sql).fetchall()
+        finally:
+            con.close()
+
+    def test_an_earlier_game_gets_its_impression_the_general_remark_goes_to_the_profile(self):
+        self.feedback("Та игра с мячиками была классная, а потом всё стало не очень", 10)
+        self.run_context({"retract": [], "observations": [
+            {"kind": "outcome", "value": "liked", "skill": None, "evidence": "игра с мячиками была классная",
+             "game": self.balls},
+            {"kind": "recent", "value": "worse", "skill": None, "evidence": "потом всё стало не очень", "game": None},
+        ]})
+        self.assertIn('"recent_games"', self.prompts[0])
+        self.assertIn("Мячики в корзинку", self.prompts[0])
+        self.assertEqual(self.rows("SELECT game_id, kind, value FROM observations ORDER BY id"),
+                         [(self.balls, "outcome", "liked"), (self.game, "recent", "worse")])
+        built = json.loads(self.rows("SELECT profile_json FROM child_profiles")[0][0])
+        self.assertEqual(built["liked_games"], ["Мячики в корзинку"])
+        self.assertEqual(built["recent_trend"], "worse")
+        self.assertIn("игра «Мячики в корзинку» понравилась", self.replies[0])
+        self.assertIn("что не так", self.replies[0])
+
+    def test_a_game_the_model_was_not_shown_stays_on_this_game(self):
+        self.feedback("понравилось", 10)
+        self.run_context({"retract": [], "observations": [
+            {"kind": "outcome", "value": "liked", "skill": None, "evidence": "понравилось", "game": 99999}]})
+        self.assertEqual(self.rows("SELECT game_id FROM observations"), [(self.game,)])
+
+    def test_bedtime_is_a_setting_and_a_correction_takes_back_the_wrong_dislike(self):
+        con = sqlite3.connect(self.db)
+        wrong = con.execute(
+            "INSERT INTO feedback(game_id, channel, external_event_id, raw_text, received_at, insights_at, "
+            "insights_status) VALUES (?, 'vk', 'old', 'нужно менее активно', ?, ?, 'done')",
+            (self.game, (NOW - timedelta(hours=1)).isoformat(), (NOW - timedelta(hours=1)).isoformat())).lastrowid
+        dislike = con.execute(
+            "INSERT INTO observations(feedback_id, child_id, game_id, kind, value, evidence, created_at) "
+            "VALUES (?, ?, ?, 'dislike', 'активные игры', 'нужно менее активно', ?)",
+            (wrong, self.child, self.game, (NOW - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"))).lastrowid
+        con.commit()
+        con.close()
+        self.feedback("нет не так, мы играем перед сном, нужны игры поспокойнее", 10)
+        self.run_context({"retract": [dislike, 12345], "observations": [
+            {"kind": "setting", "value": "bedtime", "skill": None, "evidence": "мы играем перед сном", "game": None}]})
+        self.assertIn('"previous_observations"', self.prompts[0])
+        self.assertEqual(self.rows("SELECT kind, value FROM observations ORDER BY id"), [("setting", "bedtime")])
+        built = json.loads(self.rows("SELECT profile_json FROM child_profiles")[0][0])
+        self.assertEqual(built["play_setting"], ["bedtime"])
+        self.assertNotIn("dislikes", built)
+        self.assertIn("поправили: убрали «не любит: активные игры»", self.replies[0])
+        self.assertIn("перед сном → подберём игры поспокойнее", self.replies[0])
+
+    def test_off_the_prompt_and_kinds_stay_as_before(self):
+        with mock.patch.dict(os.environ, {"GAME_FEEDBACK_CONTEXT": ""}):
+            self.feedback("играем перед сном", 10)
+            self.run_insights([{"kind": "setting", "value": "bedtime", "skill": None, "evidence": "перед сном"}])
+        self.assertNotIn("recent_games", self.prompts[0])
+        self.assertEqual(self.rows("SELECT count(*) FROM observations"), [(0,)])
+        self.assertNotIn("setting", insights.schema()["properties"]["observations"]["items"]["properties"]["kind"]["enum"])
+
+    def test_test_children_only(self):
+        con = sqlite3.connect(self.db)
+        try:
+            with mock.patch.dict(os.environ, {"GAME_FEEDBACK_CONTEXT": "test"}):
+                self.assertFalse(insights.context_on(con, self.child))
+                con.execute("UPDATE children SET is_test = 1")
+                self.assertTrue(insights.context_on(con, self.child))
+        finally:
+            con.close()

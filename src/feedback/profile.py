@@ -9,7 +9,9 @@ them into a small summary that preparation puts into the prompt:
 - what went well and what was hard, per skill;
 - whether attention is short for now (keep games short and lively, not easier);
 - likes and dislikes;
-- games the child liked or disliked.
+- games the child liked or disliked;
+- where and when the family plays lately (`play_setting`, e.g. bedtime: calmer games);
+- whether the recent games went worse in general (`recent_trend`).
 
 An empty profile is {} and changes nothing.
 """
@@ -28,6 +30,9 @@ DIRECTION_THRESHOLD = 0.8
 DIFFICULTY_SCORE = {"too_easy": 1.0, "right": 0.0, "too_hard": -1.0}
 # One "attention is short" signal counts for about two weeks (weight >= 0.5).
 ATTENTION_THRESHOLD = 0.5
+# A family's playing time or place holds for a month; "recent games went worse" for a week.
+SETTING_DAYS = 30
+RECENT_DAYS = 7
 
 
 def _age_days(created_at, now):
@@ -48,6 +53,7 @@ def build(observations, now=None):
     attention, attention_quotes = 0.0, []
     liked_games, disliked_games = [], []
     why_not = defaultdict(list)
+    settings, trend = [], None
 
     for obs in sorted(observations, key=lambda o: o["created_at"], reverse=True):
         age = _age_days(obs["created_at"], now)
@@ -72,6 +78,11 @@ def build(observations, now=None):
         elif kind == "reason" and value in REASON_DAYS and obs.get("game_title") and age <= REASON_DAYS[value]:
             if obs["game_title"] not in why_not[value] and len(why_not[value]) < 5:
                 why_not[value].append(obs["game_title"])
+        elif kind == "setting" and age <= SETTING_DAYS:
+            if value not in settings:
+                settings.append(value)
+        elif kind == "recent" and age <= RECENT_DAYS and trend is None:
+            trend = value  # the latest word counts
         elif kind == "outcome" and obs.get("game_title"):
             bucket = liked_games if value == "liked" else disliked_games if value == "disliked" else None
             if bucket is not None and obs["game_title"] not in bucket and len(bucket) < 10:
@@ -103,6 +114,10 @@ def build(observations, now=None):
         profile["disliked_games"] = disliked_games
     if why_not:
         profile["why_not"] = dict(why_not)
+    if settings:
+        profile["play_setting"] = settings
+    if trend == "worse":
+        profile["recent_trend"] = "worse"
     return profile
 
 

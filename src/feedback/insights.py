@@ -14,6 +14,14 @@ Runs every 2 minutes (game-feedback-insights.timer):
 4. The child's profile is rebuilt by code (src/feedback/profile.py).
 5. The parent gets one deterministic reply saying what was taken into account.
 
+With GAME_FEEDBACK_CONTEXT ("1": every child, "test": test children only) the model also
+sees the child's games of the last weeks and its own recent observations, so it can:
+put an impression on the game it is about ("та игра с мячиками была классная"), note how
+the recent games went in general, note where and when the family plays (before sleep:
+calmer games, not "dislikes active games"), and take back an observation the parent
+corrects ("нет, не так"). Code checks every game id and every retraction against what
+the model was shown.
+
     python3 src/feedback/insights.py run
     python3 src/feedback/insights.py run --no-reply
 """
@@ -45,6 +53,12 @@ MAX_TEXT_CHARS = 1500
 MAX_OBSERVATIONS = 8
 REPLY_WITHIN_HOURS = 24
 MODEL_TIMEOUT_SECONDS = 180
+CONTEXT_PROMPT_PATH = ROOT / "src" / "feedback" / "prompts" / "insights_context.md"
+RECENT_GAMES_DAYS = 21
+RECENT_GAMES_MAX = 14
+CORRECTABLE_DAYS = 3
+CORRECTABLE_MAX = 12
+MAX_RETRACT = 5
 
 KINDS = {
     "outcome": {"liked", "disliked", "neutral", "not_played"},
@@ -57,10 +71,17 @@ KINDS = {
     # Why the game did not work, the same reasons as the buttons after «Не зашло» (a game
     # "not for the age" is a difficulty): the profile's `why_not`.
     "reason": {"not_interested", "no_materials", "prep_heavy"},
+    # Where and when the family plays (GAME_FEEDBACK_CONTEXT): a condition for the next
+    # games, never a dislike ("играем перед сном, нужно спокойнее").
+    "setting": {"bedtime", "outdoors", "on_the_go"},
+    # How the recent games went in general, not one game ("потом всё стало не очень").
+    "recent": {"worse", "better"},
     "like": None,      # free short phrase
     "dislike": None,
     "wish": None,      # about the service, not the child: goes to the owner, not the profile
 }
+
+CONTEXT_KINDS = {"setting", "recent"}
 
 SCHEMA = {
     "type": "object",
@@ -84,6 +105,62 @@ SCHEMA = {
         },
     },
 }
+
+
+def schema(context=False):
+    """The output schema; with context an observation names its game and may retract."""
+    if not context:
+        return {**SCHEMA, "properties": {"observations": {
+            **SCHEMA["properties"]["observations"],
+            "items": {**SCHEMA["properties"]["observations"]["items"], "properties": {
+                **SCHEMA["properties"]["observations"]["items"]["properties"],
+                "kind": {"type": "string", "enum": [k for k in KINDS if k not in CONTEXT_KINDS]}}}}}}
+    item = SCHEMA["properties"]["observations"]["items"]
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["observations", "retract"],
+        "properties": {
+            "observations": {**SCHEMA["properties"]["observations"], "items": {
+                **item,
+                "required": [*item["required"], "game"],
+                "properties": {**item["properties"], "game": {"type": ["integer", "null"]}},
+            }},
+            "retract": {"type": "array", "maxItems": MAX_RETRACT, "items": {"type": "integer"}},
+        },
+    }
+
+
+def context_on(con, child_id):
+    flag = os.environ.get("GAME_FEEDBACK_CONTEXT", "")
+    if flag == "1":
+        return True
+    if flag != "test" or child_id is None:
+        return False
+    row = con.execute("SELECT is_test FROM children WHERE id = ?", (child_id,)).fetchone()
+    return bool(row and row[0])
+
+
+def recent_context(con, group, now):
+    """The child's recent games and the observations the model may take back."""
+    child_id, game_id = group[0]["child_id"], group[0]["game_id"]
+    since = (now - timedelta(days=RECENT_GAMES_DAYS)).date().isoformat()
+    games = [dict(r) for r in con.execute(
+        "SELECT DISTINCT g.id, g.game_date AS date, g.title, g.skill FROM games g "
+        "JOIN deliveries d ON d.game_id = g.id AND d.status = 'sent' "
+        "WHERE g.child_id = ? AND (g.game_date >= ? OR g.id = ?) "
+        "ORDER BY g.game_date DESC, g.id DESC LIMIT ?",
+        (child_id, since, game_id, RECENT_GAMES_MAX),
+    )]
+    if not any(g["id"] == game_id for g in games):
+        games.insert(0, {"id": game_id, "date": None, "title": group[0]["title"], "skill": group[0]["skill"]})
+    after = (now - timedelta(days=CORRECTABLE_DAYS)).isoformat(sep=" ", timespec="seconds")
+    previous = [dict(r) for r in con.execute(
+        "SELECT o.id, o.game_id AS game, o.kind, o.value, o.evidence FROM observations o "
+        "WHERE o.child_id = ? AND o.created_at >= ? ORDER BY o.id DESC LIMIT ?",
+        (child_id, after[:19], CORRECTABLE_MAX),
+    )]
+    return {"this_game_id": game_id, "recent_games": games, "previous_observations": previous}
 
 
 def connect(path=None):
@@ -134,22 +211,26 @@ def analyses_today(con, now, child_id=None):
     return con.execute(query, params).fetchone()[0]
 
 
-def build_prompt(group):
+def build_prompt(group, extra=None):
     game = group[0]
     text = "\n".join(reactions.strip_labels(r["raw_text"]) for r in group if reactions.strip_labels(r["raw_text"]))[:MAX_TEXT_CHARS]
     context = {
         "game": {"title": game["title"], "skill": game["skill"], "mechanics": game["mechanics"],
                  "age_months": game["age_months"]},
         "skills": {key: label for key, label in skills.LABELS.items()},
+        **(extra or {}),
         "feedback": text,
     }
-    return PROMPT_PATH.read_text(encoding="utf-8") + "\n\nINPUT:\n" + json.dumps(context, ensure_ascii=False, indent=2), text
+    instructions = PROMPT_PATH.read_text(encoding="utf-8")
+    if extra:
+        instructions += "\n\n" + CONTEXT_PROMPT_PATH.read_text(encoding="utf-8")
+    return instructions + "\n\nINPUT:\n" + json.dumps(context, ensure_ascii=False, indent=2), text
 
 
-def run_model(prompt):
+def run_model(prompt, context=False):
     command = [
         os.environ.get("CLAUDE_BIN", "claude"), "--print", "--output-format", "json",
-        "--json-schema", json.dumps(SCHEMA), "--model", os.environ.get("INSIGHTS_MODEL", "haiku"),
+        "--json-schema", json.dumps(schema(context)), "--model", os.environ.get("INSIGHTS_MODEL", "haiku"),
         "--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
     ]
     result = subprocess.run(command, input=prompt, text=True, capture_output=True, cwd=ROOT,
@@ -165,8 +246,12 @@ def normalize(text):
     return " ".join(str(text or "").lower().replace("ё", "е").split())
 
 
-def valid_observations(output, text, game_skill):
-    """Keep only well-formed observations whose quote is verbatim in the feedback."""
+def valid_observations(output, text, game_skill, games=None):
+    """Keep only well-formed observations whose quote is verbatim in the feedback.
+
+    `games` ({id: skill}, with context only) are the games the model was shown: an
+    observation about one of them gets its "game_id"; anything else stays on this game.
+    """
     kept, haystack = [], normalize(text)
     for obs in output.get("observations", [])[:MAX_OBSERVATIONS]:
         kind, value = obs.get("kind"), str(obs.get("value", "")).strip()
@@ -174,11 +259,18 @@ def valid_observations(output, text, game_skill):
         skill = obs.get("skill")
         if kind not in KINDS or not value or not evidence or normalize(evidence) not in haystack:
             continue
+        if kind in CONTEXT_KINDS and games is None:
+            continue
+        other = obs.get("game") if games and obs.get("game") in games else None
+        if other is not None and kind in ("outcome", "difficulty", "skill", "reason"):
+            game_skill_here = games[other]
+        else:
+            other, game_skill_here = None, game_skill
         allowed = KINDS[kind]
         if allowed is not None and value not in allowed:
             continue
         if kind in ("difficulty", "skill"):
-            skill = skill if skill in skills.ALL else game_skill
+            skill = skill if skill in skills.ALL else game_skill_here
             if skill not in skills.ALL:
                 continue
         else:
@@ -187,14 +279,39 @@ def valid_observations(output, text, game_skill):
             value = value[:60].lower()
         if kind == "wish":
             value = value[:120]
-        if kind in ("attention", "reason"):
+        if kind in ("attention", "reason") or kind in CONTEXT_KINDS:
             skill = None
-        kept.append({"kind": kind, "value": value, "skill": skill, "evidence": evidence})
+        kept.append({"kind": kind, "value": value, "skill": skill, "evidence": evidence,
+                     **({"game_id": other} if other is not None else {})})
     # "Went well" and "too hard" for the same skill contradict each other: the child did
     # it, so what was hard is something else (usually attention). Keep the fact, drop
     # the signal that would make the next game easier.
-    managed = {o["skill"] for o in kept if o["kind"] == "skill" and o["value"] == "went_well"}
-    return [o for o in kept if not (o["kind"] == "difficulty" and o["value"] == "too_hard" and o["skill"] in managed)]
+    managed = {(o.get("game_id"), o["skill"]) for o in kept if o["kind"] == "skill" and o["value"] == "went_well"}
+    return [o for o in kept if not (o["kind"] == "difficulty" and o["value"] == "too_hard"
+                                    and (o.get("game_id"), o["skill"]) in managed)]
+
+
+def valid_retractions(output, shown):
+    """Observation ids the model takes back, only among those it was shown."""
+    ids = {o["id"] for o in shown}
+    return [i for i in dict.fromkeys(output.get("retract") or []) if isinstance(i, int) and i in ids][:MAX_RETRACT]
+
+
+def describe(obs):
+    """A previous observation in the parent's words, for "поправили: ..."."""
+    kind, value = obs["kind"], obs["value"]
+    if kind == "like":
+        return f"любит: {value}"
+    if kind == "dislike":
+        return f"не любит: {value}"
+    if kind == "outcome":
+        return {"liked": "игра понравилась", "disliked": "игра не зашла"}.get(value, "прошлый вывод")
+    if kind == "difficulty":
+        return {"too_easy": "было легко", "too_hard": "было сложно", "right": "сложность в самый раз"}[value] \
+            if value in ("too_easy", "too_hard", "right") else "прошлый вывод"
+    if kind == "attention":
+        return "внимание трудно удержать" if value == "short" else "малыш был уставший"
+    return "прошлый вывод"
 
 
 DIFFICULTY_TEXT = {"too_easy": "было легко → дальше дадим посложнее",
@@ -209,11 +326,32 @@ REASON_TEXT = {
 }
 
 
-def reply_text(game_title, observations):
-    lines = []
+SETTING_TEXT = {
+    "bedtime": "• играете перед сном → подберём игры поспокойнее",
+    "outdoors": "• играете на улице → будем предлагать игры для прогулки",
+    "on_the_go": "• играете в дороге → игры без подготовки и лишних предметов",
+}
+RECENT_TEXT = {
+    "worse": ("• последние игры зашли хуже → вернёмся к тому, что нравилось. Напишите, что не так: "
+              "скучно, сложно или не по возрасту — подстроим точнее"),
+    "better": "• последние игры заходят лучше — так и продолжим",
+}
+
+
+def reply_text(game_title, observations, titles=None, retracted=()):
+    lines = [f"• поправили: убрали «{describe(obs)}»" for obs in retracted]
     for obs in observations:
         label = skills.LABELS.get(obs.get("skill"), "")
-        if obs["kind"] == "difficulty":
+        other = (titles or {}).get(obs.get("game_id"))
+        if other and obs["kind"] == "outcome" and obs["value"] == "liked":
+            lines.append(f"• игра «{other}» понравилась — похожие будут чаще")
+        elif other and obs["kind"] == "outcome" and obs["value"] == "disliked":
+            lines.append(f"• игра «{other}» не зашла — такие будем предлагать реже")
+        elif obs["kind"] == "setting" and obs["value"] in SETTING_TEXT:
+            lines.append(SETTING_TEXT[obs["value"]])
+        elif obs["kind"] == "recent" and obs["value"] in RECENT_TEXT:
+            lines.append(RECENT_TEXT[obs["value"]])
+        elif obs["kind"] == "difficulty":
             lines.append(f"• {label}: {DIFFICULTY_TEXT[obs['value']]}" if label else f"• {DIFFICULTY_TEXT[obs['value']]}")
         elif obs["kind"] == "outcome" and obs["value"] == "liked":
             lines.append("• игра понравилась — похожие будут чаще")
@@ -364,17 +502,28 @@ def run(db_path=None, now=None, reply=True, model=run_model, sender=send_reply):
                     except Exception as exc:  # noqa: BLE001
                         print(f"nudge failed: {type(exc).__name__}", file=sys.stderr)
                 continue
-            prompt, text = build_prompt(group)
+            extra = recent_context(con, group, now) if context_on(con, child_id) else None
+            prompt, text = build_prompt(group, extra)
+            games = {g["id"]: g["skill"] for g in extra["recent_games"]} if extra else None
             try:
-                observations = valid_observations(model(prompt), text, group[0]["skill"])
+                output = model(prompt, context=True) if extra else model(prompt)
+                observations = valid_observations(output, text, group[0]["skill"], games)
             except Exception as exc:  # noqa: BLE001 - stays pending, retried next run
                 print(f"feedback {group[0]['id']}: {str(exc)[:200]}", file=sys.stderr)
                 continue
+            retracted = []
+            if extra:
+                taken_back = set(valid_retractions(output, extra["previous_observations"]))
+                retracted = [o for o in extra["previous_observations"] if o["id"] in taken_back]
+                con.executemany("DELETE FROM observations WHERE id = ? AND child_id = ?",
+                                [(o["id"], child_id) for o in retracted])
+            titles = {g["id"]: g["title"] for g in extra["recent_games"]} if extra else None
             about_child = [o for o in observations if o["kind"] != "wish"]
             con.executemany(
                 "INSERT INTO observations(feedback_id, child_id, game_id, kind, value, skill, evidence) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [(group[-1]["id"], child_id, group[0]["game_id"], o["kind"], o["value"], o["skill"], o["evidence"])
+                [(group[-1]["id"], child_id, o.get("game_id") or group[0]["game_id"], o["kind"], o["value"],
+                  o["skill"], o["evidence"])
                  for o in about_child],
             )
             for wish in (o for o in observations if o["kind"] == "wish"):
@@ -390,7 +539,7 @@ def run(db_path=None, now=None, reply=True, model=run_model, sender=send_reply):
             # wake a family up with thank-yous for messages from weeks ago.
             if reply and now - group[-1]["at"] <= timedelta(hours=REPLY_WITHIN_HOURS):
                 try:
-                    sender(con, group, reply_text(group[0]["title"], observations))
+                    sender(con, group, reply_text(group[0]["title"], observations, titles, retracted))
                     con.executemany("UPDATE feedback SET reply_sent_at = CURRENT_TIMESTAMP WHERE id = ?",
                                     [(r["id"],) for r in group])
                     con.commit()
