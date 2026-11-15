@@ -62,9 +62,12 @@ production behind a flag and is tested there; all are switched on together on re
 | Game cards: a skill picture above the game text (`GAME_CARDS`) | in production, off |
 | Holiday greetings: New Year, Mother's Day, Father's Day, a new full-year birthday text (`GAME_HOLIDAYS`) | in production, off |
 | Greeting pictures (birthday, New Year, Mother's Day, Father's Day) | done (`assets/cards`) |
-| One-tap reactions under the game | proposed |
+| One-tap reactions under the game (`GAME_BUTTONS`) | next: design agreed, labels pending |
 | Voice feedback, transcribed | planned (below) |
-| A focus for the month | proposed |
+| Theme of the month | planned (below) |
+
+Deferred: a monthly album (a picture summary of the month) after 2.0; a referral is not
+needed now.
 
 ## Next
 
@@ -73,6 +76,13 @@ production behind a flag and is tested there; all are switched on together on re
   transcribes it with Whisper on Workers AI, stores only the text as `[голосовое] …`, and
   never keeps the audio; on failure the label stays and the family is asked for a few
   words. The privacy terms (`docs/privacy.md`) and the FAQ change first.
+
+- **Theme of the month.** Once a month the parent may pick what to play more of ("more
+  speech games", or "a mix"), skip it or change it at any time. Selection offers that skill
+  more often; nothing is promised. The digest names only warm moments the parent wrote or
+  tapped about the theme, and says nothing when there were none: no "achieved / not
+  achieved", no percentages, no comparisons, no age norms. A theme is something to play
+  more of, never a test a child can fail.
 
 ## Backlog (agreed, not scheduled)
 
