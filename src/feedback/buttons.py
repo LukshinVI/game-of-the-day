@@ -151,12 +151,10 @@ def record(con, game_id, code, channel, address, now=None):
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (feedback_id, game[2], game_id, kind, value, skill, label),
     )
-    if value == "not_for_age" and game[1]:  # agreed with the owner: the same as «Сложно»
-        con.execute(
-            "INSERT INTO observations (feedback_id, child_id, game_id, kind, value, skill, evidence) "
-            "VALUES (?, ?, ?, 'difficulty', 'too_hard', ?, ?)",
-            (feedback_id, game[2], game_id, game[1], label),
-        )
+    if value == "not_for_age":
+        # Agreed with the owner: the same as «Сложно». It IS the game's difficulty answer
+        # (replacing a «Легко» pressed before), so the two never contradict each other.
+        return record(con, game_id, "hard", channel, address, now) and reply(code, game[1])
     if game[2] is not None:
         profile.rebuild(con, game[2], now)
     return reply(code, game[1])

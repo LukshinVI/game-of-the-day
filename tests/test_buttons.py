@@ -155,6 +155,14 @@ class Reasons(Base):
         self.assertEqual(profile.load(self.con(), self.child)["next_difficulty"], {"fine_motor": "easier"})
         self.assertNotIn("why_not", profile.load(self.con(), self.child))
 
+    def test_not_for_age_replaces_an_earlier_easy(self):
+        con = self.con()
+        buttons.record(con, 10, "easy", "telegram", "555")
+        buttons.record(con, 10, "age", "telegram", "555")
+        con.commit()
+        self.assertEqual(self.rows("SELECT value FROM observations WHERE kind = 'difficulty'"), [("too_hard",)])
+        self.assertEqual(buttons.chosen(self.con(), 10, "telegram", "555"), {"hard", "age"})
+
     def test_missing_things_matter_for_a_week_only(self):
         rows = [{"kind": "reason", "value": "no_materials", "evidence": "x", "game_title": "Игра",
                  "created_at": "2026-11-01T10:00:00+00:00"},
