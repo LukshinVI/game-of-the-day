@@ -1,7 +1,9 @@
 """Birthday and month-birthday greetings: which days, which wording."""
 
 import sys
+import os
 import unittest
+from unittest import mock
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -54,6 +56,32 @@ class Schedule(unittest.TestCase):
         self.assertIsNone(gr.greeting("Маша", "2025-05-03", "2025-06-04"))
         self.assertIsNone(gr.greeting("Маша", "2025-05-03", "2026-06-03"))  # 13 months: second year is half-yearly
 
+
+
+class Holidays(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch.dict(os.environ, {"GAME_HOLIDAYS": "1"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_russian_dates(self):
+        self.assertEqual(gr.holiday("2027-01-01"), "new_year")
+        self.assertEqual(gr.holiday("2026-11-29"), "mothers_day")   # last Sunday of November
+        self.assertEqual(gr.holiday("2027-11-28"), "mothers_day")
+        self.assertEqual(gr.holiday("2026-10-18"), "fathers_day")   # third Sunday of October
+        self.assertEqual(gr.holiday("2027-10-17"), "fathers_day")
+
+    def test_ordinary_days_and_near_misses(self):
+        for day in ("2026-11-22", "2026-12-31", "2026-10-11", "2026-10-25", "2027-01-02"):
+            self.assertIsNone(gr.holiday(day), day)
+
+    def test_off_by_default(self):
+        with mock.patch.dict(os.environ, {"GAME_HOLIDAYS": ""}):
+            self.assertIsNone(gr.holiday("2026-11-29"))
+
+    def test_greetings_speak_to_all_mums_and_dads(self):
+        self.assertIn("всех мам", gr.HOLIDAYS["mothers_day"])
+        self.assertIn("всех пап", gr.HOLIDAYS["fathers_day"])
 
 if __name__ == "__main__":
     unittest.main()

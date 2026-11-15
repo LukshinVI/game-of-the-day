@@ -1,4 +1,4 @@
-"""Birthday and "month-birthday" greetings, prepended to the game of that day.
+"""Birthday, "month-birthday" and holiday greetings, prepended to the game of that day.
 
 Rules (deterministic, no model):
 - first year: every month on the day of birth (1..11 months);
@@ -8,10 +8,15 @@ Rules (deterministic, no model):
 A child born on the 29th-31st is greeted on the last day of shorter months.
 The child is addressed by name in the nominative ("Маша, сегодня тебе ..."), so
 names never need declension.
+
+Holidays (off unless GAME_HOLIDAYS=1): New Year on 1 January, Mother's Day on the last
+Sunday of November and Father's Day on the third Sunday of October, the Russian dates.
+A holiday greeting speaks to all mums or dads, never assumes who reads the chat.
 """
 
 import calendar
-from datetime import date
+import os
+from datetime import date, timedelta
 
 MONTHLY = [
     "🎉 {name}, сегодня тебе {age}! Целый месяц новых открытий — поздравляем 💛",
@@ -69,3 +74,37 @@ def greeting(name, birth_iso, on_date):
     else:
         return None
     return template.format(name=name, age=age)
+
+
+HOLIDAYS = {
+    "new_year": "🎄 С Новым годом! Пусть в новом году будет много игр, смеха и маленьких открытий. "
+                "Спасибо, что играете с нами 💛",
+    "mothers_day": "🌷 Сегодня День матери! Поздравляем всех мам: спасибо за тепло, терпение "
+                   "и каждую игру вместе 💛",
+    "fathers_day": "🧸 Сегодня День отца! Поздравляем всех пап: игры с папой — особенные. "
+                   "С праздником! 💙",
+}
+
+
+def _nth_sunday(year, month, n):
+    first = date(year, month, 1)
+    return first + timedelta(days=(6 - first.weekday()) % 7 + 7 * (n - 1))
+
+
+def _last_sunday(year, month):
+    last = date(year, month, calendar.monthrange(year, month)[1])
+    return last - timedelta(days=(last.weekday() - 6) % 7)
+
+
+def holiday(on_date):
+    """The holiday key for `on_date` ('new_year', 'mothers_day', 'fathers_day') or None."""
+    if os.environ.get("GAME_HOLIDAYS") != "1":
+        return None
+    on = date.fromisoformat(on_date) if isinstance(on_date, str) else on_date
+    if (on.month, on.day) == (1, 1):
+        return "new_year"
+    if on == _last_sunday(on.year, 11):
+        return "mothers_day"
+    if on == _nth_sunday(on.year, 10, 3):
+        return "fathers_day"
+    return None

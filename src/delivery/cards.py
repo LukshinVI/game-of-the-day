@@ -29,17 +29,25 @@ def enabled():
     return os.environ.get("GAME_CARDS") == "1"
 
 
-def picture(skill):
-    """The local file for this skill's card, or None when there is none (or cards are off)."""
-    if not enabled() or not skill:
+def picture(skill, occasion=None):
+    """The local file for the card, or None when there is none (or cards are off).
+
+    A day with an occasion (a birthday, a holiday) shows its greeting picture when there
+    is one; otherwise, and on ordinary days, the picture of the game's skill.
+    """
+    if not enabled():
         return None
-    path = ASSETS / f"skill_{skill}.jpg"
-    return path if path.is_file() else None
+    candidates = ([f"greet_{occasion}.jpg"] if occasion else []) + ([f"skill_{skill}.jpg"] if skill else [])
+    for name in candidates:
+        path = ASSETS / name
+        if path.is_file():
+            return path
+    return None
 
 
-def telegram_preview(skill):
+def telegram_preview(skill, occasion=None):
     """link_preview_options for sendMessage: the picture above the text, or no preview."""
-    path = picture(skill)
+    path = picture(skill, occasion)
     if path is None:
         return {"is_disabled": True}
     base = os.environ.get("CARD_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
@@ -73,9 +81,9 @@ def _upload(url, path):
         return json.loads(response.read().decode("utf-8"))
 
 
-def vk_attachment(skill, peer_id, token, vk=_vk, upload=_upload):
+def vk_attachment(skill, peer_id, token, vk=_vk, upload=_upload, occasion=None):
     """'photo<owner>_<id>[_<key>]' for this dialog, or None (no picture or the upload failed)."""
-    path = picture(skill)
+    path = picture(skill, occasion)
     if path is None or not peer_id or not token:
         return None
     try:

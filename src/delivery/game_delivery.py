@@ -268,6 +268,7 @@ def deliver_one(delivery_id, retry_failed=False):
         random_id = deterministic_random_id(game["idempotency_key"])
         game = dict(game)
         reminder = nudge.footer(con, game)
+        game["occasion"] = occasion(con, game)
         game["message_text"] = (child_header(con, game) + game["message_text"]
                                 + ("\n\n" + reminder if reminder else feedback_footer(game["message_text"])))
 
@@ -626,21 +627,36 @@ def child_header(con, game):
     greeting = greetings.greeting(row["name"], row["birth_date"], row["game_date"])
     if greeting:
         parts.append(greeting)
+    holiday = greetings.holiday(row["game_date"])
+    if holiday:
+        parts.append(greetings.HOLIDAYS[holiday])
     return "".join(f"{part}\n\n" for part in parts)
 
 
+def occasion(con, game):
+    """What the day celebrates, for the card's picture: 'birthday', a holiday key or None."""
+    if "child_id" in {r[1] for r in con.execute("PRAGMA table_info(games)")}:
+        row = con.execute(
+            "SELECT c.name, c.birth_date FROM games g JOIN children c ON c.id = g.child_id WHERE g.id = ?",
+            (game["game_id"],),
+        ).fetchone()
+        if row and greetings.greeting(row["name"], row["birth_date"], game["game_date"]):
+            return "birthday"
+    return greetings.holiday(game["game_date"])
+
+
 def send_message(game, random_id):
-    skill = game.get("skill")
+    skill, occasion_key = game.get("skill"), game.get("occasion")
     if game["channel"] == "vk":
         peer = game["recipient"] or os.environ.get("VK_PEER_ID")
-        attachment = cards.vk_attachment(skill, peer, os.environ.get("VK_TOKEN"))
+        attachment = cards.vk_attachment(skill, peer, os.environ.get("VK_TOKEN"), occasion=occasion_key)
         if attachment:
             return vk_send(game["message_text"], random_id, peer_id=peer, attachment=attachment)
         if game["recipient"]:
             return vk_send(game["message_text"], random_id, peer_id=game["recipient"])
         return vk_send(game["message_text"], random_id)
     if game["channel"] == "telegram":
-        preview = cards.telegram_preview(skill)
+        preview = cards.telegram_preview(skill, occasion=occasion_key)
         if "url" in preview:
             return telegram_send(game["message_text"], game["recipient"], preview=preview)
         return telegram_send(game["message_text"], game["recipient"])

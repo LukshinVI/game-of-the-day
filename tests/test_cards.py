@@ -2,6 +2,7 @@
 
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -58,6 +59,14 @@ class Cards(unittest.TestCase):
         self.assertEqual(cards.vk_attachment("speech", "777", "t", vk=vk, upload=upload),
                          "photo-241213337_457239100_abc")
         self.assertEqual(calls[0], ("photos.getMessagesUploadServer", {"peer_id": "777"}))
+
+    def test_an_occasion_shows_its_greeting_picture_when_there_is_one(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(cards, "ASSETS", Path(tmp)):
+            (Path(tmp) / "skill_speech.jpg").write_bytes(b"x")
+            self.assertEqual(cards.picture("speech", "mothers_day").name, "skill_speech.jpg")
+            (Path(tmp) / "greet_mothers_day.jpg").write_bytes(b"x")
+            self.assertEqual(cards.picture("speech", "mothers_day").name, "greet_mothers_day.jpg")
+            self.assertEqual(cards.picture("speech").name, "skill_speech.jpg")
 
     def test_a_failed_upload_falls_back_to_no_picture(self):
         def broken(method, token, **params):
