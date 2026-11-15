@@ -51,7 +51,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.bot import channel_link, erasure, swap  # noqa: E402
 from src.db import children as ch  # noqa: E402
-from src.feedback import buttons, insights, reactions, storage  # noqa: E402
+from src.feedback import buttons, insights, month_theme, reactions, storage  # noqa: E402
 from src.ops import pulse  # noqa: E402
 
 DB_PATH = ch.DB_PATH
@@ -243,10 +243,25 @@ class ProductBot:
         query = update.get("callback_query") or {}
         message = query.get("message") or {}
         chat = message.get("chat") or {}
-        parsed = buttons.parse_telegram(query.get("data"))
-        if parsed is None or chat.get("type") != "private":
+        if chat.get("type") != "private":
             return None
         chat_id = str(chat.get("id"))
+        theme = month_theme.parse_callback(query.get("data"))
+        if theme is not None:
+            con = self.connect()
+            try:
+                con.execute("BEGIN IMMEDIATE")
+                answer = month_theme.choose(con, "telegram", chat_id, theme, self.now().date())
+                con.commit()
+            except Exception:
+                con.rollback()
+                raise
+            finally:
+                con.close()
+            return answer, None
+        parsed = buttons.parse_telegram(query.get("data"))
+        if parsed is None:
+            return None
         game_id, code = parsed
         con = self.connect()
         try:
@@ -328,6 +343,13 @@ class ProductBot:
                               lambda note: self.notify_owner(note, con, chat_id, "swap"))
             if reply is not None:
                 return reply
+        theme = month_theme.parse(text) if month_theme.enabled() and self.step(con, chat_id) is None else None
+        if theme is not None and month_theme.chat_children(con, "telegram", chat_id):
+            today = self.now().date()
+            if theme == "":
+                return (month_theme.ask(con, "telegram", chat_id, today),
+                        month_theme.telegram_markup(con, chat_id, today))
+            return month_theme.choose(con, "telegram", chat_id, theme, today)
         if command == "/link_vk":
             return (channel_link.issue(con, "telegram", chat_id, "vk")
                     or "Сначала подпишите ребёнка — /add_child, потом можно подключить ВКонтакте.")
@@ -719,9 +741,11 @@ def main():
     offset = None
     last_success = time.time()
 
-    def send(chat_id, text):
+    def send(chat_id, reply):
+        text, markup = reply if isinstance(reply, tuple) else (reply, None)
         try:
-            telegram(token, "sendMessage", {"chat_id": chat_id, "text": text[:3500]}, 20)
+            telegram(token, "sendMessage", {"chat_id": chat_id, "text": text[:3500],
+                                            **({"reply_markup": markup} if markup else {})}, 20)
         except Exception as exc:  # noqa: BLE001 - never log tokens or URLs
             print(f"send failed: {type(exc).__name__}", flush=True)
 

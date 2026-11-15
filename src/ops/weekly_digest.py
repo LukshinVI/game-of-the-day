@@ -41,6 +41,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.delivery import game_delivery  # noqa: E402
+from src.feedback import month_theme  # noqa: E402
 from src.ops import pulse  # noqa: E402
 from src.preparation import skills  # noqa: E402
 
@@ -203,6 +204,9 @@ def compose(con, child, today):
         lines.append("❤️ Понравилось: " + ", ".join(f"«{t}»" for t in liked))
     if went_well:
         lines.append("🌱 Получалось: " + "; ".join(went_well))
+    theme_line = month_theme.digest_line(con, child["id"], ids, today) if _has(con, "observations") else None
+    if theme_line:
+        lines.append(theme_line)
     ideas = next_week_ideas(age_months(child["birth_date"], today), games, liked, today)
     if ideas:
         lines += ["", "✨ Что попробовать на следующей неделе:", *[f"• {_cap(i)}" for i in ideas]]

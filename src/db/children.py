@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -345,6 +345,18 @@ CREATE TABLE IF NOT EXISTS nudges (
 );
 """
 
+MIGRATION_18 = """
+-- Theme of the month (src/feedback/month_theme.py): what a family would like to play more
+-- of this month. skill NULL = a mix. Off unless GAME_MONTH_THEME=1.
+CREATE TABLE IF NOT EXISTS month_themes (
+    child_id INTEGER NOT NULL REFERENCES children(id),
+    month TEXT NOT NULL,
+    skill TEXT,
+    chosen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (child_id, month)
+);
+"""
+
 
 def migrate(con):
     """Bring an existing database to SCHEMA_VERSION. Idempotent and additive only."""
@@ -361,6 +373,7 @@ def migrate(con):
     con.executescript(MIGRATION_15)
     con.executescript(MIGRATION_16)
     con.executescript(MIGRATION_17)
+    con.executescript(MIGRATION_18)
     # Schema 16: an erased family still counts in the retention cohorts (src/ops/cohorts.py).
     for column in ("first_game", "last_game"):
         if column not in columns(con, "erasures"):

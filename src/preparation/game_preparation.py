@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from src.db.children import active_children, has_children  # noqa: E402
+from src.feedback import month_theme  # noqa: E402
 from src.feedback import profile as child_profile  # noqa: E402
 from src.preparation import fallback, review, skills, themes  # noqa: E402
 from src.preparation import mechanics as mechanic_tags  # noqa: E402
@@ -866,8 +867,12 @@ def select_candidate(history, target_date, birth_date=None, age_months=None):
         record_attempt(attempt, "rejected" if errors else "pass", errors, started)
         required = (PROFILE_CONTEXT or {}).get("required_next")
         if not errors and required and candidate.get("skill") != required["skill"]:
-            errors = [f"after the parent's feedback on «{required['after']}» the next game must train "
-                      f"{required['skill']} ({required['direction']} than before), not {candidate.get('skill')}"]
+            if required["direction"] == "theme":
+                errors = [f"the family chose {required['skill']} as the theme of the month: today's game "
+                          f"must train {required['skill']}, not {candidate.get('skill')}"]
+            else:
+                errors = [f"after the parent's feedback on «{required['after']}» the next game must train "
+                          f"{required['skill']} ({required['direction']} than before), not {candidate.get('skill')}"]
             RUN_LOG[-1]["outcome"], RUN_LOG[-1]["errors"] = "rejected", errors
         if not errors and review.tiers_enabled():
             problems, fixes, meta = review.review_tiered(candidate, age_months)
@@ -1109,6 +1114,12 @@ def prepare_for_child(target_date, child, dry_run=False):
     with connect_db() as con:
         PROFILE_CONTEXT = child_profile.load(con, child_id)
         required = child_profile.required_next(con, child_id, history)
+        if required is None:  # a difficulty answer comes first; then the theme of the month
+            try:
+                required = month_theme.required(con, child_id, history, date.fromisoformat(str(target_date)),
+                                                child_age_months(target_date, child["birth_date"] if child else None))
+            except Exception as exc:  # noqa: BLE001 - a theme is optional; never fail the day over it
+                print(f"WARN: month theme unavailable: {type(exc).__name__}", file=sys.stderr)
         try:
             THEME_CONTEXT = themes.context(con, child_id, date.fromisoformat(str(target_date)),
                                            child_age_months(target_date, child["birth_date"] if child else None))

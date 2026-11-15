@@ -286,7 +286,17 @@ CREATE TABLE nudges (
     kind TEXT NOT NULL CHECK(kind IN ('never', 'quiet')),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '17');
+
+-- Theme of the month (src/feedback/month_theme.py): what a family would like to play more
+-- of this month. skill NULL = a mix. Off unless GAME_MONTH_THEME=1.
+CREATE TABLE month_themes (
+    child_id INTEGER NOT NULL REFERENCES children(id),
+    month TEXT NOT NULL,
+    skill TEXT,
+    chosen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (child_id, month)
+);
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '18');
 
 -- One-time request to star the project on GitHub (src/ops/weekly_digest.py).
 CREATE TABLE star_requests (

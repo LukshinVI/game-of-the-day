@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.delivery import cards, greetings  # noqa: E402
-from src.feedback import buttons, nudge  # noqa: E402
+from src.feedback import buttons, month_theme, nudge  # noqa: E402
 
 DB_PATH = Path(__file__).resolve().parents[2] / "data" / "game-of-the-day.db"
 MOSCOW = ZoneInfo("Europe/Moscow")
@@ -271,6 +271,9 @@ def deliver_one(delivery_id, retry_failed=False):
         game["occasion"] = occasion(con, game)
         game["message_text"] = (child_header(con, game) + game["message_text"]
                                 + ("\n\n" + reminder if reminder else feedback_footer(game["message_text"])))
+        invite = month_theme.invitation(con, game.get("child_id"), game["game_date"])
+        if invite:
+            game["message_text"] += "\n\n" + invite
 
         changed = con.execute(
             """
@@ -671,7 +674,10 @@ def send_message(game, random_id):
                     raise
                 print("VK refused the buttons (bot features off); sending without them")
                 extra.pop("keyboard")
-                return vk_send(game["message_text"], random_id, peer_id=peer, **extra)
+                text = game["message_text"].replace(buttons.FOOTER, FEEDBACK_FOOTER)
+                if extra:
+                    return vk_send(text, random_id, peer_id=peer, **extra)
+                return vk_send(text, random_id, peer_id=peer)
         if game["recipient"]:
             return vk_send(game["message_text"], random_id, peer_id=game["recipient"])
         return vk_send(game["message_text"], random_id)

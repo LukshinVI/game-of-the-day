@@ -34,6 +34,14 @@ off and are switched on together on release day ([scope](docs/product-roadmap.md
   reply. A press on a game that was never sent to that chat is refused. Off unless
   `GAME_BUTTONS=1`.
 
+- Theme of the month: a family may pick what to play more of this month («тема» in VK or
+  Telegram, /theme; Telegram shows buttons) or a mix, and change or drop it at any time.
+  Selection trains the theme's skill about every other day, after any difficulty answer;
+  the weekly digest names only warm moments the parent wrote or tapped about it and says
+  nothing otherwise. The first games of a month without a theme carry one inviting line.
+  Schema 18 (`month_themes`, erased with the family). Off unless `GAME_MONTH_THEME=1`.
+- When VK refuses the buttons, the game's closing line no longer asks to tap one.
+
 ### Changed
 - One feedback analyzer for both channels: VK feedback is stored and analysed by
   `src/feedback/insights.py` exactly like Telegram feedback. The Worker validates the VK

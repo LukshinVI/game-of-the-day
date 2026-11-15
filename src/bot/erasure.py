@@ -61,6 +61,7 @@ FAMILY_TABLES = (
     ("star_requests", "(channel || ':' || address) IN ({addrs})", {"child_id": "children"}),
     ("pulses", "(channel || ':' || address) IN ({addrs}) OR child_id IN ({kids})", {"child_id": "children"}),
     ("nudges", "child_id IN ({kids}) OR game_id IN ({games})", {"game_id": "games", "child_id": "children"}),
+    ("month_themes", "child_id IN ({kids})", {"child_id": "children"}),
     ("members", "chat_id IN ({keys})", {}),
     ("onboarding", "chat_id IN ({keys})", {}),
     ("channel_links", "(from_channel || ':' || from_address) IN ({addrs}) "

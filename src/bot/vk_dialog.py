@@ -21,6 +21,7 @@ from datetime import date, datetime
 
 from src.bot import channel_link, erasure, swap
 from src.bot import product_bot as pb
+from src.feedback import month_theme
 from src.ops import pulse
 
 CHANNEL = "vk"
@@ -163,6 +164,12 @@ class VkDialog:
                               lambda note: pb.ProductBot.notify_owner(note, con, key, "pulse"))
         if scored is not None:
             return scored
+        theme = month_theme.parse(text) if month_theme.enabled() else None
+        if theme is not None:
+            today = self.now().date()
+            if theme == "":
+                return month_theme.ask(con, "vk", peer, today)
+            return month_theme.choose(con, "vk", peer, theme, today)
         wants_swap, swap_name = swap.parse(text)
         if wants_swap:
             reply = swap.swap(con, "vk", peer, swap_name, self.now().date(),

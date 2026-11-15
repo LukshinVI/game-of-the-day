@@ -18,6 +18,8 @@ Requirements:
   lively, in small steps, with movement or bright objects, without making the skill
   easier; when `child_profile.required_next` is present, the game must train exactly that
   skill, one step harder or easier (as `direction` says) than the game named in `after`;
+  when its `direction` is `theme`, the family chose that skill as the theme of the month:
+  train exactly that skill at the usual difficulty (`after` is null);
 - when INPUT CONTEXT has `theme`, it is an optional seasoning, not a requirement: follow
   its `rules`, use it only if it fits the chosen skill naturally, and never use anything
   in `never_use`; set `theme` to its `key` only if the game really uses it, otherwise null

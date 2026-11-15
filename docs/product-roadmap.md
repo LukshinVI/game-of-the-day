@@ -64,7 +64,7 @@ production behind a flag and is tested there; all are switched on together on re
 | Greeting pictures (birthday, New Year, Mother's Day, Father's Day) | done (`assets/cards`) |
 | One-tap reactions under the game (`GAME_BUTTONS`) | in production, off |
 | Voice feedback, transcribed | planned (below) |
-| Theme of the month | planned (below) |
+| Theme of the month (`GAME_MONTH_THEME`) | in production, off |
 
 Deferred: a monthly album (a picture summary of the month) after 2.0; a referral is not
 needed now.
