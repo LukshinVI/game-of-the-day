@@ -5,7 +5,10 @@ versions follow [Semantic Versioning](https://semver.org/). Every version is wha
 running in production at that point. Versions before 1.0.0 were tagged retroactively,
 on the commit that completed each milestone.
 
-## [Unreleased]
+## [Unreleased] — 2.0.0 in progress
+
+Everything below is part of release 2.0.0. New features ship to production switched
+off and are switched on together on release day ([scope](docs/product-roadmap.md#release-200)).
 
 ### Added
 - Game cards: a picture for the game's skill above the text, in one message as before

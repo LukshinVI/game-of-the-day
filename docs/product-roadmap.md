@@ -51,6 +51,20 @@ dialogs told apart) and reaction labels; VK and Telegram feedback land in one ta
 analyzer (`src/feedback/insights.py`) reads both. The Worker's separate semantic agent on
 Workers AI was retired: its analysis was stored but nothing read it.
 
+## Release 2.0.0
+
+Theme: easier to answer, nicer to receive, progress you can see. Each feature ships to
+production behind a flag and is tested there; all are switched on together on release day.
+
+| feature | state |
+|---|---|
+| One feedback analyzer for both channels ([ADR 0005](adr/0005-one-feedback-analyzer.md)) | live (internal, no flag) |
+| Game cards: a skill picture above the game text (`GAME_CARDS`) | in production, off |
+| Seasonal and greeting pictures (birthday, New Year) | illustrations being made |
+| One-tap reactions under the game | proposed |
+| Voice feedback, transcribed | planned (below) |
+| A focus for the month | proposed |
+
 ## Next
 
 - **Voice feedback, transcribed.** Today a voice message is only a label (`[голосовое]`,
