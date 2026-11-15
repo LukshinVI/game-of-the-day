@@ -286,6 +286,16 @@ class ProductBot:
             raise
         finally:
             con.close()
+        if answer is None and chat_id == self.owner_id:
+            # The owner tries the buttons on a test send of a game that went to a family:
+            # show the family's answer and the tick, write nothing.
+            con = self.connect()
+            try:
+                game = con.execute("SELECT skill FROM games WHERE id = ?", (game_id,)).fetchone()
+            finally:
+                con.close()
+            if game is not None:
+                return f"Тест, не записано: {buttons.reply(code, game[0])}", buttons.telegram_markup(game_id, {code})
         if answer is None:
             return "Эта кнопка больше не работает.", None
         return answer, markup

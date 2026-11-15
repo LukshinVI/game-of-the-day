@@ -96,6 +96,17 @@ class Telegram(Base):
         self.assertEqual(method, "editMessageReplyMarkup")
         self.assertEqual(payload["reply_markup"]["inline_keyboard"][0][0]["text"], "✓ 👍 Понравилось")
 
+    def test_the_owner_tries_a_family_game_without_writing(self):
+        bot = pb.ProductBot(self.db, "1")
+        answer, markup = bot.handle_callback({"callback_query": {"data": "r:10:hard",
+                                              "message": {"chat": {"id": 1, "type": "private"}}}})
+        self.assertTrue(answer.startswith("Тест, не записано: Спасибо, учли"))
+        self.assertEqual(markup["inline_keyboard"][1][2]["text"], "✓ 🧗 Сложно")
+        self.assertEqual(self.rows("SELECT count(*) FROM observations"), [(0,)])
+        answer, _ = pb.ProductBot(self.db, "1").handle_callback({"callback_query": {"data": "r:10:hard",
+                                              "message": {"chat": {"id": 999, "type": "private"}}}})
+        self.assertEqual(answer, "Эта кнопка больше не работает.")
+
     def test_foreign_data_and_group_chats_are_ignored(self):
         bot = pb.ProductBot(self.db, "1")
         self.assertIsNone(bot.handle_callback({"callback_query": {"data": "x", "message": {"chat": {"type": "private"}}}}))
