@@ -76,10 +76,14 @@ def press(event_id, address, game_id, code, send, db_path=None):
         seen = con.execute(
             "SELECT reply FROM inbound_events WHERE channel = 'vk' AND event_id = ?", (event_id,)
         ).fetchone()
+        keyboard = None
         if seen is not None:
             reply = seen["reply"]
         else:
+            ask = code == "disliked" and buttons.needs_reason(con, game_id, "vk", address)
             reply = buttons.record(con, game_id, code, "vk", address) or "Эта кнопка больше не работает."
+            if ask and reply.startswith("Спасибо"):
+                reply, keyboard = buttons.QUESTION, buttons.vk_keyboard(game_id, buttons.REASON_ROWS)
             con.execute(
                 "INSERT INTO inbound_events(channel, event_id, address, reply) VALUES ('vk', ?, ?, ?)",
                 (event_id, address, reply),
@@ -90,7 +94,10 @@ def press(event_id, address, game_id, code, send, db_path=None):
         raise
     finally:
         con.close()
-    send(address, reply, random_id(f"in:{event_id}"))
+    if keyboard:
+        send(address, reply, random_id(f"in:{event_id}"), keyboard=keyboard)
+    else:
+        send(address, reply, random_id(f"in:{event_id}"))
 
 
 def drain_outbox(send, db_path=None, limit=10, channel="vk"):

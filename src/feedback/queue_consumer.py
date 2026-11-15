@@ -356,9 +356,18 @@ def process_message(message):
     )
 
 
-def vk_reply(peer, text, random_id):
+def vk_reply(peer, text, random_id, keyboard=None):
     """A reply in the VK community chat (VK_TOKEN from game.env)."""
-    game_delivery.vk_send(text, random_id, peer_id=peer)
+    if not keyboard:
+        return game_delivery.vk_send(text, random_id, peer_id=peer)
+    try:
+        return game_delivery.vk_send(text, random_id, peer_id=peer, keyboard=keyboard)
+    except RuntimeError as exc:
+        if not str(exc).startswith("VK error 912"):
+            raise
+        # Bot features off in the community: ask in words instead of buttons.
+        text = buttons.QUESTION_PLAIN if text == buttons.QUESTION else text
+        return game_delivery.vk_send(text, random_id, peer_id=peer)
 
 
 def send_outbox():

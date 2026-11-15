@@ -180,7 +180,7 @@ CREATE TABLE observations (
     feedback_id INTEGER NOT NULL REFERENCES feedback(id),
     child_id INTEGER,
     game_id INTEGER,
-    kind TEXT NOT NULL CHECK(kind IN ('outcome', 'difficulty', 'skill', 'attention', 'like', 'dislike')),
+    kind TEXT NOT NULL CHECK(kind IN ('outcome', 'difficulty', 'skill', 'attention', 'like', 'dislike', 'reason')),
     value TEXT NOT NULL,
     skill TEXT,
     evidence TEXT NOT NULL
@@ -296,7 +296,7 @@ CREATE TABLE month_themes (
     chosen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (child_id, month)
 );
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '18');
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '19');
 
 -- One-time request to star the project on GitHub (src/ops/weekly_digest.py).
 CREATE TABLE star_requests (

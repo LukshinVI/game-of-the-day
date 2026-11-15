@@ -14,7 +14,11 @@ Requirements:
   feedback), use it: follow `next_difficulty` for the chosen skill (harder: one step more
   demanding than what `went_well` describes; easier: break it into smaller steps), never
   build the game around anything in `dislikes` or `disliked_games`, and prefer to build on
-  `likes`; when `short_attention` is present, keep the game short (about 5 minutes) and
+  `likes`; `why_not` names recent games that did not work and why: `not_interested`: the
+  child was not interested, so do not repeat that kind of activity and reach the skill
+  from a different angle; `no_materials`: the family lacked something, so use only things
+  found in any home (no craft supplies, nothing to buy); `prep_heavy`: preparation was
+  too much, so pick a game that needs almost no preparation; when `short_attention` is present, keep the game short (about 5 minutes) and
   lively, in small steps, with movement or bright objects, without making the skill
   easier; when `child_profile.required_next` is present, the game must train exactly that
   skill, one step harder or easier (as `direction` says) than the game named in `after`;

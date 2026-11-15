@@ -126,6 +126,64 @@ class Telegram(Base):
                                                                   "message": {"chat": {"id": 555, "type": "group"}}}}))
 
 
+class Reasons(Base):
+    def test_a_disliked_game_asks_why_once_and_the_reason_steers_the_profile(self):
+        bot = pb.ProductBot(self.db, "1")
+        press = lambda code: bot.handle_callback({"callback_query": {"data": f"r:10:{code}",  # noqa: E731
+                                                  "message": {"chat": {"id": 555, "type": "private"}}}})
+        toast, _, note = press("disliked")
+        self.assertEqual(toast, "Спасибо, учли 💛")
+        text, markup = note
+        self.assertEqual(text, buttons.QUESTION)
+        self.assertEqual([b["callback_data"] for row in markup["inline_keyboard"] for b in row],
+                         ["r:10:bored", "r:10:no_items", "r:10:prep", "r:10:age"])
+        self.assertIsNone(press("disliked")[2])  # asked once per game
+        toast, markup, note = press("no_items")
+        self.assertEqual(markup["inline_keyboard"][0][1]["text"], "✓ 🧸 Не было нужного дома")
+        self.assertIn("любом доме", note)
+        self.assertEqual(profile.load(self.con(), self.child)["why_not"], {"no_materials": ["Игра"]})
+        press("prep")  # one reason per game: a second tap replaces it
+        self.assertEqual(profile.load(self.con(), self.child)["why_not"], {"prep_heavy": ["Игра"]})
+        press("liked")
+        self.assertIsNone(press("disliked")[2])  # a reason is in: not asked again
+
+    def test_not_for_age_counts_as_too_hard(self):
+        con = self.con()
+        reply = buttons.record(con, 10, "age", "telegram", "555")
+        con.commit()
+        self.assertIn("моторику будет чуть попроще", reply)
+        self.assertEqual(profile.load(self.con(), self.child)["next_difficulty"], {"fine_motor": "easier"})
+        self.assertNotIn("why_not", profile.load(self.con(), self.child))
+
+    def test_missing_things_matter_for_a_week_only(self):
+        rows = [{"kind": "reason", "value": "no_materials", "evidence": "x", "game_title": "Игра",
+                 "created_at": "2026-11-01T10:00:00+00:00"},
+                {"kind": "reason", "value": "not_interested", "evidence": "x", "game_title": "Пазл",
+                 "created_at": "2026-11-01T10:00:00+00:00"}]
+        built = profile.build(rows, profile.datetime(2026, 11, 15, tzinfo=profile.timezone.utc))
+        self.assertEqual(built["why_not"], {"not_interested": ["Пазл"]})
+
+    def test_vk_asks_with_buttons_or_in_words_when_vk_refuses_them(self):
+        sent = []
+        send = lambda peer, text, rid, **kw: sent.append((text, kw.get("keyboard")))  # noqa: E731
+        vk_inbound.press("e1", "777", 11, "disliked", send, db_path=self.db)
+        text, keyboard = sent[0]
+        self.assertEqual(text, buttons.QUESTION)
+        self.assertEqual(json.loads(json.loads(keyboard)["buttons"][1][1]["action"]["payload"]), {"r": "age", "g": 11})
+        for name in ("CF_ACCOUNT_ID", "CF_STORAGE_QUEUE_ID", "CF_QUEUE_API_TOKEN"):
+            os.environ.setdefault(name, "dummy")
+        from src.feedback import queue_consumer as qc
+        calls = []
+
+        def vk_send(text, rid, peer_id=None, keyboard=None):
+            calls.append((text, keyboard))
+            if keyboard:
+                raise RuntimeError("VK error 912: This is a chat bot feature")
+        with mock.patch.object(qc.game_delivery, "vk_send", vk_send):
+            qc.vk_reply("777", buttons.QUESTION, 5, keyboard=keyboard)
+        self.assertEqual(calls[-1], (buttons.QUESTION_PLAIN, None))
+
+
 class Vk(Base):
     def test_a_press_is_recorded_once_and_answered(self):
         sent = []

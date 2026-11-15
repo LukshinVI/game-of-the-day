@@ -288,8 +288,10 @@ class ProductBot:
         con = self.connect()
         try:
             con.execute("BEGIN IMMEDIATE")
+            ask = code == "disliked" and buttons.needs_reason(con, game_id, "telegram", chat_id)
             answer = buttons.record(con, game_id, code, "telegram", chat_id)
-            markup = buttons.telegram_markup(game_id, buttons.chosen(con, game_id, "telegram", chat_id))
+            markup = buttons.telegram_markup(game_id, buttons.chosen(con, game_id, "telegram", chat_id),
+                                             buttons.rows_for(code))
             con.commit()
         except Exception:
             con.rollback()
@@ -302,10 +304,16 @@ class ProductBot:
             skill = self.game_skill(game_id)
             if skill is not None:
                 note = buttons.note(code, skill)
-                return ("Тест, не записано 💛", buttons.telegram_markup(game_id, {code}),
-                        f"Тест, не записано. {note}" if note else None)
+                if code == "disliked":
+                    note = (f"Тест, не записано. {buttons.QUESTION}",
+                            buttons.telegram_markup(game_id, (), buttons.REASON_ROWS))
+                elif note:
+                    note = f"Тест, не записано. {note}"
+                return ("Тест, не записано 💛", buttons.telegram_markup(game_id, {code}, buttons.rows_for(code)), note)
         if answer is None:
             return "Эта кнопка больше не работает.", None, None
+        if ask:
+            return buttons.TOAST, markup, (buttons.QUESTION, buttons.telegram_markup(game_id, (), buttons.REASON_ROWS))
         return buttons.TOAST, markup, buttons.note(code, self.game_skill(game_id))
 
     def dispatch(self, con, chat_id, text, message, sender):
@@ -742,7 +750,9 @@ def answer_callback(token, bot, update, call=None):
             call(token, "editMessageReplyMarkup", {"chat_id": message["chat"]["id"],
                                                   "message_id": message["message_id"], "reply_markup": markup}, 20)
         if note and message.get("chat", {}).get("id"):
-            call(token, "sendMessage", {"chat_id": message["chat"]["id"], "text": note}, 20)
+            note_text, note_markup = note if isinstance(note, tuple) else (note, None)
+            call(token, "sendMessage", {"chat_id": message["chat"]["id"], "text": note_text,
+                                        **({"reply_markup": note_markup} if note_markup else {})}, 20)
     except Exception as exc:  # noqa: BLE001 - "message is not modified" and the like are harmless
         print(f"callback answer failed: {type(exc).__name__}", flush=True)
 

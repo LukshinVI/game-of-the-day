@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -143,7 +143,7 @@ CREATE TABLE IF NOT EXISTS observations (
     feedback_id INTEGER NOT NULL REFERENCES feedback(id),
     child_id INTEGER,
     game_id INTEGER,
-    kind TEXT NOT NULL CHECK(kind IN ('outcome', 'difficulty', 'skill', 'attention', 'like', 'dislike')),
+    kind TEXT NOT NULL CHECK(kind IN ('outcome', 'difficulty', 'skill', 'attention', 'like', 'dislike', 'reason')),
     value TEXT NOT NULL,
     skill TEXT,
     evidence TEXT NOT NULL
@@ -413,32 +413,33 @@ def migrate(con):
 
 def widen_observation_kinds(con):
     """Schema 13: observations may be of kind 'attention' (focus, tiredness, mood: not
-    difficulty). SQLite cannot change a CHECK in place, so the table is rebuilt with the
-    same columns and rows. The old code still works on it: the CHECK only got wider."""
+    difficulty); schema 19: 'reason' (why a game did not work, from the buttons).
+    SQLite cannot change a CHECK in place, so the table is rebuilt with the same columns
+    and rows. The old code still works on it: the CHECK only got wider."""
     sql = con.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'observations'").fetchone()
-    if sql is None or "'attention'" in sql[0]:
+    if sql is None or "'reason'" in sql[0]:
         return
     con.commit()
     con.execute("PRAGMA foreign_keys = OFF")
     try:
         con.executescript(f"""
             BEGIN;
-            ALTER TABLE observations RENAME TO observations_v12;
+            ALTER TABLE observations RENAME TO observations_old;
             CREATE TABLE observations (
                 id INTEGER PRIMARY KEY,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 feedback_id INTEGER NOT NULL REFERENCES feedback(id),
                 child_id INTEGER,
                 game_id INTEGER,
-                kind TEXT NOT NULL CHECK(kind IN ('outcome', 'difficulty', 'skill', 'attention', 'like', 'dislike')),
+                kind TEXT NOT NULL CHECK(kind IN ('outcome', 'difficulty', 'skill', 'attention', 'like', 'dislike', 'reason')),
                 value TEXT NOT NULL,
                 skill TEXT,
                 evidence TEXT NOT NULL
             );
             INSERT INTO observations(id, created_at, feedback_id, child_id, game_id, kind, value, skill, evidence)
                 SELECT id, created_at, feedback_id, child_id, game_id, kind, value, skill, evidence
-                FROM observations_v12;
-            DROP TABLE observations_v12;
+                FROM observations_old;
+            DROP TABLE observations_old;
             COMMIT;
         """)
     finally:

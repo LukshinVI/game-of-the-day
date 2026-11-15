@@ -29,10 +29,19 @@ off and are switched on together on release day ([scope](docs/product-roadmap.md
   👌 В самый раз / 🧗 Сложно. A tap becomes the same observation a written answer would,
   on the exact game the button sits under (siblings in one chat never mix), and the
   child's profile is rebuilt at once, with no model call. One answer per row; a second
-  tap replaces it. Telegram marks the pressed buttons ✓ and answers with a toast; in VK
-  the press arrives as a message (its payload carried by the Worker) and gets a short
-  reply. A press on a game that was never sent to that chat is refused. Off unless
+  tap replaces it. Telegram marks the pressed buttons ✓ and shows a short toast; a
+  sentence worth reading (what changes next) comes as a chat message. In VK the press
+  arrives as a message (its payload carried by the Worker) and gets a short reply. A
+  press on a game that was never sent to that chat is refused; the owner may try the
+  buttons on a test send, which shows the answer and writes nothing. Off unless
   `GAME_BUTTONS=1`.
+- After «👎 Не зашло» the family is asked once what got in the way: 😐 Не заинтересовало /
+  🧸 Не было нужного дома / ⏱ Долго/сложно готовить / 👶 Не по возрасту, or a few
+  words of their own. No reminder when there is no answer. The reason reaches the game
+  selector as `why_not` in the child's profile: a different angle on the skill, only
+  everyday things for a week, little preparation for two weeks; «не по возрасту» counts
+  as «Сложно». Schema 19 lets observations be of kind `reason`. When VK refuses the
+  buttons, the question is asked in words.
 
 - Theme of the month: a family may pick what to play more of this month («тема» in VK or
   Telegram, /theme; Telegram shows buttons) or a mix, and change or drop it at any time.

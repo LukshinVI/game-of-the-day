@@ -20,6 +20,10 @@ from datetime import datetime, timezone
 
 WINDOW_DAYS = 60
 HALF_LIFE_DAYS = 14
+# Why a game did not work, from the buttons after «Не зашло» (not_for_age is recorded as
+# a difficulty answer instead). Missing things and heavy preparation are about the next
+# games only; a lack of interest is remembered as long as the rest of the profile.
+REASON_DAYS = {"not_interested": 60, "no_materials": 7, "prep_heavy": 14}
 DIRECTION_THRESHOLD = 0.8
 DIFFICULTY_SCORE = {"too_easy": 1.0, "right": 0.0, "too_hard": -1.0}
 # One "attention is short" signal counts for about two weeks (weight >= 0.5).
@@ -43,6 +47,7 @@ def build(observations, now=None):
     likes, dislikes = defaultdict(float), defaultdict(float)
     attention, attention_quotes = 0.0, []
     liked_games, disliked_games = [], []
+    why_not = defaultdict(list)
 
     for obs in sorted(observations, key=lambda o: o["created_at"], reverse=True):
         age = _age_days(obs["created_at"], now)
@@ -64,6 +69,9 @@ def build(observations, now=None):
             likes[value] += weight
         elif kind == "dislike":
             dislikes[value] += weight
+        elif kind == "reason" and value in REASON_DAYS and obs.get("game_title") and age <= REASON_DAYS[value]:
+            if obs["game_title"] not in why_not[value] and len(why_not[value]) < 5:
+                why_not[value].append(obs["game_title"])
         elif kind == "outcome" and obs.get("game_title"):
             bucket = liked_games if value == "liked" else disliked_games if value == "disliked" else None
             if bucket is not None and obs["game_title"] not in bucket and len(bucket) < 10:
@@ -93,6 +101,8 @@ def build(observations, now=None):
         profile["liked_games"] = liked_games
     if disliked_games:
         profile["disliked_games"] = disliked_games
+    if why_not:
+        profile["why_not"] = dict(why_not)
     return profile
 
 
