@@ -222,7 +222,7 @@ def render(data):
     draw.text((60, 40), "«Игра дня»", font=brand, fill=ACCENT)
 
     y = hero_h + 36
-    stats = [(data["received"], greetings.plural(data["received"], "игра пришла", "игры пришло", "игр пришло")),
+    stats = [(data["received"], greetings.plural(data["received"], "игра пришла", "игры пришли", "игр пришло")),
              (data["marked"], "отметили вы"),
              (len(data["areas"]), greetings.plural(len(data["areas"]), "направление", "направления", "направлений"))]
     stats = [s for s in stats if s[0]]  # never a reproachful zero
