@@ -8,8 +8,8 @@ on the commit that completed each milestone.
 ## [Unreleased]
 
 ### Changed
-- A written or spoken message gets an instant «Спасибо, прочитали / послушали 🙏 Через
-  пару минут напишем, что учтём» (one per burst on a game, VK and Telegram), and the
+- A written or spoken message gets an instant «Спасибо, прочитали / послушали 💛 Уже
+  думаем, как сделать следующие игры ещё лучше…» (one per burst on a game, VK and Telegram), and the
   considered reply comes in 3–5 minutes instead of 10–25: insights runs every 2 minutes
   and waits 3 quiet minutes (was 15 and 10).
 - «Ответить» on a game in VK attaches the feedback to that exact game, as in Telegram:
