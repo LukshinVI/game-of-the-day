@@ -17,7 +17,7 @@ on the commit that completed each milestone.
 
 ### Added
 - Feedback in context (`GAME_FEEDBACK_CONTEXT`: `1` for every child, `test` for test
-  children only): the analyzer sees the child's games of the last three weeks and its
+  children only; on for every child since 2026-11-15): the analyzer sees the child's games of the last three weeks and its
   own observations of the last three days. An impression goes to the game it is about
   («та игра с мячиками была классная»), not to the newest one; a general remark («потом
   всё стало не очень») becomes `recent_trend` in the profile and the reply asks what is
