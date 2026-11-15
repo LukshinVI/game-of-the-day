@@ -72,7 +72,15 @@ class Cards(unittest.TestCase):
         def broken(method, token, **params):
             raise RuntimeError("VK down")
         with mock.patch("sys.stdout"):
-            self.assertIsNone(cards.vk_attachment("speech", "777", "t", vk=broken, upload=mock.Mock()))
+            self.assertIsNone(cards.vk_attachment("speech", "777", "t", vk=broken, upload=mock.Mock(),
+                                                  sleep=lambda s: None))
+
+    def test_a_flaky_upload_is_retried(self):
+        upload = mock.Mock(side_effect=[RuntimeError("HTTP Error 405"), {"photo": "p", "server": 1, "hash": "h"}])
+        with mock.patch("sys.stdout"):
+            self.assertEqual(cards.vk_attachment("speech", "777", "t", vk=vk_ok, upload=upload, sleep=lambda s: None),
+                             "photo-241213337_457239100_abc")
+        self.assertEqual(upload.call_count, 2)
 
 
 class SendMessage(unittest.TestCase):

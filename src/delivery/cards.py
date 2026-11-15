@@ -15,6 +15,7 @@ GAME_CARDS=1.
 
 import json
 import os
+import time
 import urllib.parse
 import urllib.request
 import uuid
@@ -23,6 +24,7 @@ from pathlib import Path
 ASSETS = Path(__file__).resolve().parents[2] / "assets" / "cards"
 DEFAULT_BASE_URL = "https://raw.githubusercontent.com/LukshinVI/game-of-the-day/main/assets/cards"
 VK_API_VERSION = "5.199"
+UPLOAD_ATTEMPTS = 3
 
 
 def enabled():
@@ -81,18 +83,24 @@ def _upload(url, path):
         return json.loads(response.read().decode("utf-8"))
 
 
-def vk_attachment(skill, peer_id, token, vk=_vk, upload=_upload, occasion=None):
+def vk_attachment(skill, peer_id, token, vk=_vk, upload=_upload, occasion=None, sleep=time.sleep):
     """'photo<owner>_<id>[_<key>]' for this dialog, or None (no picture or the upload failed)."""
     path = picture(skill, occasion)
     if path is None or not peer_id or not token:
         return None
-    try:
-        server = vk("photos.getMessagesUploadServer", token, peer_id=peer_id)
-        uploaded = upload(server["upload_url"], path)
-        saved = vk("photos.saveMessagesPhoto", token, photo=uploaded["photo"],
-                   server=uploaded["server"], hash=uploaded["hash"])[0]
-    except Exception as exc:  # noqa: BLE001 - a picture must never block the game
-        print(f"card upload skipped: {str(exc)[:200]}")
-        return None
-    key = f"_{saved['access_key']}" if saved.get("access_key") else ""
-    return f"photo{saved['owner_id']}_{saved['id']}{key}"
+    # VK's upload servers fail now and then (HTTP 405, "photo is undefined"); a fresh
+    # upload server usually works, so try a few times before sending without a picture.
+    for attempt in range(1, UPLOAD_ATTEMPTS + 1):
+        try:
+            server = vk("photos.getMessagesUploadServer", token, peer_id=peer_id)
+            uploaded = upload(server["upload_url"], path)
+            saved = vk("photos.saveMessagesPhoto", token, photo=uploaded["photo"],
+                       server=uploaded["server"], hash=uploaded["hash"])[0]
+        except Exception as exc:  # noqa: BLE001 - a picture must never block the game
+            print(f"card upload attempt {attempt} failed: {str(exc)[:200]}")
+            if attempt < UPLOAD_ATTEMPTS:
+                sleep(1)
+            continue
+        key = f"_{saved['access_key']}" if saved.get("access_key") else ""
+        return f"photo{saved['owner_id']}_{saved['id']}{key}"
+    return None
