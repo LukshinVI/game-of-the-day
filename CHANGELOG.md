@@ -7,6 +7,14 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+### Added
+- Game cards: a picture for the game's skill above the text, in one message as before
+  (Telegram: a large link preview above the text, since a photo caption is capped at 1024
+  characters; VK: the picture attached, uploaded for the dialog right before the send).
+  Eight illustrations in one style in `assets/cards`. No picture, a failed upload or the
+  flag unset fall back to the plain text. Off unless `GAME_CARDS=1`; VK needs a community
+  key with the Photos permission.
+
 ### Changed
 - One feedback analyzer for both channels: VK feedback is stored and analysed by
   `src/feedback/insights.py` exactly like Telegram feedback. The Worker validates the VK

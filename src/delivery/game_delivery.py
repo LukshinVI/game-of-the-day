@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.delivery import greetings  # noqa: E402
+from src.delivery import cards, greetings  # noqa: E402
 from src.feedback import nudge  # noqa: E402
 
 DB_PATH = Path(__file__).resolve().parents[2] / "data" / "game-of-the-day.db"
@@ -58,6 +58,7 @@ def today_deliveries(con):
             g.game_date,
             g.title,
             g.message_text,
+            g.skill,
             d.id AS delivery_id,
             d.status,
             d.attempts,
@@ -86,6 +87,7 @@ def delivery_by_id(con, delivery_id):
             g.game_date,
             g.title,
             g.message_text,
+            g.skill,
             d.id AS delivery_id,
             d.status,
             d.attempts,
@@ -542,20 +544,23 @@ def print_status():
 
 
 
-def vk_send(message: str, random_id: int, peer_id=None):
+def vk_send(message: str, random_id: int, peer_id=None, attachment=None):
     token = os.environ.get("VK_TOKEN")
     peer_id = peer_id or os.environ.get("VK_PEER_ID")
 
     if not token or not peer_id:
         raise RuntimeError("VK_TOKEN or VK_PEER_ID is missing")
 
-    payload = urllib.parse.urlencode({
+    params = {
         "peer_id": peer_id,
         "message": message,
         "random_id": str(random_id),
         "access_token": token,
         "v": VK_API_VERSION,
-    }).encode("utf-8")
+    }
+    if attachment:
+        params["attachment"] = attachment
+    payload = urllib.parse.urlencode(params).encode("utf-8")
 
     request = urllib.request.Request(
         "https://api.vk.com/method/messages.send",
@@ -625,16 +630,24 @@ def child_header(con, game):
 
 
 def send_message(game, random_id):
+    skill = game.get("skill")
     if game["channel"] == "vk":
+        peer = game["recipient"] or os.environ.get("VK_PEER_ID")
+        attachment = cards.vk_attachment(skill, peer, os.environ.get("VK_TOKEN"))
+        if attachment:
+            return vk_send(game["message_text"], random_id, peer_id=peer, attachment=attachment)
         if game["recipient"]:
             return vk_send(game["message_text"], random_id, peer_id=game["recipient"])
         return vk_send(game["message_text"], random_id)
     if game["channel"] == "telegram":
+        preview = cards.telegram_preview(skill)
+        if "url" in preview:
+            return telegram_send(game["message_text"], game["recipient"], preview=preview)
         return telegram_send(game["message_text"], game["recipient"])
     raise RuntimeError(f"Unknown channel: {game['channel']}")
 
 
-def telegram_send(message, chat_id):
+def telegram_send(message, chat_id, preview=None):
     """Send through the product bot (GAME_TELEGRAM_BOT_TOKEN), not the ops bot."""
     token = os.environ.get("GAME_TELEGRAM_BOT_TOKEN")
     if not token or not chat_id:
@@ -643,7 +656,7 @@ def telegram_send(message, chat_id):
     payload = urllib.parse.urlencode({
         "chat_id": chat_id,
         "text": message,
-        "link_preview_options": json.dumps({"is_disabled": True}),
+        "link_preview_options": json.dumps(preview or {"is_disabled": True}),
     }).encode("utf-8")
 
     request = urllib.request.Request(
