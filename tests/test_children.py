@@ -435,6 +435,27 @@ class TestChild(TempDb):
         self.assertEqual([c["is_test"] for c in ch.active_children(con)], [0])
         self.assertEqual([c["is_test"] for c in ch.active_children(con, include_test=True)], [0, 1])
 
+    def test_a_second_message_goes_to_the_dialogs_newest_game(self):
+        from src.feedback import storage
+        con = self.con()
+        child = ch.add_child(con, "Тест", "2025-09-07", is_test=True)
+        ch.add_recipient(con, child, "vk", "300000002")
+        ids = []
+        for day, title in (("2026-11-08", "Старая"), ("2026-11-15", "Новая")):
+            game = con.execute("INSERT INTO games(legacy_id, game_date, title, child_id) VALUES (?, ?, ?, ?)",
+                               (title, day, title, child)).lastrowid
+            con.execute("INSERT INTO deliveries(game_id, channel, recipient, idempotency_key, status) "
+                        "VALUES (?, 'vk', '300000002', ?, 'sent')", (game, f"k-{title}"))
+            con.execute("INSERT INTO feedback(game_id, channel, external_event_id, raw_text, received_at) "
+                        "VALUES (?, 'vk', ?, 'было', '2026-11-15T10:00:00')", (game, f"e-{title}"))
+            ids.append(game)
+        con.commit()
+        self.assertEqual(storage.resolve_feedback_target(con, "vk", "300000002"), ids[1])
+        with self.assertRaises(storage.StorageError):
+            storage.resolve_feedback_target(con, "vk", "999")    # another dialog: nothing to guess
+        with self.assertRaises(storage.StorageError):
+            storage.resolve_feedback_target(con, "vk")            # no address: no guess
+
     def test_the_daily_run_skips_test_children_a_manual_run_reaches_them(self):
         con = self.con()
         family = ch.add_child(con, "Тимофей", "2025-09-07")

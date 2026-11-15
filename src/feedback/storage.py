@@ -151,6 +151,11 @@ def resolve_feedback_target(con, channel="vk", address=None):
     families in one channel never answer each other's games. Events without an
     address (sent before the Worker passed it) keep the channel-wide rule.
 
+    When every game sent to that address already has feedback, a further message
+    goes to the newest of them: before 2.0 a second message (a follow-up, a voice
+    note after a button tap) found no target and was dropped after the queue's
+    retries.
+
     Explicit game identity is handled by resolve_game().
     """
 
@@ -176,6 +181,27 @@ def resolve_feedback_target(con, channel="vk", address=None):
         """.format(not_test=not_test_clause(con)),
         (channel, address, address, address),
     ).fetchone()
+
+    if row is None and address is not None:
+        # A second message about the same game (a follow-up, a voice note after a
+        # tap): every game already has feedback, so it belongs to the newest game
+        # sent to this very dialog. Without an address there is no such guess.
+        row = con.execute(
+            """
+            SELECT g.id
+            FROM games AS g
+            JOIN deliveries AS d
+              ON d.game_id = g.id
+            WHERE d.status = 'sent'
+              AND d.channel = ?
+              AND d.recipient = ?
+            ORDER BY
+                g.game_date DESC,
+                g.id DESC
+            LIMIT 1
+            """,
+            (channel, address),
+        ).fetchone()
 
     if row is None:
         raise StorageError(
