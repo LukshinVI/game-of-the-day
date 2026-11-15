@@ -145,6 +145,23 @@ class Delivery(unittest.TestCase):
             gd.send_message(game, 1)
         self.assertIn('\\"g\\": 11', send.call_args.kwargs["keyboard"])
 
+    def test_vk_without_bot_features_still_gets_the_game(self):
+        game = {"channel": "vk", "recipient": "777", "message_text": "игра", "skill": "speech", "game_id": 11}
+        send = mock.Mock(side_effect=[RuntimeError("VK error 912: This is a chat bot feature"), 7])
+        with mock.patch.object(gd, "vk_send", send), mock.patch("sys.stdout"), \
+                mock.patch.dict(os.environ, {"GAME_BUTTONS": "1", "GAME_CARDS": ""}):
+            self.assertEqual(gd.send_message(game, 42), 7)
+        self.assertIn("keyboard", send.call_args_list[0].kwargs)
+        self.assertNotIn("keyboard", send.call_args_list[1].kwargs)
+        self.assertEqual(send.call_args_list[1].args[1], 42)
+
+    def test_other_vk_errors_still_fail_the_delivery(self):
+        game = {"channel": "vk", "recipient": "777", "message_text": "игра", "skill": "speech", "game_id": 11}
+        with mock.patch.object(gd, "vk_send", side_effect=RuntimeError("VK error 901: can't send")), \
+                mock.patch.dict(os.environ, {"GAME_BUTTONS": "1", "GAME_CARDS": ""}):
+            with self.assertRaises(RuntimeError):
+                gd.send_message(game, 42)
+
     def test_the_footer_invites_a_tap(self):
         with mock.patch.dict(os.environ, {"GAME_BUTTONS": "1"}):
             self.assertIn("Нажмите кнопку", gd.feedback_footer("игра"))

@@ -661,7 +661,17 @@ def send_message(game, random_id):
         if with_buttons:
             extra["keyboard"] = buttons.vk_keyboard(game["game_id"])
         if extra:
-            return vk_send(game["message_text"], random_id, peer_id=peer, **extra)
+            try:
+                return vk_send(game["message_text"], random_id, peer_id=peer, **extra)
+            except RuntimeError as exc:
+                # 912: the community has bot features off, so VK refuses any keyboard.
+                # The game matters more than the buttons: send it without them (same
+                # random_id, so VK still dedupes).
+                if "keyboard" not in extra or not str(exc).startswith("VK error 912"):
+                    raise
+                print("VK refused the buttons (bot features off); sending without them")
+                extra.pop("keyboard")
+                return vk_send(game["message_text"], random_id, peer_id=peer, **extra)
         if game["recipient"]:
             return vk_send(game["message_text"], random_id, peer_id=game["recipient"])
         return vk_send(game["message_text"], random_id)
