@@ -21,7 +21,8 @@ off and are switched on together on release day ([scope](docs/product-roadmap.md
 - Holiday greetings before that day's game: New Year (1 January), Mother's Day (last
   Sunday of November) and Father's Day (third Sunday of October), the Russian dates. They
   speak to all mums or dads and never assume who reads the chat. On a birthday or a
-  holiday the card shows its greeting picture when there is one. Off unless
+  holiday the card shows its greeting picture when there is one. The full-year birthday
+  gets a new, warmer text; month- and half-birthdays keep theirs. Off unless
   `GAME_HOLIDAYS=1`.
 
 ### Changed

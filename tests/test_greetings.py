@@ -79,6 +79,13 @@ class Holidays(unittest.TestCase):
         with mock.patch.dict(os.environ, {"GAME_HOLIDAYS": ""}):
             self.assertIsNone(gr.holiday("2026-11-29"))
 
+    def test_a_full_year_birthday_uses_the_new_text_month_birthdays_stay(self):
+        self.assertEqual(gr.greeting("Маша", "2025-05-03", "2026-05-03"), gr.BIRTHDAY_2)
+        self.assertIn("Маша", gr.greeting("Маша", "2025-05-03", "2025-08-03"))  # 3 months
+        self.assertIn("полтора года", gr.greeting("Маша", "2025-05-03", "2026-11-03"))
+        with mock.patch.dict(os.environ, {"GAME_HOLIDAYS": ""}):
+            self.assertIn("Маша", gr.greeting("Маша", "2025-05-03", "2026-05-03"))  # today's text until 2.0
+
     def test_greetings_speak_to_all_mums_and_dads(self):
         self.assertIn("каждая мама", gr.HOLIDAYS["mothers_day"])
         self.assertIn("каждого папы", gr.HOLIDAYS["fathers_day"])
