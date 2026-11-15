@@ -80,8 +80,10 @@ class Holidays(unittest.TestCase):
             self.assertIsNone(gr.holiday("2026-11-29"))
 
     def test_greetings_speak_to_all_mums_and_dads(self):
-        self.assertIn("всех мам", gr.HOLIDAYS["mothers_day"])
-        self.assertIn("всех пап", gr.HOLIDAYS["fathers_day"])
+        self.assertIn("каждая мама", gr.HOLIDAYS["mothers_day"])
+        self.assertIn("каждого папы", gr.HOLIDAYS["fathers_day"])
+        for text in gr.HOLIDAYS.values():
+            self.assertTrue(text.endswith("С теплом, «Игра дня» 🤍"))
 
 if __name__ == "__main__":
     unittest.main()

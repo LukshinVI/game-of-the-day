@@ -401,7 +401,7 @@ class Greetings(TempDb):
                 mock.patch.object(gd.cards, "picture", side_effect=lambda skill, occasion=None: None) as picture:
             gd.send_today()
         text = telegram.call_args.args[0]
-        self.assertTrue(text.startswith("🌷 Сегодня День матери"), text[:40])
+        self.assertTrue(text.startswith("🌷 Сегодня особенный праздник — День матери"), text[:50])
         self.assertIn("🎲", text)
         self.assertEqual(picture.call_args.args[1:] or (picture.call_args.kwargs.get("occasion"),), ("mothers_day",))
 
