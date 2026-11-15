@@ -66,9 +66,9 @@ class InsightsSetup(unittest.TestCase):
 
 class Insights(InsightsSetup):
     def test_close_messages_are_merged_and_a_fresh_one_waits(self):
-        self.feedback("Башенку построил сам!", 30)
-        self.feedback("Даже слишком легко было", 25)
-        self.feedback("Новое сообщение", 2)  # still settling
+        self.feedback("Башенку построил сам!", 10)
+        self.feedback("Даже слишком легко было", 8)
+        self.feedback("Новое сообщение", 1)  # still settling
         obs = [{"kind": "difficulty", "value": "too_easy", "skill": "fine_motor", "evidence": "слишком легко"},
                {"kind": "skill", "value": "went_well", "skill": "fine_motor", "evidence": "Башенку построил сам"}]
         self.assertEqual(self.run_insights(obs), 1)

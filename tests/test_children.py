@@ -456,6 +456,30 @@ class TestChild(TempDb):
         with self.assertRaises(storage.StorageError):
             storage.resolve_feedback_target(con, "vk")            # no address: no guess
 
+    def test_a_vk_reply_to_a_game_lands_on_that_game(self):
+        from src.feedback import storage
+        con = self.con()
+        child = ch.add_child(con, "Маша", "2025-09-07")
+        ch.add_recipient(con, child, "vk", "3000001")
+        ids = []
+        for day, title, message in (("2026-11-14", "Мячики", "133"), ("2026-11-15", "Башня", "160")):
+            game = con.execute("INSERT INTO games(legacy_id, game_date, title, child_id) VALUES (?, ?, ?, ?)",
+                               (title, day, title, child)).lastrowid
+            con.execute("INSERT INTO deliveries(game_id, channel, recipient, idempotency_key, status, "
+                        "external_message_id) VALUES (?, 'vk', '3000001', ?, 'sent', ?)", (game, f"k-{title}", message))
+            ids.append(game)
+        con.commit()
+        self.assertEqual(storage.replied_game(con, "vk", "3000001", "133"), ids[0])
+        self.assertIsNone(storage.replied_game(con, "vk", "999", "133"))   # someone else's dialog
+        self.assertIsNone(storage.replied_game(con, "vk", "3000001", "1"))  # not a game message
+        con.close()
+        with mock.patch.object(storage, "DB_PATH", self.db):
+            result = storage.save_raw({"event_id": "e1", "channel": "vk", "raw_text": "мячики были классные",
+                                       "address": "3000001", "reply_to": "133"})
+        con = self.con()
+        self.assertEqual(con.execute("SELECT game_id FROM feedback WHERE id = ?", (result["feedback_id"],)).fetchone()[0],
+                         ids[0])
+
     def test_the_daily_run_skips_test_children_a_manual_run_reaches_them(self):
         con = self.con()
         family = ch.add_child(con, "Тимофей", "2025-09-07")

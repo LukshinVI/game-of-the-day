@@ -96,7 +96,7 @@ that the long-running services are up afterwards.
 | `ops/delivery/game-delivery.{service,timer}` | 10:00 MSK, catch-up 10:12 |
 | `ops/delivery/game-delivery-retry.service` | manual, via the bot |
 | `ops/feedback/game-feedback-consumer.service` | always on |
-| `ops/feedback/game-feedback-insights.{service,timer}` | every 15 minutes: observations, child profile, reply |
+| `ops/feedback/game-feedback-insights.{service,timer}` | every 2 minutes: observations, child profile, reply (3 quiet minutes after the last message) |
 | `ops/day-outcome/game-day-outcome.{service,timer}` | 10:15, 11:15, 13:15, 17:15 MSK |
 | `ops/backup/game-backup*.{service,timer}` | 03:30 backup, 12:00 freshness check |
 | `ops/bot/game-bot.service` | always on (owner only) |

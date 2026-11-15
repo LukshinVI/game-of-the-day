@@ -1,8 +1,8 @@
 [Unit]
-Description=Game of the Day - feedback insights every 15 minutes
+Description=Game of the Day - feedback insights every 2 minutes
 
 [Timer]
-OnCalendar=*:07/15
+OnCalendar=*:0/2
 Persistent=true
 
 [Install]

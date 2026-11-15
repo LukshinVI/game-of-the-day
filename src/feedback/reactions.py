@@ -37,6 +37,28 @@ def telegram_label(message):
     return None
 
 
+ACK = "Спасибо, прочитали! 🙏 Через пару минут напишем, что учтём."
+ACK_VOICE = "Спасибо, послушали! 🙏 Через пару минут напишем, что учтём."
+
+
+def ack(con, game_id, feedback_id, text):
+    """The instant "received" for a written or spoken message, or None.
+
+    The considered reply comes from insights a few minutes later; until then the parent
+    should not wonder whether it was lost. One per burst: a message that joins one still
+    waiting for analysis on the same game gets nothing. Reactions get their own nudge.
+    """
+    if is_reaction(text):
+        return None
+    waiting = con.execute(
+        "SELECT 1 FROM feedback WHERE game_id = ? AND id != ? AND insights_at IS NULL LIMIT 1",
+        (game_id, feedback_id),
+    ).fetchone()
+    if waiting:
+        return None
+    return ACK_VOICE if (text or "").startswith("[голосовое]") else ACK
+
+
 def already_nudged(con, game_id):
     return con.execute(
         "SELECT 1 FROM feedback WHERE game_id = ? AND insights_status = 'reaction' AND reply_sent_at IS NOT NULL",

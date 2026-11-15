@@ -7,6 +7,21 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+### Changed
+- A written or spoken message gets an instant «Спасибо, прочитали / послушали 🙏 Через
+  пару минут напишем, что учтём» (one per burst on a game, VK and Telegram), and the
+  considered reply comes in 3–5 minutes instead of 10–25: insights runs every 2 minutes
+  and waits 3 quiet minutes (was 15 and 10).
+- «Ответить» on a game in VK attaches the feedback to that exact game, as in Telegram:
+  the Worker passes only the replied message's id, never its text.
+
+### Fixed
+- A second message about the same game (a follow-up, a voice note after a tap) was
+  dropped after the queue's retries when the dialog's games all had feedback; it now
+  goes to the dialog's newest game.
+- VK voice messages served from `vkuserphoto.ru` were kept as a bare label instead of
+  being transcribed.
+
 ## [2.0.0] - 2026-11-15 — Easier to answer
 
 Released by dark launch: every feature below shipped to production switched off and all

@@ -73,6 +73,21 @@ try {
     assert.equal(env.stored.at(-1).audio_url, 'https://psv4.userapi.com/a.ogg');
     assert.equal(env.stored.at(-1).audio_seconds, 7);
 
+    // "Ответить" on a game: only the replied message's id travels, never its text.
+    const replyCall = new Request('https://worker.example/', {
+        method: 'POST',
+        body: JSON.stringify({
+            type: 'message_new', secret: 's', group_id: 42, event_id: 'e11',
+            object: { message: { peer_id: 777, text: 'мячики были классные', id: 11,
+                reply_message: { id: 133, text: 'игра дня', from_id: -42 } } }
+        })
+    });
+    await worker.fetch(replyCall, env);
+    assert.equal(env.stored.at(-1).reply_to, '133');
+    assert.equal(JSON.stringify(env.stored.at(-1)).includes('игра дня'), false);
+    await worker.fetch(callback(777, 'без ответа', 12), env);
+    assert.equal(env.stored.at(-1).reply_to, undefined);
+
     // The Worker consumes no queue and makes no model call.
     assert.equal(worker.queue, undefined);
 } finally {

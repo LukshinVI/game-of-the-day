@@ -134,7 +134,7 @@ class Pulse(unittest.TestCase):
         self.assertIn("Спасибо", self.tg("4 — нравится, но хочется больше на улице"))
         row = self.q("SELECT score, comment FROM pulses WHERE channel = 'telegram'")[0]
         self.assertEqual(tuple(row), (4, "нравится, но хочется больше на улице"))
-        self.assertIn("записал", self.tg("5 минут поиграли, понравилось"))  # "5 минут": a second answer is feedback
+        self.assertIn("прочитали", self.tg("5 минут поиграли, понравилось"))  # "5 минут": a second answer is feedback
         note = self.q("SELECT text FROM user_events WHERE kind = 'pulse'")[0][0]
         self.assertIn("4/5", note)
 

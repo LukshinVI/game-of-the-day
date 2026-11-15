@@ -12,7 +12,7 @@ flowchart LR
         PREP[Preparation 07:00<br/>model → gate → reviewer → fallback → library]
         DEL[Delivery 10:00<br/>state machine per recipient]
         CHK[Outcome check<br/>10:15 · 11:15 · 13:15 · 17:15]
-        INS[Feedback insights<br/>every 15 min]
+        INS[Feedback insights<br/>every 2 min]
         PB[Product bot<br/>families · invites · feedback]
         OB[Ops bot<br/>owner · alerts · /users · /llm]
         CON[Queue consumer]
@@ -55,7 +55,7 @@ controls. They share nothing but the database.
 | Feedback ingress (VK) | `worker/` + `src/feedback/queue_consumer.py` | always | Worker validates the callback and puts the event straight on the storage queue (a reply in 2–4 s); the host stores the raw text before any model call; stickers and photos become labels |
 | VK dialog | `src/bot/vk_dialog.py` + `src/feedback/vk_inbound.py` | always (in the consumer) | every private VK message arrives with the sender's peer id: a subscribed family's text is a command or feedback on its own games; anyone else gets the questionnaire, which ends in an application the owner approves in the ops bot; replies and the outbox are sent once (inbound events, VK `random_id`) |
 | Feedback ingress (Telegram) | `src/bot/product_bot.py` | always | stores the text with an explicit game id (reply-to message or the chat's latest game) |
-| Feedback insights | `src/feedback/insights.py` | every 15 minutes | merges messages sent together, extracts observations with verbatim quotes, rebuilds the child's profile, separates wishes about the service, replies once |
+| Feedback insights | `src/feedback/insights.py` | every 2 minutes | acknowledged at once on receipt; merges messages sent together, extracts observations with verbatim quotes, rebuilds the child's profile, separates wishes about the service, replies once |
 | Product bot | `src/bot` | always | invite-only onboarding, FAQ, `/children`, `/add_child`, `/pause`, `/resume`, `/idea` |
 | Ops bot | `src/ops/manual_bot.py` | always | `/status`, `/send`, `/retry` with one-time codes; `/users`, `/llm`, `/ideas`; forwards product events |
 | Reports | `src/ops/llm_report.py`, `users_report.py` | Mondays 10:30; on demand | model quality, latency, tokens, cost, reserve days; families; wishes |

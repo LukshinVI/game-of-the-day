@@ -113,7 +113,9 @@ class Erasure(Base):
 
     def test_another_message_cancels_the_request_and_goes_on_as_usual(self):
         self.tg("/forget")
-        self.assertIn("записал", self.tg("сегодня всё получилось"))
+        stored = self.count("feedback")
+        self.tg("сегодня всё получилось")
+        self.assertEqual(self.count("feedback"), stored + 1)
         self.assertEqual(self.count("erasures"), 0)
 
     def test_a_stale_confirmation_does_nothing(self):
@@ -154,7 +156,8 @@ class Erasure(Base):
         self.assertIn("Тёма", self.tg("вернуть"))
         self.assertEqual(self.dump(), before)
         self.assertEqual(self.q("SELECT status, archive_json FROM erasures")[0][:], ("restored", None))
-        self.assertIn("записал", self.tg("сыграли ещё раз"))
+        self.tg("сыграли ещё раз")
+        self.assertEqual(self.q("SELECT raw_text FROM feedback ORDER BY id DESC LIMIT 1")[0][0], "сыграли ещё раз")
 
     def test_restore_after_the_ids_were_taken_remaps_them(self):
         self.tg("/forget")

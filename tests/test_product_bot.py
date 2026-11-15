@@ -407,13 +407,13 @@ class Reactions(BotTest):
         self.assertIsNone(self.media("42", photo=[{"file_id": "x"}]))  # same game: asked already
         self.assertEqual(self.rows("SELECT raw_text, insights_status FROM feedback ORDER BY id"),
                          [("[стикер 👍]", "reaction"), ("[фото]", "reaction")])
-        self.assertIn("Спасибо, записал", self.say("42", "понравилось"))
+        self.assertIn("Спасибо, прочитали", self.say("42", "понравилось"))
 
     def test_a_photo_with_a_caption_is_analysed_like_text(self):
         self.onboard("42")
         Feedback.sent_game(self, "42", "A")
         reply = self.media("42", photo=[{"file_id": "x"}], caption="Строил сам!")
-        self.assertIn("Спасибо, записал", reply)
+        self.assertIn("Спасибо, прочитали", reply)
         self.assertEqual(self.rows("SELECT raw_text, insights_status FROM feedback"), [("Строил сам! [фото]", None)])
 
     def test_a_sticker_during_the_questionnaire_is_not_a_name(self):

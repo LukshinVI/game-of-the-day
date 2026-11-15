@@ -180,6 +180,9 @@ export default {
 
         const audio = voiceLink(message.attachments);
 
+        // "Ответить" on a game: the host attaches the feedback to that exact game.
+        const replyTo = repliedId(message);
+
         /*
          * Straight to the host's storage queue: there is no ingress queue any more
          * (it only passed messages on, fed the retired analysis agent, and cost
@@ -191,7 +194,8 @@ export default {
                 feedbackText,
                 address: peerId,
                 ...(buttonPayload ? { payload: buttonPayload } : {}),
-                ...(audio ? { audio: audio.url, audioSeconds: audio.seconds } : {})
+                ...(audio ? { audio: audio.url, audioSeconds: audio.seconds } : {}),
+                ...(replyTo ? { replyTo } : {})
             });
         } catch (error) {
             console.log(
@@ -255,6 +259,12 @@ async function storeFeedback(
             ? payload.audio
             : null;
 
+    const replyTo =
+        typeof payload?.replyTo === 'string' &&
+        /^[0-9]{1,20}$/.test(payload.replyTo)
+            ? payload.replyTo
+            : null;
+
     if (
         !eventId ||
         !feedbackText
@@ -291,7 +301,8 @@ async function storeFeedback(
                 ...(audio ? {
                     audio_url: audio,
                     audio_seconds: Number(payload.audioSeconds) || 0
-                } : {})
+                } : {}),
+                ...(replyTo ? { reply_to: replyTo } : {})
             });
     } catch (error) {
         throw new Error(
@@ -398,6 +409,15 @@ export function voiceLink(attachments) {
     return typeof url === 'string' && url.startsWith('https://')
         ? { url, seconds: Number(message.duration) || 0 }
         : null;
+}
+
+/*
+ * The id of the community message the parent replied to, as a string, or null.
+ * Only the id is passed on, never the quoted text.
+ */
+export function repliedId(message) {
+    const id = message?.reply_message?.id;
+    return Number.isInteger(id) && id > 0 ? String(id) : null;
 }
 
 function safeErrorMessage(

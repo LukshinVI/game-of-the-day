@@ -139,6 +139,22 @@ def not_test_clause(con):
     return "NOT EXISTS (SELECT 1 FROM children AS c WHERE c.id = g.child_id AND c.is_test = 1)"
 
 
+def replied_game(con, channel, address, reply_to):
+    """The game whose message the parent replied to ("Ответить"), or None.
+
+    Exact, unlike the newest-game guess: the delivery stored the id the messenger gave
+    the game's message. Only a game sent to this very dialog is accepted.
+    """
+    if address is None or not isinstance(reply_to, str) or not reply_to.isdigit():
+        return None
+    row = con.execute(
+        "SELECT game_id FROM deliveries WHERE channel = ? AND recipient = ? AND status = 'sent' "
+        "AND external_message_id = ? ORDER BY id DESC LIMIT 1",
+        (channel, address, reply_to),
+    ).fetchone()
+    return row[0] if row else None
+
+
 def resolve_feedback_target(con, channel="vk", address=None):
     """
     Resolve feedback without an explicit game to the newest successfully
@@ -302,7 +318,8 @@ def save_raw(data):
             address = data.get("address")
             if address is not None and not (isinstance(address, str) and address.isdigit()):
                 raise StorageError(400, "invalid_request", "address must be a numeric string")
-            game_id = resolve_feedback_target(con, channel, address)
+            game_id = replied_game(con, channel, address, data.get("reply_to")) \
+                or resolve_feedback_target(con, channel, address)
 
         game_context = con.execute(
             """

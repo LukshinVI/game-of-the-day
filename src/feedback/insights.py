@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Feedback -> observations -> child profile, with a short reply to the parent.
 
-Runs every 15 minutes (game-feedback-insights.timer):
+Runs every 2 minutes (game-feedback-insights.timer):
 
 1. Pending feedback (stored by the queue consumer for VK or by the product bot for
    Telegram) is grouped per game: messages sent within SETTLE_MINUTES of each other are
@@ -38,7 +38,7 @@ from src.preparation import skills  # noqa: E402
 
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 PROMPT_PATH = ROOT / "src" / "feedback" / "prompts" / "insights.md"
-SETTLE_MINUTES = 10
+SETTLE_MINUTES = 3  # the parent is told at once that the message arrived (reactions.ack)
 PER_CHILD_PER_DAY = int(os.environ.get("INSIGHTS_PER_CHILD_PER_DAY", "3"))
 GLOBAL_PER_DAY = int(os.environ.get("INSIGHTS_GLOBAL_PER_DAY", "20"))
 MAX_TEXT_CHARS = 1500

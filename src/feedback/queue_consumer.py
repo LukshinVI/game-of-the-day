@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.db import children as ch
 from src.delivery import game_delivery
-from src.feedback import buttons, vk_inbound, voice
+from src.feedback import buttons, reactions, vk_inbound, voice
 from src.feedback.storage import DB_PATH, StorageError, save_analysis, save_raw
 
 
@@ -237,6 +237,11 @@ def validate_envelope(payload):
     if not isinstance(audio_seconds, (int, float)):
         raise ValueError("audio_seconds is invalid")
 
+    # The id of the message the parent replied to ("Ответить" on a game), from the Worker.
+    reply_to = payload.get("reply_to")
+    if reply_to is not None and not (isinstance(reply_to, str) and reply_to.isdigit() and len(reply_to) <= 20):
+        raise ValueError("reply_to is invalid")
+
     return {
         "event_id": event_id,
         "channel": channel,
@@ -245,6 +250,7 @@ def validate_envelope(payload):
         **({"address": address} if address is not None else {}),
         **({"payload": button} if button is not None else {}),
         **({"audio_url": audio_url, "audio_seconds": audio_seconds} if audio_url is not None else {}),
+        **({"reply_to": reply_to} if reply_to is not None else {}),
     }
 
 
@@ -281,6 +287,7 @@ def persist(payload):
             "channel": payload["channel"],
             "raw_text": payload["raw_text"],
             **({"address": payload["address"]} if "address" in payload else {}),
+            **({"reply_to": payload["reply_to"]} if "reply_to" in payload else {}),
         }
     )
 
@@ -347,6 +354,9 @@ def process_message(message):
 
     ack(lease_id)
 
+    if raw_result.get("status") == "created" and "address" in payload:
+        acknowledge(payload, raw_result["feedback_id"])
+
     LOG.info(
         "Feedback persisted and acknowledged "
         "event_id=%s feedback_id=%s raw_status=%s "
@@ -356,6 +366,22 @@ def process_message(message):
         raw_result.get("status"),
         analysis_result.get("status") if analysis_result else "not_provided",
     )
+
+
+def acknowledge(payload, feedback_id):
+    """Tell the parent at once that the message arrived (insights replies minutes later)."""
+    try:
+        con = ch.connect_db(DB_PATH)
+        try:
+            row = con.execute("SELECT game_id FROM feedback WHERE id = ?", (feedback_id,)).fetchone()
+            text = row and reactions.ack(con, row[0], feedback_id, payload["raw_text"])
+        finally:
+            con.close()
+        if text:
+            vk_reply(payload["address"], text,
+                     game_delivery.deterministic_random_id(f"ack:{payload['event_id']}"))
+    except Exception:  # noqa: BLE001 - the stored feedback matters, the courtesy does not
+        LOG.exception("Feedback acknowledgement failed")
 
 
 def vk_reply(peer, text, random_id, keyboard=None):

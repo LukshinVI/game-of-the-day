@@ -690,7 +690,7 @@ class ProductBot:
                 (datetime.now(timezone.utc).isoformat(timespec="seconds"), int(nudge), result["feedback_id"]),
             )
             return reactions.NUDGE if nudge else None
-        return "Спасибо, записал! 🙏 Через несколько минут напишу, что учтём."
+        return reactions.ack(con, game["id"], result["feedback_id"], text)
 
 
 def single_child_guard(con):
