@@ -120,5 +120,18 @@ class Consumer(unittest.TestCase):
             self.qc.validate_envelope({**envelope, "audio_url": "file:///etc/passwd"})
 
 
+class Hallucinations(unittest.TestCase):
+    def test_subtitle_credits_on_silence_are_no_transcript(self):
+        for text in ("Продолжение следует...", " Субтитры сделал DimaTorzok", "Спасибо за просмотр!", "...", ""):
+            self.assertTrue(voice.hallucination(text), text)
+        post = lambda url, body: {"success": True, "result": {"text": " Продолжение следует..."}}  # noqa: E731
+        with mock.patch.dict(os.environ, ON):
+            self.assertEqual(voice.transcribe(b"x", post=post), "")
+
+    def test_real_feedback_is_kept_even_with_a_common_word(self):
+        for text in ("Сыну очень понравилось, просил ещё", "Спасибо, было весело, продолжение будет завтра"):
+            self.assertFalse(voice.hallucination(text), text)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -23,6 +23,13 @@ MAX_SECONDS = 120
 MAX_BYTES = 5 * 1024 * 1024
 MAX_CHARS = 1500
 DEFAULT_MODEL = "@cf/openai/whisper-large-v3-turbo"
+# Whisper was trained on subtitles: on silence or noise it "hears" their credits
+# (production check 2026-11-15: one second of silence became «Продолжение следует...»).
+# A transcript that is nothing but such a phrase is no transcript at all.
+HALLUCINATIONS = (
+    "продолжение следует", "субтитры", "спасибо за просмотр", "подписывайтесь на канал",
+    "редактор субтитров", "корректор", "dimatorzok", "amara.org", "игорь негода",
+)
 # VK serves message audio from its own CDN; never fetch anything else on a sender's word.
 VK_AUDIO_HOSTS = (".userapi.com", ".vk.com", ".vkuseraudio.net", ".vk-cdn.net")
 
@@ -55,7 +62,16 @@ def transcribe(audio, post=None):
         data = post(url, body)
     if not data.get("success", True):
         raise RuntimeError(f"Workers AI error: {json.dumps(data.get('errors'))[:200]}")
-    return " ".join(((data.get("result") or {}).get("text") or "").split())[:MAX_CHARS]
+    text = " ".join(((data.get("result") or {}).get("text") or "").split())[:MAX_CHARS]
+    return "" if hallucination(text) else text
+
+
+def hallucination(text):
+    """True when the transcript is only a subtitle credit Whisper makes up on silence."""
+    plain = "".join(ch for ch in text.casefold() if ch.isalnum() or ch.isspace() or ch == ".").strip(" .")
+    if not plain:
+        return True
+    return len(plain) <= 80 and any(phrase in plain for phrase in HALLUCINATIONS)
 
 
 def labelled(transcript):
