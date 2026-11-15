@@ -96,14 +96,26 @@ class Telegram(Base):
         self.assertEqual(method, "editMessageReplyMarkup")
         self.assertEqual(payload["reply_markup"]["inline_keyboard"][0][0]["text"], "✓ 👍 Понравилось")
 
+    def test_a_difficulty_press_explains_itself_in_the_chat(self):
+        bot = pb.ProductBot(self.db, "1")
+        update = {"update_id": 2, "callback_query": {"id": "q", "data": "r:10:hard",
+                  "message": {"message_id": 5, "chat": {"id": 555, "type": "private"}}}}
+        calls = []
+        pb.answer_callback("t", bot, update, call=lambda token, method, payload, timeout: calls.append((method, payload)))
+        self.assertEqual(calls[0][1]["text"], "Спасибо, учли 💛")
+        self.assertEqual([m for m, _ in calls], ["answerCallbackQuery", "editMessageReplyMarkup", "sendMessage"])
+        self.assertIn("попроще", calls[2][1]["text"])
+        self.assertEqual(calls[2][1]["chat_id"], 555)
+
     def test_the_owner_tries_a_family_game_without_writing(self):
         bot = pb.ProductBot(self.db, "1")
-        answer, markup = bot.handle_callback({"callback_query": {"data": "r:10:hard",
+        answer, markup, note = bot.handle_callback({"callback_query": {"data": "r:10:hard",
                                               "message": {"chat": {"id": 1, "type": "private"}}}})
-        self.assertTrue(answer.startswith("Тест, не записано: Спасибо, учли"))
+        self.assertEqual(answer, "Тест, не записано 💛")
+        self.assertTrue(note.startswith("Тест, не записано. Спасибо, учли"))
         self.assertEqual(markup["inline_keyboard"][1][2]["text"], "✓ 🧗 Сложно")
         self.assertEqual(self.rows("SELECT count(*) FROM observations"), [(0,)])
-        answer, _ = pb.ProductBot(self.db, "1").handle_callback({"callback_query": {"data": "r:10:hard",
+        answer, _, _ = pb.ProductBot(self.db, "1").handle_callback({"callback_query": {"data": "r:10:hard",
                                               "message": {"chat": {"id": 999, "type": "private"}}}})
         self.assertEqual(answer, "Эта кнопка больше не работает.")
 

@@ -134,9 +134,10 @@ class Bots(Base):
                                             "message_id": 1, "text": "тема"}})
             self.assertIsInstance(reply, tuple)
             self.assertIn("Тема месяца", reply[0])
-            answer, markup = bot.handle_callback({"callback_query": {
+            answer, markup, note = bot.handle_callback({"callback_query": {
                 "data": "t:speech", "message": {"chat": {"id": 555, "type": "private"}}}})
-        self.assertIn("речь", answer)
+        self.assertEqual(answer, "Готово 🧭")
+        self.assertIn("речь", note)
         self.assertIsNone(markup)
         self.assertEqual(mt.current(ch.connect_db(self.db), self.baby, TODAY), "speech")
 

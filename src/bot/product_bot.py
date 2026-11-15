@@ -247,9 +247,19 @@ class ProductBot:
             con.close()
         return reply
 
-    def handle_callback(self, update):
-        """A reaction button under a game: (answer for the toast, new keyboard or None).
+    def game_skill(self, game_id):
+        con = self.connect()
+        try:
+            row = con.execute("SELECT skill FROM games WHERE id = ?", (game_id,)).fetchone()
+        finally:
+            con.close()
+        return row[0] if row else None
 
+    def handle_callback(self, update):
+        """A button press: (short toast, new keyboard or None, chat message or None).
+
+        Telegram's toast is small and fades fast, so it only says the press was taken; a
+        sentence worth reading (what changes next, the chosen theme) goes to the chat.
         Returns None for anything that is not one of our buttons in a private chat.
         """
         query = update.get("callback_query") or {}
@@ -270,7 +280,7 @@ class ProductBot:
                 raise
             finally:
                 con.close()
-            return answer, None
+            return "Готово 🧭", None, answer
         parsed = buttons.parse_telegram(query.get("data"))
         if parsed is None:
             return None
@@ -289,16 +299,14 @@ class ProductBot:
         if answer is None and chat_id == self.owner_id:
             # The owner tries the buttons on a test send of a game that went to a family:
             # show the family's answer and the tick, write nothing.
-            con = self.connect()
-            try:
-                game = con.execute("SELECT skill FROM games WHERE id = ?", (game_id,)).fetchone()
-            finally:
-                con.close()
-            if game is not None:
-                return f"Тест, не записано: {buttons.reply(code, game[0])}", buttons.telegram_markup(game_id, {code})
+            skill = self.game_skill(game_id)
+            if skill is not None:
+                note = buttons.note(code, skill)
+                return ("Тест, не записано 💛", buttons.telegram_markup(game_id, {code}),
+                        f"Тест, не записано. {note}" if note else None)
         if answer is None:
-            return "Эта кнопка больше не работает.", None
-        return answer, markup
+            return "Эта кнопка больше не работает.", None, None
+        return buttons.TOAST, markup, buttons.note(code, self.game_skill(game_id))
 
     def dispatch(self, con, chat_id, text, message, sender):
         parts = text.split()
@@ -725,14 +733,16 @@ def answer_callback(token, bot, update, call=None):
         result = bot.handle_callback(update)
     except Exception as exc:  # noqa: BLE001 - one bad press must not stop the bot
         print(f"callback {update['update_id']} failed: {type(exc).__name__}: {exc}", flush=True)
-        result = ("Не получилось сохранить, попробуйте ещё раз.", None)
-    text, markup = result if result else (None, None)
+        result = ("Не получилось сохранить, попробуйте ещё раз.", None, None)
+    text, markup, note = result if result else (None, None, None)
     try:
         call(token, "answerCallbackQuery", {"callback_query_id": query.get("id"), **({"text": text} if text else {})}, 20)
         message = query.get("message") or {}
         if markup is not None and message.get("message_id"):
             call(token, "editMessageReplyMarkup", {"chat_id": message["chat"]["id"],
                                                   "message_id": message["message_id"], "reply_markup": markup}, 20)
+        if note and message.get("chat", {}).get("id"):
+            call(token, "sendMessage", {"chat_id": message["chat"]["id"], "text": note}, 20)
     except Exception as exc:  # noqa: BLE001 - "message is not modified" and the like are harmless
         print(f"callback answer failed: {type(exc).__name__}", flush=True)
 

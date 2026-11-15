@@ -127,6 +127,14 @@ def record(con, game_id, code, channel, address, now=None):
     return reply(code, game[1])
 
 
+TOAST = "Спасибо, учли 💛"
+
+
+def note(code, skill):
+    """The sentence worth a chat message after a Telegram press, or None (the ✓ is enough)."""
+    return reply(code, skill) if code in ("easy", "hard", "disliked") else None
+
+
 def reply(code, skill):
     about = SKILL_LABELS.get(skill)
     if code == "easy" and about:
