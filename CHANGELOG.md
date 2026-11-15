@@ -5,10 +5,14 @@ versions follow [Semantic Versioning](https://semver.org/). Every version is wha
 running in production at that point. Versions before 1.0.0 were tagged retroactively,
 on the commit that completed each milestone.
 
-## [Unreleased] — 2.0.0 in progress
+## [Unreleased]
 
-Everything below is part of release 2.0.0. New features ship to production switched
-off and are switched on together on release day ([scope](docs/product-roadmap.md#release-200)).
+## [2.0.0] - 2026-11-15 — Easier to answer
+
+Released by dark launch: every feature below shipped to production switched off and all
+were switched on together on 2026-11-15 in `/etc/game-of-the-day/features.env`
+(`GAME_CARDS`, `GAME_HOLIDAYS`, `GAME_BUTTONS`, `GAME_MONTH_THEME`, `GAME_VOICE`;
+[scope](docs/product-roadmap.md#release-200)).
 
 ### Added
 - Game cards: a picture for the game's skill above the text, in one message as before
@@ -449,7 +453,8 @@ messenger and nothing re-sent ([postmortem](https://github.com/LukshinVI/game-of
 - Daily delivery to VK from Google Sheets + Apps Script, with a retry window.
 - The first feedback agent and its eval harness.
 
-[Unreleased]: ../../compare/v1.9.0...HEAD
+[Unreleased]: ../../compare/v2.0.0...HEAD
+[2.0.0]: ../../compare/v1.9.0...v2.0.0
 [1.9.0]: ../../compare/v1.8.0...v1.9.0
 [1.8.0]: ../../compare/v1.7.1...v1.8.0
 [1.7.1]: ../../compare/v1.7.0...v1.7.1

@@ -53,18 +53,19 @@ Workers AI was retired: its analysis was stored but nothing read it.
 
 ## Release 2.0.0
 
-Theme: easier to answer, nicer to receive, progress you can see. Each feature ships to
-production behind a flag and is tested there; all are switched on together on release day.
+Theme: easier to answer, nicer to receive, progress you can see. Each feature shipped to
+production behind a flag and was tested there; all were switched on together on
+2026-11-15.
 
 | feature | state |
 |---|---|
 | One feedback analyzer for both channels ([ADR 0005](adr/0005-one-feedback-analyzer.md)) | live (internal, no flag) |
-| Game cards: a skill picture above the game text (`GAME_CARDS`) | in production, off |
-| A new full-year birthday text and picture (`GAME_HOLIDAYS`); public holidays go to wall posts | in production, off |
-| Greeting pictures (birthday, New Year, Mother's Day, Father's Day) | done (`assets/cards`) |
-| One-tap reactions under the game (`GAME_BUTTONS`) | in production, off |
-| Voice feedback, transcribed (`GAME_VOICE`) | in production, off; needs a Workers AI token |
-| Theme of the month (`GAME_MONTH_THEME`) | in production, off |
+| Game cards: a skill picture above the game text (`GAME_CARDS`) | live |
+| A new full-year birthday text and picture (`GAME_HOLIDAYS`); public holidays go to wall posts | live |
+| Birthday greeting picture | live (`assets/cards`) |
+| One-tap reactions under the game, with the reason on «Не зашло» (`GAME_BUTTONS`) | live |
+| Voice feedback, transcribed (`GAME_VOICE`) | live |
+| Theme of the month (`GAME_MONTH_THEME`) | live |
 
 Deferred: a monthly album (a picture summary of the month) after 2.0; a referral is not
 needed now.
