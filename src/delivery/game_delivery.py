@@ -634,14 +634,11 @@ def child_header(con, game):
     greeting = greetings.greeting(row["name"], row["birth_date"], row["game_date"])
     if greeting:
         parts.append(greeting)
-    holiday = greetings.holiday(row["game_date"])
-    if holiday:
-        parts.append(greetings.HOLIDAYS[holiday])
     return "".join(f"{part}\n\n" for part in parts)
 
 
 def occasion(con, game):
-    """What the day celebrates, for the card's picture: 'birthday', a holiday key or None."""
+    """What the day celebrates, for the card's picture: 'birthday' or None."""
     if "child_id" in {r[1] for r in con.execute("PRAGMA table_info(games)")}:
         row = con.execute(
             "SELECT c.name, c.birth_date FROM games g JOIN children c ON c.id = g.child_id WHERE g.id = ?",
@@ -649,7 +646,7 @@ def occasion(con, game):
         ).fetchone()
         if row and greetings.greeting(row["name"], row["birth_date"], game["game_date"]):
             return "birthday"
-    return greetings.holiday(game["game_date"])
+    return None
 
 
 def send_message(game, random_id):

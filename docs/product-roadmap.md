@@ -60,7 +60,7 @@ production behind a flag and is tested there; all are switched on together on re
 |---|---|
 | One feedback analyzer for both channels ([ADR 0005](adr/0005-one-feedback-analyzer.md)) | live (internal, no flag) |
 | Game cards: a skill picture above the game text (`GAME_CARDS`) | in production, off |
-| Holiday greetings: New Year, Mother's Day, Father's Day, a new full-year birthday text (`GAME_HOLIDAYS`) | in production, off |
+| A new full-year birthday text and picture (`GAME_HOLIDAYS`); public holidays go to wall posts | in production, off |
 | Greeting pictures (birthday, New Year, Mother's Day, Father's Day) | done (`assets/cards`) |
 | One-tap reactions under the game (`GAME_BUTTONS`) | in production, off |
 | Voice feedback, transcribed (`GAME_VOICE`) | in production, off; needs a Workers AI token |

@@ -403,27 +403,6 @@ class Greetings(TempDb):
         self.assertFalse(any(t.startswith("🎂") for (t,) in self.query("SELECT message_text FROM games")))
 
 
-    def test_a_holiday_greeting_is_put_before_the_game_and_picks_the_card(self):
-        con = self.con()
-        child = ch.add_child(con, "Маша", "2025-09-07")
-        ch.add_recipient(con, child, "telegram", "555")
-        with contextlib.redirect_stdout(io.StringIO()), \
-                mock.patch.object(gp, "select_candidate", return_value=(candidate(12), 1)), \
-                mock.patch.object(gp, "send_preparation_success_alert"):
-            gp.prepare_run(self.today)
-        telegram = mock.Mock(return_value=202)
-        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gd, "telegram_send", telegram), \
-                mock.patch.object(gd, "send_ops_notification"), \
-                mock.patch.object(gd.greetings, "holiday", return_value="mothers_day"), \
-                mock.patch.object(gd.greetings, "greeting", return_value=None), \
-                mock.patch.object(gd.cards, "picture", side_effect=lambda skill, occasion=None: None) as picture:
-            gd.send_today()
-        text = telegram.call_args.args[0]
-        self.assertTrue(text.startswith("🌷 Сегодня особенный праздник — День матери"), text[:50])
-        self.assertIn("🎲", text)
-        self.assertEqual(picture.call_args.args[1:] or (picture.call_args.kwargs.get("occasion"),), ("mothers_day",))
-
-
 class GrownUp(TempDb):
     def test_a_child_older_than_the_supported_range_is_skipped_not_failed(self):
         con = self.con()

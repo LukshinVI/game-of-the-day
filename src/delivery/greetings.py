@@ -1,4 +1,4 @@
-"""Birthday, "month-birthday" and holiday greetings, prepended to the game of that day.
+"""Birthday and "month-birthday" greetings, prepended to the game of that day.
 
 Rules (deterministic, no model):
 - first year: every month on the day of birth (1..11 months);
@@ -9,14 +9,13 @@ A child born on the 29th-31st is greeted on the last day of shorter months.
 The child is addressed by name in the nominative ("Маша, сегодня тебе ..."), so
 names never need declension.
 
-Holidays (off unless GAME_HOLIDAYS=1): New Year on 1 January, Mother's Day on the last
-Sunday of November and Father's Day on the third Sunday of October, the Russian dates.
-A holiday greeting speaks to all mums or dads, never assumes who reads the chat.
+Public holidays are greeted by posts on the community wall, not here (owner's decision
+2026-11-15: one greeting a day, and the morning message stays about the game).
 """
 
 import calendar
 import os
-from datetime import date, timedelta
+from datetime import date
 
 MONTHLY = [
     "🎉 {name}, сегодня тебе {age}! Целый месяц новых открытий — поздравляем 💛",
@@ -90,57 +89,3 @@ def greeting(name, birth_iso, on_date):
     else:
         return None
     return template.format(name=name, age=age)
-
-
-HOLIDAYS = {
-    "new_year": (
-        "🎄 С Новым годом!\n\n"
-        "Для маленького человека каждый день — большое приключение, а впереди ещё целый год "
-        "удивительных открытий!\n\n"
-        "Пусть в доме будет тепло, в сердцах — радость, а в семейной копилке воспоминаний — "
-        "всё больше счастливых моментов.\n\n"
-        "Пусть сбываются мечты и больших, и маленьких!\n\n"
-        "С теплом, «Игра дня» 🐰"
-    ),
-    "mothers_day": (
-        "🌷 Сегодня особенный праздник — День матери.\n\n"
-        "В маленьких ладошках, первых улыбках и крепких объятиях живёт такая большая любовь.\n\n"
-        "Пусть каждая мама будет окружена нежностью, вниманием и заботой. Пусть рядом всегда будут "
-        "те, кто поддержит, обнимет и напомнит, как сильно её любят.\n\n"
-        "Пусть сегодня в каждом доме станет чуточку теплее.\n\n"
-        "С теплом, «Игра дня» 🐰"
-    ),
-    "fathers_day": (
-        "🍀 Сегодня особенный праздник — День отца.\n\n"
-        "Как здорово, когда есть с кем построить самую высокую башню, отправиться навстречу "
-        "приключениям и превратить обычный день в маленькую сказку.\n\n"
-        "Пусть у каждого папы будет больше времени для таких моментов, искренних улыбок и крепких "
-        "детских объятий.\n\n"
-        "Ведь самые большие приключения начинаются с маленьких шагов вместе.\n\n"
-        "С теплом, «Игра дня» 🐰"
-    ),
-}
-
-
-def _nth_sunday(year, month, n):
-    first = date(year, month, 1)
-    return first + timedelta(days=(6 - first.weekday()) % 7 + 7 * (n - 1))
-
-
-def _last_sunday(year, month):
-    last = date(year, month, calendar.monthrange(year, month)[1])
-    return last - timedelta(days=(last.weekday() - 6) % 7)
-
-
-def holiday(on_date):
-    """The holiday key for `on_date` ('new_year', 'mothers_day', 'fathers_day') or None."""
-    if os.environ.get("GAME_HOLIDAYS") != "1":
-        return None
-    on = date.fromisoformat(on_date) if isinstance(on_date, str) else on_date
-    if (on.month, on.day) == (1, 1):
-        return "new_year"
-    if on == _last_sunday(on.year, 11):
-        return "mothers_day"
-    if on == _nth_sunday(on.year, 10, 3):
-        return "fathers_day"
-    return None

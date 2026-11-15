@@ -58,39 +58,19 @@ class Schedule(unittest.TestCase):
 
 
 
-class Holidays(unittest.TestCase):
-    def setUp(self):
-        patcher = mock.patch.dict(os.environ, {"GAME_HOLIDAYS": "1"})
-        patcher.start()
-        self.addCleanup(patcher.stop)
-
-    def test_russian_dates(self):
-        self.assertEqual(gr.holiday("2027-01-01"), "new_year")
-        self.assertEqual(gr.holiday("2026-11-29"), "mothers_day")   # last Sunday of November
-        self.assertEqual(gr.holiday("2027-11-28"), "mothers_day")
-        self.assertEqual(gr.holiday("2026-10-18"), "fathers_day")   # third Sunday of October
-        self.assertEqual(gr.holiday("2027-10-17"), "fathers_day")
-
-    def test_ordinary_days_and_near_misses(self):
-        for day in ("2026-11-22", "2026-12-31", "2026-10-11", "2026-10-25", "2027-01-02"):
-            self.assertIsNone(gr.holiday(day), day)
-
-    def test_off_by_default(self):
-        with mock.patch.dict(os.environ, {"GAME_HOLIDAYS": ""}):
-            self.assertIsNone(gr.holiday("2026-11-29"))
-
+class FullYearBirthday(unittest.TestCase):
     def test_a_full_year_birthday_uses_the_new_text_month_birthdays_stay(self):
-        self.assertEqual(gr.greeting("Маша", "2025-05-03", "2026-05-03"), gr.BIRTHDAY_2)
-        self.assertIn("Маша", gr.greeting("Маша", "2025-05-03", "2025-08-03"))  # 3 months
-        self.assertIn("полтора года", gr.greeting("Маша", "2025-05-03", "2026-11-03"))
+        with mock.patch.dict(os.environ, {"GAME_HOLIDAYS": "1"}):
+            self.assertEqual(gr.greeting("Маша", "2025-05-03", "2026-05-03"), gr.BIRTHDAY_2)
+            self.assertIn("Маша", gr.greeting("Маша", "2025-05-03", "2025-08-03"))  # 3 months
+            self.assertIn("полтора года", gr.greeting("Маша", "2025-05-03", "2026-11-03"))
         with mock.patch.dict(os.environ, {"GAME_HOLIDAYS": ""}):
             self.assertIn("Маша", gr.greeting("Маша", "2025-05-03", "2026-05-03"))  # today's text until 2.0
 
-    def test_greetings_speak_to_all_mums_and_dads(self):
-        self.assertIn("каждая мама", gr.HOLIDAYS["mothers_day"])
-        self.assertIn("каждого папы", gr.HOLIDAYS["fathers_day"])
-        for text in gr.HOLIDAYS.values():
-            self.assertTrue(text.endswith("С теплом, «Игра дня» 🐰"))
+    def test_public_holidays_are_left_to_wall_posts(self):
+        self.assertFalse(hasattr(gr, "holiday"))
+        self.assertFalse(hasattr(gr, "HOLIDAYS"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,12 +18,10 @@ off and are switched on together on release day ([scope](docs/product-roadmap.md
   flag unset fall back to the plain text. Off unless `GAME_CARDS=1`; VK needs a community
   key with the Photos permission.
 
-- Holiday greetings before that day's game: New Year (1 January), Mother's Day (last
-  Sunday of November) and Father's Day (third Sunday of October), the Russian dates. They
-  speak to all mums or dads and never assume who reads the chat. On a birthday or a
-  holiday the card shows its greeting picture when there is one. The full-year birthday
-  gets a new, warmer text; month- and half-birthdays keep theirs. Off unless
-  `GAME_HOLIDAYS=1`.
+- Birthday greeting: the full-year birthday gets a new, warmer text and its own card
+  picture; month- and half-birthdays keep theirs. Off unless `GAME_HOLIDAYS=1`. Public
+  holidays (New Year, Mother's Day, Father's Day) are greeted by posts on the community
+  wall, not in the bot: one greeting a day, and the morning message stays about the game.
 
 - Reaction buttons under every game: 👍 Понравилось / 👎 Не зашло and 🪶 Легко /
   👌 В самый раз / 🧗 Сложно. A tap becomes the same observation a written answer would,

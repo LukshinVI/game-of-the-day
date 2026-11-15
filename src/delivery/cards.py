@@ -34,7 +34,7 @@ def enabled():
 def picture(skill, occasion=None):
     """The local file for the card, or None when there is none (or cards are off).
 
-    A day with an occasion (a birthday, a holiday) shows its greeting picture when there
+    A day with an occasion (a birthday) shows its greeting picture when there
     is one; otherwise, and on ordinary days, the picture of the game's skill.
     """
     if not enabled():
