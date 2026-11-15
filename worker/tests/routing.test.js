@@ -8,7 +8,10 @@ const env = {
     VK_TEST_PEER_ID: '1',
     sent: [],
     FEEDBACK_QUEUE: { send: async (body) => env.sent.push(body) },
-    FEEDBACK_STORAGE_QUEUE: { send: async (body) => env.stored.push(body) },
+    FEEDBACK_STORAGE_QUEUE: { send: async (body) => {
+        if (env.storageDown) throw new Error('down');
+        env.stored.push(body);
+    } },
     stored: []
 };
 
@@ -30,18 +33,28 @@ console.log = () => {};
 try {
     let response = await worker.fetch(callback(777, 'Здравствуйте', 1), env);
     assert.equal(response.status, 200);
-    assert.deepEqual(env.sent, [{ eventId: 'e1', feedbackText: 'Здравствуйте', address: '777' }]);
-
-    await worker.fetch(callback(2000000005, 'в беседе', 2), env);
-    assert.equal(env.sent.length, 1, 'group chats are ignored');
-
-    response = await worker.fetch(callback(1, 'тест', 3), env);
-    assert.equal(env.sent.at(-1).address, '1');
-
-    await worker.queue({ queue: 'game-of-the-day-feedback-prod', messages: [{ body: env.sent[0] }] }, env);
+    // Straight to the host's storage queue, no ingress hop.
+    assert.deepEqual(env.sent, []);
     assert.deepEqual(env.stored, [{
         version: 'feedback-storage-v1', event_id: 'e1', channel: 'vk', raw_text: 'Здравствуйте', address: '777'
     }]);
+
+    await worker.fetch(callback(2000000005, 'в беседе', 2), env);
+    assert.equal(env.stored.length, 1, 'group chats are ignored');
+
+    response = await worker.fetch(callback(1, 'тест', 3), env);
+    assert.equal(env.stored.at(-1).address, '1');
+
+    // The storage queue refuses: VK gets a 500 and delivers the event again.
+    env.storageDown = true;
+    response = await worker.fetch(callback(777, 'ещё раз', 4), env);
+    assert.equal(response.status, 500);
+    env.storageDown = false;
+
+    // A message queued on the ingress queue before the change is still passed on.
+    await worker.queue({ queue: 'game-of-the-day-feedback-prod', messages: [{ body: {
+        eventId: 'e0', feedbackText: 'старое', address: '777' } }] }, env);
+    assert.equal(env.stored.at(-1).event_id, 'e0');
 
     // An event queued before this change (no address) is stored without one.
     await worker.queue({ queue: 'game-of-the-day-feedback-prod', messages: [{ body: { eventId: 'old', feedbackText: 'x' } }] }, env);
@@ -56,8 +69,6 @@ try {
         })
     });
     await worker.fetch(press, env);
-    assert.equal(env.sent.at(-1).payload, '{"r":"liked","g":65}');
-    await worker.queue({ queue: 'game-of-the-day-feedback-prod', messages: [{ body: env.sent.at(-1) }] }, env);
     assert.equal(env.stored.at(-1).payload, '{"r":"liked","g":65}');
 
     // A voice message: the label for the text, the link for the host.
@@ -70,9 +81,7 @@ try {
         })
     });
     await worker.fetch(voiceCall, env);
-    assert.equal(env.sent.at(-1).feedbackText, '[голосовое]');
-    assert.equal(env.sent.at(-1).audio, 'https://psv4.userapi.com/a.ogg');
-    await worker.queue({ queue: 'game-of-the-day-feedback-prod', messages: [{ body: env.sent.at(-1) }] }, env);
+    assert.equal(env.stored.at(-1).raw_text, '[голосовое]');
     assert.equal(env.stored.at(-1).audio_url, 'https://psv4.userapi.com/a.ogg');
     assert.equal(env.stored.at(-1).audio_seconds, 7);
 

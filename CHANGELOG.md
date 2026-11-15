@@ -65,6 +65,10 @@ off and are switched on together on release day ([scope](docs/product-roadmap.md
   `src/feedback/insights.py` exactly like Telegram feedback. The Worker validates the VK
   callback and hands the message to the host; it makes no model call
   ([ADR 0005](docs/adr/0005-one-feedback-analyzer.md)).
+- VK messages go from the Worker straight to the host's storage queue. The ingress queue
+  in between only passed them on and cost about 10 seconds, too slow for a button: a VK
+  reply now takes 2–4 s. A refused send still answers VK with 500, so VK delivers the
+  event again; the ingress consumer stays for now to drain anything queued before.
 
 ### Removed
 - The Worker's semantic feedback agent on Workers AI, the enrichment queue hop, its

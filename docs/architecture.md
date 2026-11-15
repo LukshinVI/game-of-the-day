@@ -21,7 +21,7 @@ flowchart LR
     end
     subgraph Edge["Cloudflare"]
         W[Worker: VK callback]
-        Q[[Queues: ingress · storage]]
+        Q[[Queue: storage]]
     end
     CC[Claude Code headless<br/>Sonnet · Haiku]
     VK[VK]
@@ -52,7 +52,7 @@ controls. They share nothing but the database.
 | Preparation | `src/preparation` | 07:00, retries 08:00 and 09:00 MSK | one game per active child: prompt with age-banded skills and the child's profile → model → deterministic gate → corrective retries → fallback model → library |
 | Delivery | `src/delivery` | 10:00, catch-up 10:12 | one delivery per recipient (VK or Telegram); idempotent; recovers an interrupted send from the messenger history; adds the child's name for a shared chat, birthday greetings and the invitation to reply |
 | Outcome check | `src/ops/day_outcome_check.py` | 10:15, 11:15, 13:15, 17:15 | independently verifies that every delivery of the day is `sent` |
-| Feedback ingress (VK) | `worker/` + `src/feedback/queue_consumer.py` | always | Worker validates the callback and queues the event; the host stores the raw text before any model call; stickers and photos become labels |
+| Feedback ingress (VK) | `worker/` + `src/feedback/queue_consumer.py` | always | Worker validates the callback and puts the event straight on the storage queue (a reply in 2–4 s); the host stores the raw text before any model call; stickers and photos become labels |
 | VK dialog | `src/bot/vk_dialog.py` + `src/feedback/vk_inbound.py` | always (in the consumer) | every private VK message arrives with the sender's peer id: a subscribed family's text is a command or feedback on its own games; anyone else gets the questionnaire, which ends in an application the owner approves in the ops bot; replies and the outbox are sent once (inbound events, VK `random_id`) |
 | Feedback ingress (Telegram) | `src/bot/product_bot.py` | always | stores the text with an explicit game id (reply-to message or the chat's latest game) |
 | Feedback insights | `src/feedback/insights.py` | every 15 minutes | merges messages sent together, extracts observations with verbatim quotes, rebuilds the child's profile, separates wishes about the service, replies once |

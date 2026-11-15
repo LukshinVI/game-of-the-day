@@ -180,23 +180,20 @@ export default {
 
         const audio = voiceLink(message.attachments);
 
+        /*
+         * Straight to the host's storage queue: the ingress queue in between only
+         * passed messages on (it fed the retired analysis agent) and cost ~10 s,
+         * too slow for a button. The ingress consumer stays to drain messages
+         * queued before this change.
+         */
         try {
-            await env
-                .FEEDBACK_QUEUE
-                .send({
-                    eventId,
-                    feedbackText,
-                    address: peerId,
-                    ...(buttonPayload ? { payload: buttonPayload } : {}),
-                    ...(audio ? { audio: audio.url, audioSeconds: audio.seconds } : {})
-                });
-
-            console.log(
-                'Feedback queued:',
-                {
-                    eventId
-                }
-            );
+            await processQueuedFeedback(env, {
+                eventId,
+                feedbackText,
+                address: peerId,
+                ...(buttonPayload ? { payload: buttonPayload } : {}),
+                ...(audio ? { audio: audio.url, audioSeconds: audio.seconds } : {})
+            });
         } catch (error) {
             console.log(
                 'Feedback queue publish failed:',
