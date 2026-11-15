@@ -80,7 +80,9 @@ def labelled(transcript):
 
 def _safely(fetch, transcribe_fn):
     try:
-        return labelled(transcribe_fn(fetch()))
+        heard = transcribe_fn(fetch())
+        print(f"voice transcribed: {len(heard)} chars")
+        return labelled(heard)
     except Exception as exc:  # noqa: BLE001 - a voice message must never break feedback
         print(f"voice transcription skipped: {type(exc).__name__}: {str(exc)[:200]}")
         return LABEL
@@ -109,5 +111,7 @@ def vk_url_allowed(url):
 def from_vk(url, seconds, get=_get, transcribe_fn=transcribe):
     """'[голосовое] <text>' for a VK audio message link, or the bare label."""
     if not enabled() or not vk_url_allowed(url) or (seconds or 0) > MAX_SECONDS:
+        print(f"voice skipped: enabled={enabled()} host={urllib.parse.urlparse(url or '').hostname} "
+              f"seconds={seconds}")
         return LABEL
     return _safely(lambda: get(url), transcribe_fn)

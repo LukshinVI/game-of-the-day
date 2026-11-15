@@ -255,6 +255,8 @@ def with_transcript(payload):
     could differ by a word and storage would refuse it as a conflicting redelivery).
     """
     if "audio_url" not in payload or voice.LABEL not in payload["raw_text"]:
+        if voice.LABEL in payload.get("raw_text", ""):
+            LOG.info("Voice label without an audio link: nothing to transcribe")
         return payload
     con = ch.connect_db(DB_PATH)
     try:
