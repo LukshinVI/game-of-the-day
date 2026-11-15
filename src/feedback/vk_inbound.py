@@ -12,7 +12,7 @@ import sqlite3
 
 from src.bot import vk_dialog
 from src.db import children as ch
-from src.feedback import storage
+from src.feedback import buttons, storage
 
 MAX_OUTBOX_ATTEMPTS = 5
 
@@ -62,6 +62,35 @@ def route(event_id, address, raw_text, send, db_path=None, dialog=None):
     if reply:
         send(address, reply, random_id(f"in:{event_id}"))
     return "handled"
+
+
+def press(event_id, address, game_id, code, send, db_path=None):
+    """A reaction button pressed in VK: record it once per event and answer briefly.
+
+    Idempotent by the event id like route(): a redelivered press neither records twice nor
+    answers twice (the stored reply is re-sent with the same random_id, which VK dedupes).
+    """
+    con = connect(db_path)
+    try:
+        con.execute("BEGIN IMMEDIATE")
+        seen = con.execute(
+            "SELECT reply FROM inbound_events WHERE channel = 'vk' AND event_id = ?", (event_id,)
+        ).fetchone()
+        if seen is not None:
+            reply = seen["reply"]
+        else:
+            reply = buttons.record(con, game_id, code, "vk", address) or "Эта кнопка больше не работает."
+            con.execute(
+                "INSERT INTO inbound_events(channel, event_id, address, reply) VALUES ('vk', ?, ?, ?)",
+                (event_id, address, reply),
+            )
+        con.commit()
+    except Exception:
+        con.rollback()
+        raise
+    finally:
+        con.close()
+    send(address, reply, random_id(f"in:{event_id}"))
 
 
 def drain_outbox(send, db_path=None, limit=10, channel="vk"):

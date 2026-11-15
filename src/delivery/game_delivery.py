@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.delivery import cards, greetings  # noqa: E402
-from src.feedback import nudge  # noqa: E402
+from src.feedback import buttons, nudge  # noqa: E402
 
 DB_PATH = Path(__file__).resolve().parents[2] / "data" / "game-of-the-day.db"
 MOSCOW = ZoneInfo("Europe/Moscow")
@@ -545,7 +545,7 @@ def print_status():
 
 
 
-def vk_send(message: str, random_id: int, peer_id=None, attachment=None):
+def vk_send(message: str, random_id: int, peer_id=None, attachment=None, keyboard=None):
     token = os.environ.get("VK_TOKEN")
     peer_id = peer_id or os.environ.get("VK_PEER_ID")
 
@@ -561,6 +561,8 @@ def vk_send(message: str, random_id: int, peer_id=None, attachment=None):
     }
     if attachment:
         params["attachment"] = attachment
+    if keyboard:
+        params["keyboard"] = keyboard
     payload = urllib.parse.urlencode(params).encode("utf-8")
 
     request = urllib.request.Request(
@@ -595,7 +597,9 @@ FEEDBACK_FOOTER = (
 
 def feedback_footer(text):
     """Invite feedback under every game (added at send time, so library games get it too)."""
-    return "" if "💬" in (text or "") else "\n\n" + FEEDBACK_FOOTER
+    if "💬" in (text or ""):
+        return ""
+    return "\n\n" + (buttons.FOOTER if buttons.enabled() else FEEDBACK_FOOTER)
 
 
 def child_header(con, game):
@@ -647,33 +651,45 @@ def occasion(con, game):
 
 def send_message(game, random_id):
     skill, occasion_key = game.get("skill"), game.get("occasion")
+    with_buttons = buttons.enabled() and game.get("game_id") is not None
     if game["channel"] == "vk":
         peer = game["recipient"] or os.environ.get("VK_PEER_ID")
+        extra = {}
         attachment = cards.vk_attachment(skill, peer, os.environ.get("VK_TOKEN"), occasion=occasion_key)
         if attachment:
-            return vk_send(game["message_text"], random_id, peer_id=peer, attachment=attachment)
+            extra["attachment"] = attachment
+        if with_buttons:
+            extra["keyboard"] = buttons.vk_keyboard(game["game_id"])
+        if extra:
+            return vk_send(game["message_text"], random_id, peer_id=peer, **extra)
         if game["recipient"]:
             return vk_send(game["message_text"], random_id, peer_id=game["recipient"])
         return vk_send(game["message_text"], random_id)
     if game["channel"] == "telegram":
+        extra = {}
         preview = cards.telegram_preview(skill, occasion=occasion_key)
         if "url" in preview:
-            return telegram_send(game["message_text"], game["recipient"], preview=preview)
-        return telegram_send(game["message_text"], game["recipient"])
+            extra["preview"] = preview
+        if with_buttons:
+            extra["markup"] = buttons.telegram_markup(game["game_id"])
+        return telegram_send(game["message_text"], game["recipient"], **extra)
     raise RuntimeError(f"Unknown channel: {game['channel']}")
 
 
-def telegram_send(message, chat_id, preview=None):
+def telegram_send(message, chat_id, preview=None, markup=None):
     """Send through the product bot (GAME_TELEGRAM_BOT_TOKEN), not the ops bot."""
     token = os.environ.get("GAME_TELEGRAM_BOT_TOKEN")
     if not token or not chat_id:
         raise RuntimeError("GAME_TELEGRAM_BOT_TOKEN or the Telegram chat id is missing")
 
-    payload = urllib.parse.urlencode({
+    fields = {
         "chat_id": chat_id,
         "text": message,
         "link_preview_options": json.dumps(preview or {"is_disabled": True}),
-    }).encode("utf-8")
+    }
+    if markup:
+        fields["reply_markup"] = json.dumps(markup, ensure_ascii=False)
+    payload = urllib.parse.urlencode(fields).encode("utf-8")
 
     request = urllib.request.Request(
         f"https://api.telegram.org/bot{token}/sendMessage",

@@ -25,6 +25,15 @@ off and are switched on together on release day ([scope](docs/product-roadmap.md
   gets a new, warmer text; month- and half-birthdays keep theirs. Off unless
   `GAME_HOLIDAYS=1`.
 
+- Reaction buttons under every game: 👍 Понравилось / 👎 Не зашло and 🪶 Легко /
+  👌 В самый раз / 🧗 Сложно. A tap becomes the same observation a written answer would,
+  on the exact game the button sits under (siblings in one chat never mix), and the
+  child's profile is rebuilt at once, with no model call. One answer per row; a second
+  tap replaces it. Telegram marks the pressed buttons ✓ and answers with a toast; in VK
+  the press arrives as a message (its payload carried by the Worker) and gets a short
+  reply. A press on a game that was never sent to that chat is refused. Off unless
+  `GAME_BUTTONS=1`.
+
 ### Changed
 - One feedback analyzer for both channels: VK feedback is stored and analysed by
   `src/feedback/insights.py` exactly like Telegram feedback. The Worker validates the VK

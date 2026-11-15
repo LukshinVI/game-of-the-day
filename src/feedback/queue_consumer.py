@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.db import children as ch
 from src.delivery import game_delivery
-from src.feedback import vk_inbound
+from src.feedback import buttons, vk_inbound
 from src.feedback.storage import DB_PATH, StorageError, save_analysis, save_raw
 
 
@@ -223,12 +223,18 @@ def validate_envelope(payload):
     if address is not None and not (isinstance(address, str) and address.isdigit()):
         raise ValueError("address is invalid")
 
+    # A reaction button's payload ({"r": code, "g": game id}), passed on by the Worker.
+    button = payload.get("payload")
+    if button is not None and not (isinstance(button, str) and len(button) <= 200):
+        raise ValueError("payload is invalid")
+
     return {
         "event_id": event_id,
         "channel": channel,
         "raw_text": raw_text,
         **({"analysis": analysis} if analysis is not None else {}),
         **({"address": address} if address is not None else {}),
+        **({"payload": button} if button is not None else {}),
     }
 
 
@@ -282,6 +288,14 @@ def process_message(message):
     payload = validate_envelope(
         decode_message(message)
     )
+
+    # A reaction button under a game: recorded without a model, never stored as text.
+    pressed = buttons.parse_vk(payload.get("payload")) if "address" in payload else None
+    if pressed is not None:
+        vk_inbound.press(payload["event_id"], payload["address"], *pressed, vk_reply)
+        ack(lease_id)
+        LOG.info("VK reaction button handled event_id=%s", payload["event_id"])
+        return
 
     # A VK message with its sender: onboarding and commands are answered here and
     # never become feedback. Analysis envelopes skip this (their raw event is stored).

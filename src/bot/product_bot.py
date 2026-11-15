@@ -51,7 +51,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.bot import channel_link, erasure, swap  # noqa: E402
 from src.db import children as ch  # noqa: E402
-from src.feedback import insights, reactions, storage  # noqa: E402
+from src.feedback import buttons, insights, reactions, storage  # noqa: E402
 from src.ops import pulse  # noqa: E402
 
 DB_PATH = ch.DB_PATH
@@ -234,6 +234,34 @@ class ProductBot:
         finally:
             con.close()
         return reply
+
+    def handle_callback(self, update):
+        """A reaction button under a game: (answer for the toast, new keyboard or None).
+
+        Returns None for anything that is not one of our buttons in a private chat.
+        """
+        query = update.get("callback_query") or {}
+        message = query.get("message") or {}
+        chat = message.get("chat") or {}
+        parsed = buttons.parse_telegram(query.get("data"))
+        if parsed is None or chat.get("type") != "private":
+            return None
+        chat_id = str(chat.get("id"))
+        game_id, code = parsed
+        con = self.connect()
+        try:
+            con.execute("BEGIN IMMEDIATE")
+            answer = buttons.record(con, game_id, code, "telegram", chat_id)
+            markup = buttons.telegram_markup(game_id, buttons.chosen(con, game_id, "telegram", chat_id))
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+        finally:
+            con.close()
+        if answer is None:
+            return "Эта кнопка больше не работает.", None
+        return answer, markup
 
     def dispatch(self, con, chat_id, text, message, sender):
         parts = text.split()
@@ -645,6 +673,26 @@ def telegram(token, method, payload, timeout):
         return json.loads(response.read())
 
 
+def answer_callback(token, bot, update, call=None):
+    """Record a reaction button, answer with a toast and mark the pressed buttons ✓."""
+    call = call or telegram
+    query = update["callback_query"]
+    try:
+        result = bot.handle_callback(update)
+    except Exception as exc:  # noqa: BLE001 - one bad press must not stop the bot
+        print(f"callback {update['update_id']} failed: {type(exc).__name__}: {exc}", flush=True)
+        result = ("Не получилось сохранить, попробуйте ещё раз.", None)
+    text, markup = result if result else (None, None)
+    try:
+        call(token, "answerCallbackQuery", {"callback_query_id": query.get("id"), **({"text": text} if text else {})}, 20)
+        message = query.get("message") or {}
+        if markup is not None and message.get("message_id"):
+            call(token, "editMessageReplyMarkup", {"chat_id": message["chat"]["id"],
+                                                  "message_id": message["message_id"], "reply_markup": markup}, 20)
+    except Exception as exc:  # noqa: BLE001 - "message is not modified" and the like are harmless
+        print(f"callback answer failed: {type(exc).__name__}", flush=True)
+
+
 def main():
     token = os.environ["GAME_TELEGRAM_BOT_TOKEN"]
     owner_id = os.environ.get("GAME_BOT_OWNER_ID", "")
@@ -684,7 +732,7 @@ def main():
 
     while True:
         try:
-            payload = {"timeout": POLL_TIMEOUT_SECONDS, "allowed_updates": ["message"]}
+            payload = {"timeout": POLL_TIMEOUT_SECONDS, "allowed_updates": ["message", "callback_query"]}
             if offset is not None:
                 payload["offset"] = offset
             result = telegram(token, "getUpdates", payload, POLL_TIMEOUT_SECONDS + 10)
@@ -695,6 +743,9 @@ def main():
                 print(f"outbox failed: {type(exc).__name__}", flush=True)
             for update in result.get("result", []):
                 offset = update["update_id"] + 1
+                if "callback_query" in update:
+                    answer_callback(token, bot, update)
+                    continue
                 try:
                     reply = bot.handle(update)
                 except Exception as exc:  # noqa: BLE001 - one bad update must not stop the bot

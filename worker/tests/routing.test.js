@@ -47,6 +47,19 @@ try {
     await worker.queue({ queue: 'game-of-the-day-feedback-prod', messages: [{ body: { eventId: 'old', feedbackText: 'x' } }] }, env);
     assert.equal('address' in env.stored.at(-1), false);
 
+    // A reaction button: its payload travels with the label to the host.
+    const press = new Request('https://worker.example/', {
+        method: 'POST',
+        body: JSON.stringify({
+            type: 'message_new', secret: 's', group_id: 42, event_id: 'e9',
+            object: { message: { peer_id: 777, text: '👍 Понравилось', id: 9, payload: '{"r":"liked","g":65}' } }
+        })
+    });
+    await worker.fetch(press, env);
+    assert.equal(env.sent.at(-1).payload, '{"r":"liked","g":65}');
+    await worker.queue({ queue: 'game-of-the-day-feedback-prod', messages: [{ body: env.sent.at(-1) }] }, env);
+    assert.equal(env.stored.at(-1).payload, '{"r":"liked","g":65}');
+
     // The Worker makes no model call: the retired enrichment queue is not consumed here.
     await assert.rejects(
         worker.queue({ queue: 'game-of-the-day-feedback-enriched-prod', messages: [{ body: {} }] }, env),

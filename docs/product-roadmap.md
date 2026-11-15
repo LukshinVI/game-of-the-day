@@ -62,7 +62,7 @@ production behind a flag and is tested there; all are switched on together on re
 | Game cards: a skill picture above the game text (`GAME_CARDS`) | in production, off |
 | Holiday greetings: New Year, Mother's Day, Father's Day, a new full-year birthday text (`GAME_HOLIDAYS`) | in production, off |
 | Greeting pictures (birthday, New Year, Mother's Day, Father's Day) | done (`assets/cards`) |
-| One-tap reactions under the game (`GAME_BUTTONS`) | next: design agreed, labels pending |
+| One-tap reactions under the game (`GAME_BUTTONS`) | in production, off |
 | Voice feedback, transcribed | planned (below) |
 | Theme of the month | planned (below) |
 

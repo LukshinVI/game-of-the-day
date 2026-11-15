@@ -424,6 +424,19 @@ class ConsumerPersistenceBoundary(FeedbackTestCase):
         row = self.feedback_row()
         self.assertEqual(row["processed"], 1)
 
+    def test_a_reaction_button_is_recorded_not_stored_as_text(self):
+        envelope = {**_envelope(text="👍 Понравилось"), "address": "777", "payload": '{"r": "liked", "g": 1}'}
+        with mock.patch.object(consumer.vk_inbound, "press") as press:
+            consumer.process_message(_message(envelope))
+        press.assert_called_once_with("e1", "777", 1, "liked", consumer.vk_reply)
+        self.ack.assert_called_once_with("lease-1")
+        self.assertEqual(self.feedback_rows(), [])
+
+    def test_a_foreign_payload_is_ordinary_feedback(self):
+        envelope = {**_envelope(), "payload": '{"command": "start"}'}
+        consumer.process_message(_message(envelope))
+        self.assertEqual(len(self.feedback_rows()), 1)
+
     def test_redelivery_is_idempotent(self):
         consumer.process_message(_message(_envelope()))
         consumer.process_message(_message(_envelope(), lease="lease-2"))

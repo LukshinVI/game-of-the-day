@@ -170,13 +170,22 @@ export default {
             );
         }
 
+        // A reaction button under a game sends its label as text and
+        // {"r": code, "g": game id} as payload; the host reads the payload.
+        const buttonPayload =
+            typeof message.payload === 'string' &&
+            message.payload.length <= 200
+                ? message.payload
+                : null;
+
         try {
             await env
                 .FEEDBACK_QUEUE
                 .send({
                     eventId,
                     feedbackText,
-                    address: peerId
+                    address: peerId,
+                    ...(buttonPayload ? { payload: buttonPayload } : {})
                 });
 
             console.log(
@@ -285,6 +294,12 @@ async function processQueuedFeedback(
             ? payload.address
             : null;
 
+    const buttonPayload =
+        typeof payload?.payload === 'string' &&
+        payload.payload.length <= 200
+            ? payload.payload
+            : null;
+
     if (
         !eventId ||
         !feedbackText
@@ -316,7 +331,8 @@ async function processQueuedFeedback(
                 event_id: eventId,
                 channel: 'vk',
                 raw_text: feedbackText,
-                ...(address ? { address } : {})
+                ...(address ? { address } : {}),
+                ...(buttonPayload ? { payload: buttonPayload } : {})
             });
     } catch (error) {
         throw new Error(
