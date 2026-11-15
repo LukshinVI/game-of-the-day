@@ -31,7 +31,9 @@ HALLUCINATIONS = (
     "редактор субтитров", "корректор", "dimatorzok", "amara.org", "игорь негода",
 )
 # VK serves message audio from its own CDN; never fetch anything else on a sender's word.
-VK_AUDIO_HOSTS = (".userapi.com", ".vk.com", ".vkuseraudio.net", ".vk-cdn.net")
+# Production check 2026-11-15: VK served a voice message from psv4.vkuserphoto.ru.
+VK_AUDIO_HOSTS = (".userapi.com", ".vk.com", ".vkuseraudio.net", ".vkuseraudio.ru",
+                  ".vkuserphoto.ru", ".vk-cdn.net")
 
 
 def enabled():

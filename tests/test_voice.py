@@ -61,6 +61,7 @@ class Voice(unittest.TestCase):
 
     def test_vk_links_only_from_vk(self):
         self.assertTrue(voice.vk_url_allowed("https://psv4.userapi.com/c1/a.ogg"))
+        self.assertTrue(voice.vk_url_allowed("https://psv4.vkuserphoto.ru/s/v1/d/a.ogg"))  # seen in production
         for bad in ("http://psv4.userapi.com/a.ogg", "https://evil.example/a.ogg",
                     "https://userapi.com.evil.example/a.ogg", None):
             self.assertFalse(voice.vk_url_allowed(bad), bad)
