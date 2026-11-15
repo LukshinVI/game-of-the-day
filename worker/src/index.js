@@ -181,13 +181,12 @@ export default {
         const audio = voiceLink(message.attachments);
 
         /*
-         * Straight to the host's storage queue: the ingress queue in between only
-         * passed messages on (it fed the retired analysis agent) and cost ~10 s,
-         * too slow for a button. The ingress consumer stays to drain messages
-         * queued before this change.
+         * Straight to the host's storage queue: there is no ingress queue any more
+         * (it only passed messages on, fed the retired analysis agent, and cost
+         * ~10 s, too slow for a button).
          */
         try {
-            await processQueuedFeedback(env, {
+            await storeFeedback(env, {
                 eventId,
                 feedbackText,
                 address: peerId,
@@ -220,61 +219,10 @@ export default {
             'ok',
             { status: 200 }
         );
-    },
-
-    async queue(
-        batch,
-        env
-    ) {
-        for (
-            const message
-            of batch.messages
-        ) {
-            const payload =
-                message.body;
-
-            console.log(
-                'Queue delivery:',
-                {
-                    queue: batch.queue,
-                    eventId:
-                        payload?.eventId ??
-                        payload?.event_id
-                }
-            );
-
-            try {
-                if (
-                    batch.queue ===
-                    'game-of-the-day-feedback-prod'
-                ) {
-                    await processQueuedFeedback(
-                        env,
-                        payload
-                    );
-                } else {
-                    throw new Error(
-                        'UNKNOWN_QUEUE: ' +
-                        batch.queue
-                    );
-                }
-            } catch (error) {
-                console.log(
-                    'Queue processing failed:',
-                    {
-                        queue: batch.queue,
-                        error:
-                            safeErrorMessage(error)
-                    }
-                );
-
-                throw error;
-            }
-        }
     }
 };
 
-async function processQueuedFeedback(
+async function storeFeedback(
     env,
     payload
 ) {

@@ -6,8 +6,6 @@ const env = {
     VK_GROUP_ID: '42',
     VK_CALLBACK_SECRET: 's',
     VK_TEST_PEER_ID: '1',
-    sent: [],
-    FEEDBACK_QUEUE: { send: async (body) => env.sent.push(body) },
     FEEDBACK_STORAGE_QUEUE: { send: async (body) => {
         if (env.storageDown) throw new Error('down');
         env.stored.push(body);
@@ -34,7 +32,6 @@ try {
     let response = await worker.fetch(callback(777, 'Здравствуйте', 1), env);
     assert.equal(response.status, 200);
     // Straight to the host's storage queue, no ingress hop.
-    assert.deepEqual(env.sent, []);
     assert.deepEqual(env.stored, [{
         version: 'feedback-storage-v1', event_id: 'e1', channel: 'vk', raw_text: 'Здравствуйте', address: '777'
     }]);
@@ -50,15 +47,6 @@ try {
     response = await worker.fetch(callback(777, 'ещё раз', 4), env);
     assert.equal(response.status, 500);
     env.storageDown = false;
-
-    // A message queued on the ingress queue before the change is still passed on.
-    await worker.queue({ queue: 'game-of-the-day-feedback-prod', messages: [{ body: {
-        eventId: 'e0', feedbackText: 'старое', address: '777' } }] }, env);
-    assert.equal(env.stored.at(-1).event_id, 'e0');
-
-    // An event queued before this change (no address) is stored without one.
-    await worker.queue({ queue: 'game-of-the-day-feedback-prod', messages: [{ body: { eventId: 'old', feedbackText: 'x' } }] }, env);
-    assert.equal('address' in env.stored.at(-1), false);
 
     // A reaction button: its payload travels with the label to the host.
     const press = new Request('https://worker.example/', {
@@ -85,11 +73,8 @@ try {
     assert.equal(env.stored.at(-1).audio_url, 'https://psv4.userapi.com/a.ogg');
     assert.equal(env.stored.at(-1).audio_seconds, 7);
 
-    // The Worker makes no model call: the retired enrichment queue is not consumed here.
-    await assert.rejects(
-        worker.queue({ queue: 'game-of-the-day-feedback-enriched-prod', messages: [{ body: {} }] }, env),
-        /UNKNOWN_QUEUE/
-    );
+    // The Worker consumes no queue and makes no model call.
+    assert.equal(worker.queue, undefined);
 } finally {
     console.log = silent;
 }

@@ -68,7 +68,8 @@ off and are switched on together on release day ([scope](docs/product-roadmap.md
 - VK messages go from the Worker straight to the host's storage queue. The ingress queue
   in between only passed them on and cost about 10 seconds, too slow for a button: a VK
   reply now takes 2–4 s. A refused send still answers VK with 500, so VK delivers the
-  event again; the ingress consumer stays for now to drain anything queued before.
+  event again. The ingress queue and the empty enrichment queue are deleted; the
+  Worker consumes no queue.
 
 ### Removed
 - The Worker's semantic feedback agent on Workers AI, the enrichment queue hop, its
