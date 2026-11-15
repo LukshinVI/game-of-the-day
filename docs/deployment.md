@@ -36,7 +36,7 @@ what it needs. Variable names are listed in [`.env.example`](../.env.example).
 | file | used by | contents |
 |---|---|---|
 | `game.env` | preparation, delivery | `CHILD_BIRTH_DATE`, `VK_TOKEN` (community key with Messages and Photos), `VK_PEER_ID` |
-| `features.env` (optional) | delivery, digest, preparation, insights, feedback consumer, product bot | feature switches only, no secrets: `GAME_CARDS=1`, `GAME_HOLIDAYS=1`, `GAME_BUTTONS=1`, `GAME_MONTH_THEME=1`, `GAME_VOICE=1`, `GAME_FEEDBACK_CONTEXT=1`. One file, so a release switches them on together and one line switches one off |
+| `features.env` (optional) | delivery, digest, preparation, insights, feedback consumer, product bot | feature switches only, no secrets: `GAME_CARDS=1`, `GAME_HOLIDAYS=1`, `GAME_BUTTONS=1`, `GAME_MONTH_THEME=1`, `GAME_VOICE=1`, `GAME_FEEDBACK_CONTEXT=1`, `GAME_DIGEST_PULSE=1`, `GAME_ALBUM=1`. One file, so a release switches them on together and one line switches one off |
 | `preparation.env` | preparation | `PREPARATION_BACKEND`, `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` |
 | `feedback.env` | feedback consumer | `CF_ACCOUNT_ID`, `CF_STORAGE_QUEUE_ID`, `CF_QUEUE_API_TOKEN` |
 | `ops-bot.env` | alerts, ops bot | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
@@ -93,6 +93,7 @@ that the long-running services are up afterwards.
 | `ops/preparation/game-preparation.{service,timer}` | 07:00, retries 08:00 and 09:00 MSK (idempotent) |
 | `ops/preparation/game-reserve.{service,timer}` | Sundays 04:30 MSK: top up the warm reserve of validated games |
 | `ops/delivery/game-digest.{service,timer}` | Sundays 19:00 MSK: digest for parents |
+| `ops/delivery/game-album.{service,timer}` | the 1st, 10:15 MSK: album of the month (`GAME_ALBUM=1`); needs `python3-pil` on the host |
 | `ops/delivery/game-delivery.{service,timer}` | 10:00 MSK, catch-up 10:12 |
 | `ops/delivery/game-delivery-retry.service` | manual, via the bot |
 | `ops/feedback/game-feedback-consumer.service` | always on |

@@ -290,6 +290,14 @@ CREATE TABLE nudges (
 
 -- Theme of the month (src/feedback/month_theme.py): what a family would like to play more
 -- of this month. skill NULL = a mix. Off unless GAME_MONTH_THEME=1.
+CREATE TABLE albums (
+    child_id INTEGER NOT NULL REFERENCES children(id),
+    channel TEXT NOT NULL,
+    address TEXT NOT NULL,
+    month TEXT NOT NULL,
+    sent_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (child_id, channel, address, month)
+);
 CREATE TABLE month_themes (
     child_id INTEGER NOT NULL REFERENCES children(id),
     month TEXT NOT NULL,
@@ -297,7 +305,7 @@ CREATE TABLE month_themes (
     chosen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (child_id, month)
 );
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '20');
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '21');
 
 -- One-time request to star the project on GitHub (src/ops/weekly_digest.py).
 CREATE TABLE star_requests (

@@ -56,6 +56,7 @@ FAMILY_TABLES = (
     ("wishes", "child_id IN ({kids}) OR feedback_id IN ({feedback}) OR chat_id IN ({keys})",
      {"feedback_id": "feedback", "child_id": "children"}),
     ("digests", "child_id IN ({kids})", {"child_id": "children"}),
+    ("albums", "child_id IN ({kids})", {"child_id": "children"}),
     ("swaps", "child_id IN ({kids})", {"child_id": "children", "game_id": "games"}),
     ("applications", "child_id IN ({kids}) OR (channel || ':' || address) IN ({addrs})", {"child_id": "children"}),
     ("star_requests", "(channel || ':' || address) IN ({addrs})", {"child_id": "children"}),

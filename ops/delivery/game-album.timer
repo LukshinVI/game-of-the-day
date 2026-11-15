@@ -1,0 +1,9 @@
+[Unit]
+Description=Game of the Day - album of the month, the 1st after the morning game
+
+[Timer]
+OnCalendar=*-*-01 10:15:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target

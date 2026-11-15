@@ -24,6 +24,9 @@ jobs:
       # The backup tests drive the real sqlite3 CLI and age; they are skipped without them.
       - name: Install sqlite3 CLI
         run: sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3 age
+      # The album picture (src/ops/monthly_album.py); the host has python3-pil.
+      - name: Install Pillow
+        run: python -m pip install --quiet pillow==11.3.0
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 

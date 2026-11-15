@@ -7,15 +7,16 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
-### Changed
-- A written or spoken message gets an instant «Спасибо, прочитали / послушали 💛 Уже
-  думаем, как сделать следующие игры ещё лучше…» (one per burst on a game, VK and Telegram), and the
-  considered reply comes in 3–5 minutes instead of 10–25: insights runs every 2 minutes
-  and waits 3 quiet minutes (was 15 and 10).
-- «Ответить» on a game in VK attaches the feedback to that exact game, as in Telegram:
-  the Worker passes only the replied message's id, never its text.
-
 ### Added
+- Album of the month (`GAME_ALBUM`, `src/ops/monthly_album.py`): on the 1st at 10:15 MSK
+  every family gets one picture of the month that passed: the month and the child on
+  the season's illustration, games received and marked, up to three games they liked
+  (the last games, under a neutral heading, when none was marked), the areas of the
+  month and one short quote from the parent. Facts and the parent's own words only, no
+  scores or comparisons; only after two weeks of games that month; once per recipient
+  and month (schema 21, table `albums`, archived on erasure). Drawn with Pillow
+  (`python3-pil`, the project's first dependency outside the standard library) and the
+  Nunito font (`assets/fonts`, SIL OFL).
 - Feedback in context (`GAME_FEEDBACK_CONTEXT`: `1` for every child, `test` for test
   children only; on for every child since 2026-11-15): the analyzer sees the child's games of the last three weeks and its
   own observations of the last three days. An impression goes to the game it is about
@@ -25,6 +26,14 @@ on the commit that completed each milestone.
   selector follows (calm games at bedtime), never a dislike; and «нет, не так» takes
   back the observation it corrects. Every game id and retraction is checked against what
   the model was shown. Schema 20 widens the observation kinds.
+
+### Changed
+- A written or spoken message gets an instant «Спасибо, прочитали / послушали 💛 Уже
+  думаем, как сделать следующие игры ещё лучше…» (one per burst on a game, VK and Telegram), and the
+  considered reply comes in 3–5 minutes instead of 10–25: insights runs every 2 minutes
+  and waits 3 quiet minutes (was 15 and 10).
+- «Ответить» on a game in VK attaches the feedback to that exact game, as in Telegram:
+  the Worker passes only the replied message's id, never its text.
 
 ### Fixed
 - A second message about the same game (a follow-up, a voice note after a tap) was
