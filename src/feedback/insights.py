@@ -54,6 +54,9 @@ KINDS = {
     # difficulty signal (production 2026-11-10: "сложновато удержать внимание" made the
     # next games easier although the child had managed the game).
     "attention": {"short", "tired"},
+    # Why the game did not work, the same reasons as the buttons after «Не зашло» (a game
+    # "not for the age" is a difficulty): the profile's `why_not`.
+    "reason": {"not_interested", "no_materials", "prep_heavy"},
     "like": None,      # free short phrase
     "dislike": None,
     "wish": None,      # about the service, not the child: goes to the owner, not the profile
@@ -184,7 +187,7 @@ def valid_observations(output, text, game_skill):
             value = value[:60].lower()
         if kind == "wish":
             value = value[:120]
-        if kind == "attention":
+        if kind in ("attention", "reason"):
             skill = None
         kept.append({"kind": kind, "value": value, "skill": skill, "evidence": evidence})
     # "Went well" and "too hard" for the same skill contradict each other: the child did
@@ -197,6 +200,13 @@ def valid_observations(output, text, game_skill):
 DIFFICULTY_TEXT = {"too_easy": "было легко → дальше дадим посложнее",
                    "too_hard": "было сложно → дальше дадим попроще",
                    "right": "сложность в самый раз"}
+
+
+REASON_TEXT = {
+    "not_interested": "• не заинтересовало → попробуем зайти к навыку с другой стороны",
+    "no_materials": "• не нашлось нужного дома → в ближайших играх только то, что есть в любом доме",
+    "prep_heavy": "• долго готовить → ближайшие игры будут проще в подготовке",
+}
 
 
 def reply_text(game_title, observations):
@@ -217,6 +227,8 @@ def reply_text(game_title, observations):
             lines.append("• внимание пока трудно удержать → сделаем игры короче и живее")
         elif obs["kind"] == "attention" and obs["value"] == "tired":
             lines.append("• малыш был уставший или не в настроении — сложность из-за этого не меняем")
+        elif obs["kind"] == "reason" and obs["value"] in REASON_TEXT:
+            lines.append(REASON_TEXT[obs["value"]])
         elif obs["kind"] == "like":
             lines.append(f"• любит: {obs['value']}")
         elif obs["kind"] == "dislike":

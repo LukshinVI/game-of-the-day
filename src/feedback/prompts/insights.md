@@ -11,6 +11,13 @@ Return only facts the feedback states. Each observation has:
     tired (tired, sleepy, cranky, not in the mood); skill null. This is about the child's
     state, never a difficulty: "у малыша получилось, но пока чуть сложновато удержать
     внимание" → skill went_well + attention short, and no difficulty;
+  - reason: why the game did not work, only when the parent says so: value
+    not_interested (the child was not interested, ignored it, got bored) |
+    no_materials (they lacked something the game needs, searched for it long, had to
+    replace it) | prep_heavy (preparing or setting up took too long or was too fiddly);
+    skill null. "долго искали нужные предметы" → reason no_materials; "не
+    заинтересовался" → reason not_interested. A game too hard for the age is a
+    difficulty, not a reason;
   - skill: value went_well | hard, with the skill (something the child did or could not do yet);
   - like / dislike: value is a short phrase in Russian, 1-4 words, about what the child
     enjoys or avoids in general (for example "мячи", "лежать на животе", "громкие звуки").

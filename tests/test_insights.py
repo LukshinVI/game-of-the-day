@@ -248,6 +248,27 @@ class Wishes(InsightsSetup):
         self.assertNotIn("more outdoor games", prompt)
 
 
+class Reasons(InsightsSetup):
+    def test_why_it_did_not_work_is_read_from_words_like_from_the_buttons(self):
+        # Production check 2026-11-15, a voice message: "мы очень долго искали нужные
+        # предметы ... сложно ... заинтересовать".
+        self.feedback("не сильно зашла, мы очень долго искали нужные предметы", 30)
+        obs = [{"kind": "outcome", "value": "disliked", "skill": None, "evidence": "не сильно зашла"},
+               {"kind": "reason", "value": "no_materials", "skill": "fine_motor",
+                "evidence": "долго искали нужные предметы"},
+               {"kind": "reason", "value": "not_for_age", "skill": None, "evidence": "не сильно зашла"}]
+        self.run_insights(obs)
+        self.assertEqual(sorted(self.rows("SELECT kind, value, skill FROM observations")),
+                         [("outcome", "disliked", None), ("reason", "no_materials", None)])
+        self.assertIn("только то, что есть в любом доме", self.replies[0])
+
+    def test_the_prompt_names_the_reasons(self):
+        prompt = (ROOT / "src/feedback/prompts/insights.md").read_text()
+        for value in insights.KINDS["reason"]:
+            self.assertIn(value, prompt)
+        self.assertEqual(insights.KINDS["reason"], set(profile.REASON_DAYS))
+
+
 class RequiredNext(InsightsSetup):
     def test_too_easy_yesterday_means_the_same_skill_harder_today(self):
         con = sqlite3.connect(self.db)
