@@ -35,10 +35,12 @@ what it needs. Variable names are listed in [`.env.example`](../.env.example).
 
 | file | used by | contents |
 |---|---|---|
-| `game.env` | preparation, delivery | `CHILD_BIRTH_DATE`, `VK_TOKEN` (community key with Messages and Photos), `VK_PEER_ID`, optional `GAME_CARDS=1`, `GAME_HOLIDAYS=1`, `GAME_BUTTONS=1`, `GAME_MONTH_THEME=1` |
+| `game.env` | preparation, delivery | `CHILD_BIRTH_DATE`, `VK_TOKEN` (community key with Messages and Photos), `VK_PEER_ID` |
+| `features.env` (optional) | delivery, digest, preparation, insights, feedback consumer, product bot | feature switches only, no secrets: `GAME_CARDS=1`, `GAME_HOLIDAYS=1`, `GAME_BUTTONS=1`, `GAME_MONTH_THEME=1`, `GAME_VOICE=1`. One file, so a release switches them on together and one line switches one off |
 | `preparation.env` | preparation | `PREPARATION_BACKEND`, `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` |
 | `feedback.env` | feedback consumer | `CF_ACCOUNT_ID`, `CF_STORAGE_QUEUE_ID`, `CF_QUEUE_API_TOKEN` |
 | `ops-bot.env` | alerts, ops bot | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| `voice.env` (optional) | feedback consumer, product bot | `GAME_VOICE=1`, `CF_AI_TOKEN` (Workers AI), `CF_ACCOUNT_ID` |
 
 ### Children and recipients
 

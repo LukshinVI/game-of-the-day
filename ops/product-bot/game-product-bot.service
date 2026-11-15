@@ -21,6 +21,8 @@ WorkingDirectory=/srv/game-of-the-day
 # Only the product bot token and the owner chat id. No VK, model or Cloudflare
 # credentials: this process faces the public and never needs them.
 EnvironmentFile=/etc/game-of-the-day/product-bot.env
+EnvironmentFile=-/etc/game-of-the-day/features.env
+EnvironmentFile=-/etc/game-of-the-day/voice.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/bot/product_bot.py

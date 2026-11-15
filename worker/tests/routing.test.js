@@ -60,6 +60,22 @@ try {
     await worker.queue({ queue: 'game-of-the-day-feedback-prod', messages: [{ body: env.sent.at(-1) }] }, env);
     assert.equal(env.stored.at(-1).payload, '{"r":"liked","g":65}');
 
+    // A voice message: the label for the text, the link for the host.
+    const voiceCall = new Request('https://worker.example/', {
+        method: 'POST',
+        body: JSON.stringify({
+            type: 'message_new', secret: 's', group_id: 42, event_id: 'e10',
+            object: { message: { peer_id: 777, text: '', id: 10, attachments: [{ type: 'audio_message',
+                audio_message: { duration: 7, link_ogg: 'https://psv4.userapi.com/a.ogg' } }] } }
+        })
+    });
+    await worker.fetch(voiceCall, env);
+    assert.equal(env.sent.at(-1).feedbackText, '[голосовое]');
+    assert.equal(env.sent.at(-1).audio, 'https://psv4.userapi.com/a.ogg');
+    await worker.queue({ queue: 'game-of-the-day-feedback-prod', messages: [{ body: env.sent.at(-1) }] }, env);
+    assert.equal(env.stored.at(-1).audio_url, 'https://psv4.userapi.com/a.ogg');
+    assert.equal(env.stored.at(-1).audio_seconds, 7);
+
     // The Worker makes no model call: the retired enrichment queue is not consumed here.
     await assert.rejects(
         worker.queue({ queue: 'game-of-the-day-feedback-enriched-prod', messages: [{ body: {} }] }, env),

@@ -14,6 +14,7 @@ EnvironmentFile=/etc/game-of-the-day/game.env
 EnvironmentFile=-/etc/game-of-the-day/ops-bot.env
 # Product bot token for Telegram recipients (optional until the product bot exists).
 EnvironmentFile=-/etc/game-of-the-day/product-bot.env
+EnvironmentFile=-/etc/game-of-the-day/features.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/delivery/game_delivery.py send-today

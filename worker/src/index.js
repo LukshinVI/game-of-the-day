@@ -178,6 +178,8 @@ export default {
                 ? message.payload
                 : null;
 
+        const audio = voiceLink(message.attachments);
+
         try {
             await env
                 .FEEDBACK_QUEUE
@@ -185,7 +187,8 @@ export default {
                     eventId,
                     feedbackText,
                     address: peerId,
-                    ...(buttonPayload ? { payload: buttonPayload } : {})
+                    ...(buttonPayload ? { payload: buttonPayload } : {}),
+                    ...(audio ? { audio: audio.url, audioSeconds: audio.seconds } : {})
                 });
 
             console.log(
@@ -300,6 +303,13 @@ async function processQueuedFeedback(
             ? payload.payload
             : null;
 
+    const audio =
+        typeof payload?.audio === 'string' &&
+        payload.audio.startsWith('https://') &&
+        payload.audio.length <= 1000
+            ? payload.audio
+            : null;
+
     if (
         !eventId ||
         !feedbackText
@@ -332,7 +342,11 @@ async function processQueuedFeedback(
                 channel: 'vk',
                 raw_text: feedbackText,
                 ...(address ? { address } : {}),
-                ...(buttonPayload ? { payload: buttonPayload } : {})
+                ...(buttonPayload ? { payload: buttonPayload } : {}),
+                ...(audio ? {
+                    audio_url: audio,
+                    audio_seconds: Number(payload.audioSeconds) || 0
+                } : {})
             });
     } catch (error) {
         throw new Error(
@@ -425,6 +439,20 @@ export function withReactionLabel(
         .filter(Boolean)
         .join(' ')
         .trim();
+}
+
+/*
+ * A voice message's audio link for the host, which may transcribe it (GAME_VOICE) and
+ * keeps only the text. The Worker itself never downloads it.
+ */
+export function voiceLink(attachments) {
+    const voice = (Array.isArray(attachments) ? attachments : [])
+        .find((item) => item?.type === 'audio_message');
+    const message = voice?.audio_message;
+    const url = message?.link_ogg || message?.link_mp3;
+    return typeof url === 'string' && url.startsWith('https://')
+        ? { url, seconds: Number(message.duration) || 0 }
+        : null;
 }
 
 function safeErrorMessage(

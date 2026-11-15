@@ -51,7 +51,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.bot import channel_link, erasure, swap  # noqa: E402
 from src.db import children as ch  # noqa: E402
-from src.feedback import buttons, insights, month_theme, reactions, storage  # noqa: E402
+from src.feedback import buttons, insights, month_theme, reactions, storage, voice  # noqa: E402
 from src.ops import pulse  # noqa: E402
 
 DB_PATH = ch.DB_PATH
@@ -106,6 +106,14 @@ OWNER_HELP = (
     "/block <chat_id> — отключить участника и его детей"
 )
 FAQ = (Path(__file__).with_name("faq.txt")).read_text(encoding="utf-8").strip()
+FAQ_MEDIA = "Фото, видео и голосовые не сохраняем — только отметку, что они были."
+FAQ_MEDIA_VOICE = ("Фото и видео не сохраняем — только отметку, что они были. Голосовые переводим "
+                   "в текст сервисом распознавания речи, а само аудио не храним.")
+
+
+def faq_text():
+    """The FAQ; with voice transcription on, it says what happens to voice messages."""
+    return FAQ.replace(FAQ_MEDIA, FAQ_MEDIA_VOICE) if voice.enabled() else FAQ
 WELCOME = (
     "Здравствуйте! 👋 Я присылаю одну развивающую игру в день — "
     "короткую, по возрасту ребёнка, из того, что есть дома.\n\n"
@@ -163,6 +171,8 @@ def describe_age(birth_iso, today):
 
 
 class ProductBot:
+    voice_token = None  # the bot token, set by main(), to download voice messages
+
     def __init__(self, db_path, owner_id, username="", now=None, new_code=None):
         self.db_path = db_path
         self.owner_id = str(owner_id) if owner_id else ""
@@ -217,6 +227,8 @@ class ProductBot:
         chat_id = str(chat.get("id"))
         text = (message.get("text") or "").strip()
         label = None if text else reactions.telegram_label(message)
+        if label == voice.LABEL and self.voice_token:
+            label = voice.from_telegram(message, self.voice_token)  # the text, when it can be heard
         if label:
             caption = (message.get("caption") or "").strip()
             text = f"{caption} {label}".strip()
@@ -318,7 +330,7 @@ class ProductBot:
         if command == "/faq":
             pending = self.step(con, chat_id)
             prompts = {"name": ASK_NAME, "birth_date": ASK_BIRTH, "confirm": "Подтвердите: «да» или «нет»."}
-            return FAQ + (f"\n\n— Продолжим подключение. {prompts[pending['step']]}" if pending else "")
+            return faq_text() + (f"\n\n— Продолжим подключение. {prompts[pending['step']]}" if pending else "")
         if command == "/add_child":
             limit = self.child_limit(con, chat_id)
             if limit:
@@ -738,6 +750,7 @@ def main():
     finally:
         con.close()
     bot = ProductBot(DB_PATH, owner_id, username)
+    bot.voice_token = token
     offset = None
     last_success = time.time()
 

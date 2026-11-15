@@ -23,6 +23,12 @@ short version in `/faq` (`src/bot/faq.txt`) and the VK help.
 kept: these are pictures of children, the fact that they arrived is enough
 (`src/feedback/reactions.py`).
 
+**Voice messages, when transcription is on (`GAME_VOICE=1`):** the audio is downloaded
+into memory, sent to Whisper on Cloudflare Workers AI and dropped; only the text is
+stored, as `[голосовое] <text>` in `feedback.raw_text`, under the same terms as written
+feedback. The audio itself is never written to disk or the database. The FAQ says so
+while the switch is on (`src/feedback/voice.py`).
+
 ## Who sees it
 
 - The owner (operator of the service), through the ops bot and the database.

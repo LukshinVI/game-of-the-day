@@ -63,7 +63,7 @@ production behind a flag and is tested there; all are switched on together on re
 | Holiday greetings: New Year, Mother's Day, Father's Day, a new full-year birthday text (`GAME_HOLIDAYS`) | in production, off |
 | Greeting pictures (birthday, New Year, Mother's Day, Father's Day) | done (`assets/cards`) |
 | One-tap reactions under the game (`GAME_BUTTONS`) | in production, off |
-| Voice feedback, transcribed | planned (below) |
+| Voice feedback, transcribed (`GAME_VOICE`) | in production, off; needs a Workers AI token |
 | Theme of the month (`GAME_MONTH_THEME`) | in production, off |
 
 Deferred: a monthly album (a picture summary of the month) after 2.0; a referral is not

@@ -20,6 +20,7 @@ EnvironmentFile=/etc/game-of-the-day/preparation.env
 EnvironmentFile=-/etc/game-of-the-day/ops-bot.env
 # Replies go through the channel the feedback came from: VK (game.env) or the product bot.
 EnvironmentFile=-/etc/game-of-the-day/product-bot.env
+EnvironmentFile=-/etc/game-of-the-day/features.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 # The model CLI keeps its config and cache under HOME; give it a private state dir

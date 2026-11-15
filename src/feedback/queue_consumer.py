@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.db import children as ch
 from src.delivery import game_delivery
-from src.feedback import buttons, vk_inbound
+from src.feedback import buttons, vk_inbound, voice
 from src.feedback.storage import DB_PATH, StorageError, save_analysis, save_raw
 
 
@@ -228,6 +228,15 @@ def validate_envelope(payload):
     if button is not None and not (isinstance(button, str) and len(button) <= 200):
         raise ValueError("payload is invalid")
 
+    # A voice message's audio link (the Worker passes it; the host may transcribe it).
+    audio_url = payload.get("audio_url")
+    if audio_url is not None and not (isinstance(audio_url, str) and audio_url.startswith("https://")
+                                      and len(audio_url) <= 1000):
+        raise ValueError("audio_url is invalid")
+    audio_seconds = payload.get("audio_seconds") or 0
+    if not isinstance(audio_seconds, (int, float)):
+        raise ValueError("audio_seconds is invalid")
+
     return {
         "event_id": event_id,
         "channel": channel,
@@ -235,7 +244,32 @@ def validate_envelope(payload):
         **({"analysis": analysis} if analysis is not None else {}),
         **({"address": address} if address is not None else {}),
         **({"payload": button} if button is not None else {}),
+        **({"audio_url": audio_url, "audio_seconds": audio_seconds} if audio_url is not None else {}),
     }
+
+
+def with_transcript(payload):
+    """Replace the voice label with what was said, once per event.
+
+    A redelivered event keeps the text stored the first time (a second transcription
+    could differ by a word and storage would refuse it as a conflicting redelivery).
+    """
+    if "audio_url" not in payload or voice.LABEL not in payload["raw_text"]:
+        return payload
+    con = ch.connect_db(DB_PATH)
+    try:
+        stored = con.execute(
+            "SELECT raw_text FROM feedback WHERE channel = ? AND external_event_id = ?",
+            (payload["channel"], payload["event_id"]),
+        ).fetchone()
+    finally:
+        con.close()
+    if stored is not None:
+        text = stored[0]
+    else:
+        heard = voice.from_vk(payload["audio_url"], payload["audio_seconds"])
+        text = payload["raw_text"].replace(voice.LABEL, heard, 1)
+    return {**payload, "raw_text": text}
 
 
 def persist(payload):
@@ -288,6 +322,8 @@ def process_message(message):
     payload = validate_envelope(
         decode_message(message)
     )
+
+    payload = with_transcript(payload)
 
     # A reaction button under a game: recorded without a model, never stored as text.
     pressed = buttons.parse_vk(payload.get("payload")) if "address" in payload else None

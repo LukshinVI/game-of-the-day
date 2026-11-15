@@ -40,6 +40,15 @@ off and are switched on together on release day ([scope](docs/product-roadmap.md
   the weekly digest names only warm moments the parent wrote or tapped about it and says
   nothing otherwise. The first games of a month without a theme carry one inviting line.
   Schema 18 (`month_themes`, erased with the family). Off unless `GAME_MONTH_THEME=1`.
+- Voice feedback, transcribed: a voice message in Telegram or VK is sent to Whisper on
+  Cloudflare Workers AI and only the text is kept, as `[голосовое] <text>`; from there it
+  is ordinary feedback. The audio is never stored. Messages over two minutes, a missing
+  token or any error keep today's label and the one request for a few words. The Worker
+  passes the VK audio link; the host fetches only VK's own audio hosts. The FAQ says what
+  happens to voice messages while it is on. Off unless `GAME_VOICE=1` and `CF_AI_TOKEN`.
+- `/etc/game-of-the-day/features.env`: one optional file with the 2.0 switches only (no
+  secrets), read by every unit that needs one, the product bot included; `voice.env`
+  holds the Workers AI token for the feedback consumer and the product bot.
 - When VK refuses the buttons, the game's closing line no longer asks to tap one.
 
 ### Changed
