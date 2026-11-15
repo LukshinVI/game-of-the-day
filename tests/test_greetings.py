@@ -90,7 +90,7 @@ class Holidays(unittest.TestCase):
         self.assertIn("каждая мама", gr.HOLIDAYS["mothers_day"])
         self.assertIn("каждого папы", gr.HOLIDAYS["fathers_day"])
         for text in gr.HOLIDAYS.values():
-            self.assertTrue(text.endswith("С теплом, «Игра дня» 🤍"))
+            self.assertTrue(text.endswith("С теплом, «Игра дня» 🐰"))
 
 if __name__ == "__main__":
     unittest.main()
