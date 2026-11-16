@@ -18,8 +18,10 @@ short version in `/faq` (`src/bot/faq.txt`) and the VK help.
 | why a family left (optional) | `exit_surveys` | product decisions; not linked to a child or a chat |
 | «полезно ли?» score 1–5 and comment (optional, monthly) | `pulses` | is the service useful |
 | which games carried a reminder to write | `nudges` | not more than once in 30 days, three times in all |
+| the theme of the month (a skill or none) | `month_themes` | more games of that kind |
+| which month's album was sent to which chat | `albums` | once per month; the picture itself is not stored |
 
-**Not stored:** photos, videos, voice messages, stickers. Only a label (`[фото]`) is
+**Not stored:** photos, videos, voice audio, stickers. Only a label (`[фото]`) is
 kept: these are pictures of children, the fact that they arrived is enough
 (`src/feedback/reactions.py`).
 
@@ -32,8 +34,11 @@ while the switch is on (`src/feedback/voice.py`).
 ## Who sees it
 
 - The owner (operator of the service), through the ops bot and the database.
-- The model provider (Anthropic) receives **feedback texts** for analysis and the age in
-  months with the history of games for selection. **Names and birth dates are never sent
+- The model provider (Anthropic) receives **feedback texts** for analysis (with the
+  child's recent game titles and observations when context is on) and the age in
+  months with the history of games for selection.
+- Cloudflare (Workers AI) receives a **voice message's audio** for transcription when
+  `GAME_VOICE=1`; it is not kept by us beyond the call. **Names and birth dates are never sent
   to a model** by the code (`src/preparation/game_preparation.py` builds the prompt from the age).
   A feedback text goes as the parent wrote it, so it may name the child.
 - Families never see each other: every reply is bound to the chat it came from

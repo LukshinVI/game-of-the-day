@@ -19,7 +19,7 @@ Conventions the unit files assume:
 Fresh host:
 
 ```bash
-sudo apt-get install -y git sqlite3
+sudo apt-get install -y git sqlite3 python3-pil   # Pillow: album of the month
 sudo useradd --system --home-dir /var/lib/game-of-the-day --no-create-home --shell /usr/sbin/nologin gotd
 sudo git clone https://github.com/LukshinVI/game-of-the-day.git /srv/game-of-the-day
 sudo install -d -o gotd -g gotd -m 0750 /srv/game-of-the-day/data
@@ -40,7 +40,9 @@ what it needs. Variable names are listed in [`.env.example`](../.env.example).
 | `preparation.env` | preparation | `PREPARATION_BACKEND`, `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` |
 | `feedback.env` | feedback consumer | `CF_ACCOUNT_ID`, `CF_STORAGE_QUEUE_ID`, `CF_QUEUE_API_TOKEN` |
 | `ops-bot.env` | alerts, ops bot | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
-| `voice.env` (optional) | feedback consumer, product bot | `GAME_VOICE=1`, `CF_AI_TOKEN` (Workers AI), `CF_ACCOUNT_ID` |
+| `voice.env` (optional) | feedback consumer, product bot | `CF_AI_TOKEN` (Workers AI), `CF_ACCOUNT_ID`; the switch itself is `GAME_VOICE=1` in `features.env` |
+| `offsite.env` | off-site backup units | see [the backup runbook](../ops/backup/README.md) |
+| `worker-deploy.env` (owner's host only) | deploying the Worker by hand | a Cloudflare token for `wrangler deploy` |
 
 ### Children and recipients
 
@@ -100,6 +102,8 @@ that the long-running services are up afterwards.
 | `ops/feedback/game-feedback-insights.{service,timer}` | every 2 minutes: observations, child profile, reply (3 quiet minutes after the last message) |
 | `ops/day-outcome/game-day-outcome.{service,timer}` | 10:15, 11:15, 13:15, 17:15 MSK |
 | `ops/backup/game-backup*.{service,timer}` | 03:30 backup, 12:00 freshness check |
+| `ops/backup/game-offsite-{push,verify}.{service,timer}` | 03:45 encrypted off-site copy; Sundays 05:00 restore test |
+| `ops/retention/game-retention.{service,timer}` | 03:10 MSK: retention terms ([privacy](privacy.md)) |
 | `ops/bot/game-bot.service` | always on (owner only) |
 | `ops/llm-report/game-llm-report.{service,timer}` | Mondays 10:30 MSK: model report to the owner |
 | `ops/product-bot/game-product-bot.service` | always on (families; optional; runs as `gotd-bot`, see its runbook) |

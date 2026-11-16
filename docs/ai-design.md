@@ -8,8 +8,9 @@ a deterministic check after it, a fallback when it fails, a budget, and a measur
 | use | model | input | output | checked by | if it fails |
 |---|---|---|---|---|---|
 | propose the day's activity | Claude Sonnet (Claude Code headless, web search) | age in months, skills offered at that age with recent counts, history, the child's profile | candidate JSON (schema) | the gate: schema, age, duration, safety terms, safety length, skill band and rotation, duplicates; corrective retry with the reasons | Haiku under the same gate, then a library game chosen by code |
-| review safety after the gate | Claude Haiku | the activity, the child's age | serious, concrete problems only | a finding rejects like a gate error and reaches the retry; a reviewer outage never blocks | the gate result stands |
-| extract observations from feedback (VK and Telegram) | Claude Haiku | the feedback text, the game | observations with verbatim quotes; wishes about the service | quote must be verbatim in the text; enums; caps per child and per day | feedback stays pending, retried next run |
+| review safety after the gate | Claude Haiku | the activity, the child's age | serious, concrete problems, each marked *block* or *fix* | a *fix* (the game is fine with one more caution) is added to the game's safety text; a *block* (the hazard is the activity itself) rejects like a gate error and the retry repairs the same game; code turns a fix into a block when it names a hazardous material (batteries, heat, boiling water, toxic, magnets) or when there are too many; a reviewer outage never blocks | the gate result stands |
+| extract observations from feedback (VK and Telegram) | Claude Haiku | the feedback text, the game; with `GAME_FEEDBACK_CONTEXT` also the child's games of the last three weeks and the observations of the last three days | observations with verbatim quotes, each tied to a game; where the family plays; how recent games went; observations the parent takes back; wishes about the service | quote must be verbatim in the text; enums; every game id and retraction must be one the model was shown; caps per child and per day | feedback stays pending, retried next run |
+| transcribe a voice message | Whisper (Cloudflare Workers AI) | the audio, in memory | text | empty or failed → the `[голосовое]` label and a request for a few words | the label stays |
 | judge evals (offline) | Claude Opus | an activity and the case intent | age fit, clarity, value, safety concerns, profile fit | — | — |
 
 The child's name and birth date never reach a model; only the age in months does.
@@ -34,7 +35,8 @@ profile (code-built) ───┘               │ reject: reasons → retry (�
 - **Required skill.** "Too easy" (or "too hard") on the latest game makes the next game
   train the same skill one step harder (easier); a gate rule, not a hint.
 - **Second safety line.** A small model reviews what passed the gate against an age
-  checklist and reports only serious, concrete problems. In evals it flagged 2 of 7 cases,
+  checklist and reports only serious, concrete problems: a missing caution is written
+  into the game, a hazard in the activity itself sends the game back for repair. In evals it flagged 2 of 7 cases,
   all valid, and the judge found nothing left in them afterwards.
 - **Library.** Validated past games and a warm reserve per age, chosen by code: age window,
   skill rules, nothing the child already had, least recent skill first.
@@ -52,6 +54,13 @@ well, what is hard for now, likes and dislikes. A request about the child's own 
 is a like and goes to the profile; a wish about the service itself ("send them in the
 evening") is routed to the owner, not to the profile. The parent gets one reply saying what
 was taken into account, built by code from the kept observations.
+
+With context on, the analyzer also sees the child's recent games and its own recent
+observations. "That ball game was great" goes to the ball game, not to today's; "we play
+before bed, it should be calmer" is a *setting* (calm games at bedtime), never a dislike
+of active games; "lately the games are not working" is a *recent* trend the reply asks
+about; "no, that's not what I meant" takes back the observation it corrects. Code checks
+every game id and every retraction against what the model was shown.
 
 ## One analyzer for both channels
 

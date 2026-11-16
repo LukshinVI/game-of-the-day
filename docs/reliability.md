@@ -27,7 +27,8 @@ model serves, and how far it is from them, are in [slo.md](slo.md).
 | interrupted while sending | 10:12 catch-up | reconciled against VK history by the stable message id; Telegram reported, not guessed |
 | a service crashes or exits | systemd `OnFailure` on every unit | restart policy; owner alert with the unit name |
 | a bot cannot reach Telegram for 10 minutes | the bot itself | exits so systemd restarts it visibly |
-| feedback analysis model down | insights run | feedback stays pending, retried next run |
+| feedback analysis model down | insights run | feedback stays pending, retried next run; the family already has the instant acknowledgement |
+| voice transcription fails (no token, too long, download or model error) | the consumer / product bot | the `[голосовое]` label is stored and the family is asked once for a few words |
 | local backup missing or stale | backup check 12:00 | owner alert |
 | off-site backup broken | weekly restore test, Sundays | owner alert; local backups still present |
 | the whole host down or unreachable | GitHub watcher every 6 hours (no backup for 26 h) | GitHub notification; rebuild from the repository and the encrypted off-site backup |
@@ -84,6 +85,4 @@ host is restored with `ops/backup/offsite-git.sh restore`.
 - **Similarity is by category.** A mechanic tag with a 7-game window catches "the same idea
   under a new name", but two different games of one kind are also kept apart, and the tag
   is the model's own label (checked against a fixed list, not against the text).
-- **Test and family VK dialogs share a channel.** A family's answer cannot land on a test
-  game, but the reverse cannot be told apart until the Worker passes the peer id.
 - **Credentials handled in chat during the recovery have not all been rotated.**

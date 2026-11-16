@@ -66,40 +66,37 @@ production behind a flag and was tested there; all were switched on together on
 | One-tap reactions under the game, with the reason on «Не зашло» (`GAME_BUTTONS`) | live |
 | Voice feedback, transcribed (`GAME_VOICE`) | live |
 | Theme of the month (`GAME_MONTH_THEME`) | live |
+| «Полезно ли?» score in the digest (`GAME_DIGEST_PULSE`) | live |
 
-Deferred: a monthly album (a picture summary of the month) after 2.0; a referral is not
-needed now.
+After 2.0 (in [Unreleased](../CHANGELOG.md)):
+
+| feature | state |
+|---|---|
+| Instant acknowledgement, considered reply in 3–5 minutes; VK «Ответить» attaches to that game | live |
+| Feedback in context: earlier games, where the family plays, recent trend, corrections (`GAME_FEEDBACK_CONTEXT`) | live |
+| Album of the month (`GAME_ALBUM`) | built, off until the owner decides |
+
+A referral is not needed now.
 
 ## Next
 
-- **Voice feedback, transcribed.** Today a voice message is only a label (`[голосовое]`,
-  nothing stored). Plan: the host downloads the audio (Telegram file, VK audio link),
-  transcribes it with Whisper on Workers AI, stores only the text as `[голосовое] …`, and
-  never keeps the audio; on failure the label stays and the family is asked for a few
-  words. The privacy terms (`docs/privacy.md`) and the FAQ change first.
-
-- **Theme of the month.** Once a month the parent may pick what to play more of ("more
-  speech games", or "a mix"), skip it or change it at any time. Selection offers that skill
-  more often; nothing is promised. The digest names only warm moments the parent wrote or
-  tapped about the theme, and says nothing when there were none: no "achieved / not
-  achieved", no percentages, no comparisons, no age norms. A theme is something to play
-  more of, never a test a child can fail.
+- **More families on the same host.** Prepare games at night instead of 07:00 and raise
+  the deliberate caps (20 active children, 20 feedback analyses a day), within the
+  subscription's limits ([scaling](scaling.md), step 1).
 
 ## Backlog (agreed, not scheduled)
 
 - **Referral.** A family invites another; needs a limit and the owner's approval like any
   application, so it never becomes open sign-up.
-- **Image cards.** Illustrations made in the ChatGPT style the VK community already uses,
-  composed by code into a card for the game; a separate release.
 
 ## Later
 
 **V4 — Activity and development history.** A caregiver-facing history of activities and
 observations per child, exportable.
 
-**V5 — Goals and progress.** The caregiver picks a focus ("more speech this month");
-selection weights it; progress is explained from observations, never inferred as a
-diagnosis.
+**V5 — Goals and progress.** The first part is live as the theme of the month (something
+to play more of, never a goal); next, progress explained from observations, never
+inferred as a diagnosis.
 
 ## Non-goals for this stage
 

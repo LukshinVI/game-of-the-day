@@ -58,3 +58,6 @@ private/
 # Python generated files
 __pycache__/
 *.pyc
+
+# Rubik solver tables (kociemba), never part of this project
+cache/
