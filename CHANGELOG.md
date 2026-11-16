@@ -7,6 +7,16 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+### Changed
+- Capacity for more families: preparation runs at night (02:00 MSK, retries 04:00, 07:00,
+  09:00) with a 2-hour limit per run instead of 35 minutes; caps raised to 50 active
+  children (`GAME_MAX_ACTIVE_CHILDREN`), 60 feedback analyses a day
+  (`INSIGHTS_GLOBAL_PER_DAY`) and a 6 USD daily model budget
+  (`PREPARATION_DAILY_BUDGET_USD`, ≈ 0.07 USD a child with the reviewer). The owner gets
+  one message per run instead of one per child: silent when every game came from the
+  model, loud with the problems first when a game came from the reserve or failed; a
+  retry run with nothing to do stays quiet.
+
 ### Added
 - The watcher outside the host (`worker/src/watch.js`, `src/ops/heartbeat.py`): the host
   beats every 5 minutes and the Worker writes «🔴 сервер молчит» to the ops bot after 15

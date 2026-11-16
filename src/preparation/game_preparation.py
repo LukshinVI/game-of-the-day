@@ -557,7 +557,19 @@ def build_retry_prompt(original_prompt, candidate, errors):
     )
 
 
+# While prepare_run is running, per-child alerts are collected here and sent as one
+# message at the end of the run (50 children must not mean 50 messages, at night).
+_run_notes = None
+
+
 def send_ops_notification(level, title, details):
+    if _run_notes is not None:
+        _run_notes.append((level, title, details))
+        return
+    notify_now(level, title, details)
+
+
+def notify_now(level, title, details, silent=False):
     notifier = ROOT / "src" / "ops" / "notifier.py"
 
     try:
@@ -569,7 +581,7 @@ def send_ops_notification(level, title, details):
                 title,
                 "--details",
                 details,
-            ],
+            ] + (["--silent"] if silent else []),
             cwd=ROOT,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -628,8 +640,6 @@ def send_preparation_success_alert(
 
 
 def send_failure_alert(errors):
-    notifier = ROOT / "src" / "ops" / "notifier.py"
-
     details = (
         f"Подготовка игры завершилась ошибкой после {MAX_ATTEMPTS} попыток.\n"
         "Игра не была записана в production SQLite.\n"
@@ -637,31 +647,7 @@ def send_failure_alert(errors):
         "Ошибки последней проверки:\n- "
         + "\n- ".join(errors)
     )
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(notifier),
-            "critical",
-            "Подготовка игры не удалась",
-            "--details",
-            details,
-        ],
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        timeout=30,
-    )
-
-    if result.returncode != 0:
-        print(
-            "WARNING: Ops notification also failed:\n"
-            + result.stderr[-2000:],
-            file=sys.stderr,
-        )
-    else:
-        print(result.stdout.strip())
+    send_ops_notification("critical", "Подготовка игры не удалась", details)
 
 
 def validate_target_date(value):
@@ -1024,23 +1010,68 @@ def prepare_run(target_date, dry_run=False, only_child=None):
     failures = []
     run_started = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-    for child in plan:
-        label = f"{child['name']} (id {child['id']})" if child else "single-child mode"
-        print()
-        print(f"##### {label} #####")
-        try:
-            prepare_for_child(target_date, child, dry_run)
-        except Exception as exc:  # noqa: BLE001 - reported per child, re-raised below
-            print(f"ERROR: {exc}", file=sys.stderr)
-            failures.append(f"{label}: {exc}")
+    global _run_notes
+    _run_notes = []
+    try:
+        for child in plan:
+            label = f"{child['name']} (id {child['id']})" if child else "single-child mode"
+            print()
+            print(f"##### {label} #####")
+            try:
+                prepare_for_child(target_date, child, dry_run)
+            except Exception as exc:  # noqa: BLE001 - reported per child, re-raised below
+                print(f"ERROR: {exc}", file=sys.stderr)
+                failures.append(f"{label}: {exc}")
+    finally:
+        notes, _run_notes = _run_notes, None
 
-    if not dry_run and review.tiers_enabled():
-        summary = review_summary(target_date, run_started)
-        if summary:
-            send_ops_notification("info", "Проверка безопасности: сводка подготовки", summary)
+    reviewed = review_summary(target_date, run_started) if not dry_run and review.tiers_enabled() else None
+    message = run_summary(len(plan), notes, failures, reviewed)
+    if message:
+        notify_now(*message)
 
     if failures:
         raise RuntimeError("; ".join(failures))
+
+
+TELEGRAM_LIMIT = 3900
+
+
+def run_summary(total, notes, failures, review_text=None):
+    """One message for the whole run: (level, title, details, silent), or None when the
+    run prepared nothing (the retry runs after a good night stay quiet).
+
+    All children prepared by the model: one silent 🟢 line per child. A game from the
+    reserve or a failure makes the message loud (🟡 / 🔴) and lists the problems first.
+    """
+    if not notes and not failures:
+        return None
+    prepared = [n for n in notes if n[1] != "Подготовка игры не удалась"]
+    fallback = [n for n in prepared if n[0] == "warning"]
+    level = "critical" if failures else "warning" if fallback else "info"
+    title = (f"Подготовка: готово {len(prepared)} из {total}"
+             + (f", из резерва {len(fallback)}" if fallback else "")
+             + (f", ошибок {len(failures)}" if failures else ""))
+
+    def line(details):
+        fields = dict(row.split(": ", 1) for row in details.splitlines() if ": " in row)
+        who = fields.get("Ребёнок", "")
+        return f"{who + ': ' if who else ''}«{fields.get('Название', '?')}» ({fields.get('Навык', '?')})"
+
+    lines = []
+    for failure in failures:
+        lines.append(f"⛔ {failure[:300]}")
+    for _, title_, details in fallback:
+        reason = next((r.split(": ", 1)[1] for r in details.splitlines()
+                       if r.startswith("Причина резерва: ")), "")
+        lines.append(f"📚 {line(details)}: {title_.lower()}" + (f" — {reason[:200]}" if reason else ""))
+    lines += [f"✅ {line(d)}" for lvl, _, d in prepared if lvl == "info"]
+    if review_text:
+        lines += ["", "Проверка безопасности:", review_text]
+    details = "\n".join(lines)
+    if len(details) > TELEGRAM_LIMIT:
+        details = details[:TELEGRAM_LIMIT] + "\n…"
+    return level, title, details, level == "info"
 
 
 def review_summary(target_date, since):

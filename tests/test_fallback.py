@@ -29,6 +29,9 @@ def good(age, title="Башенка", skill="fine_motor"):
     }
 
 
+ORIGINAL_SEND = gp.send_ops_notification
+
+
 class ChainSetup(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -38,10 +41,12 @@ class ChainSetup(unittest.TestCase):
         con.executescript((ROOT / "src/db/schema.sql").read_text())
         con.close()
         self.alerts = []
+        self.summaries = []
         for target in (
             mock.patch.object(gp, "DB_PATH", self.db), mock.patch.object(ch, "DB_PATH", self.db),
             mock.patch.object(gp, "send_ops_notification", lambda level, title, details: self.alerts.append((level, title, details))),
             mock.patch.object(gp, "send_failure_alert", lambda errors: self.alerts.append(("critical", "fail", errors))),
+            mock.patch.object(gp, "notify_now", lambda *a, **k: self.summaries.append(a)),
             mock.patch.dict("os.environ", {"PREPARATION_FALLBACK_MODEL": "haiku", "PREPARATION_DAILY_BUDGET_USD": "3"}),
         ):
             target.start()
@@ -218,3 +223,67 @@ class WarmReserve(ChainSetup):
         self.assertEqual(made, [self.age] * 3)
         with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gp, "run_claude", fake):
             self.assertEqual(gp.reserve_top_up(TODAY), 0)  # nothing missing: no model call
+
+
+class RunSummary(unittest.TestCase):
+    """One owner message per preparation run instead of one per child."""
+
+    def ok(self, name, title):
+        return ("info", "Игра подготовлена", f"Ребёнок: {name}\nID: 1\nНазвание: {title}\nНавык: speech\n")
+
+    def test_all_good_is_one_silent_message(self):
+        level, title, details, silent = gp.run_summary(2, [self.ok("Маша", "Ладушки"), self.ok("Петя", "Ку-ку")], [])
+        self.assertEqual((level, title, silent), ("info", "Подготовка: готово 2 из 2", True))
+        self.assertEqual(details.splitlines(), ["✅ Маша: «Ладушки» (speech)", "✅ Петя: «Ку-ку» (speech)"])
+
+    def test_a_reserve_game_or_a_failure_is_loud_and_listed_first(self):
+        reserve = ("warning", "Игра из резерва (библиотека), а не подобрана",
+                   "Ребёнок: Петя\nНазвание: Мячик\nНавык: coordination\nПричина резерва: лимит подписки\n")
+        failed = ("critical", "Подготовка игры не удалась", "Ошибки…")
+        level, title, details, silent = gp.run_summary(
+            3, [self.ok("Маша", "Ладушки"), reserve, failed], ["Оля (id 3): нет игры"])
+        self.assertEqual((level, silent), ("critical", False))
+        self.assertEqual(title, "Подготовка: готово 2 из 3, из резерва 1, ошибок 1")
+        lines = details.splitlines()
+        self.assertTrue(lines[0].startswith("⛔ Оля (id 3)"))
+        self.assertIn("📚 Петя: «Мячик»", lines[1])
+        self.assertIn("лимит подписки", lines[1])
+        self.assertEqual(lines[2], "✅ Маша: «Ладушки» (speech)")
+
+    def test_a_run_that_prepared_nothing_stays_quiet(self):
+        self.assertIsNone(gp.run_summary(5, [], []))
+
+    def test_a_long_run_fits_one_telegram_message(self):
+        notes = [self.ok(f"Ребёнок {i}", "Очень длинное название игры " * 3) for i in range(60)]
+        _, _, details, _ = gp.run_summary(60, notes, [])
+        self.assertLessEqual(len(details), gp.TELEGRAM_LIMIT + 2)
+
+
+class OneMessagePerRun(ChainSetup):
+    def setUp(self):
+        super().setUp()
+        con = ch.connect_db(self.db)
+        other = ch.add_child(con, "Петя", "2025-09-07")
+        ch.add_recipient(con, other, "telegram", "556")
+        con.close()
+
+    def test_per_child_alerts_are_collected_into_the_summary(self):
+        sent = []
+        with mock.patch.object(gp, "send_ops_notification", ORIGINAL_SEND), \
+                mock.patch.object(gp, "notify_now", lambda *a, **k: sent.append(a)):
+            self.assertIsNone(self.prepare([good(self.age), good(self.age, "Ку-ку")]))
+        self.assertEqual(len(sent), 1)
+        level, title, details, silent = sent[0]
+        self.assertEqual((level, title, silent), ("info", "Подготовка: готово 2 из 2", True))
+        self.assertIn("Маша", details)
+        self.assertIn("Петя", details)
+        self.assertIsNone(gp._run_notes)
+
+    def test_a_retry_run_with_everything_prepared_sends_nothing(self):
+        sent = []
+        with mock.patch.object(gp, "send_ops_notification", ORIGINAL_SEND), \
+                mock.patch.object(gp, "notify_now", lambda *a, **k: sent.append(a)):
+            self.prepare([good(self.age), good(self.age, "Ку-ку")])
+            sent.clear()
+            self.prepare([])
+        self.assertEqual(sent, [])

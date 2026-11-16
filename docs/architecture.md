@@ -9,7 +9,7 @@ is in [reliability.md](reliability.md). How the models are used and kept in boun
 ```mermaid
 flowchart LR
     subgraph Host["Host (systemd, SQLite in WAL mode)"]
-        PREP[Preparation 07:00<br/>model → gate → reviewer → fallback → library]
+        PREP[Preparation 02:00<br/>model → gate → reviewer → fallback → library]
         DEL[Delivery 10:00<br/>state machine per recipient]
         CHK[Outcome check<br/>10:15 · 11:15 · 13:15 · 17:15]
         INS[Feedback insights<br/>every 2 min]
@@ -51,7 +51,7 @@ controls. They share nothing but the database.
 
 | component | code | runs | does |
 |---|---|---|---|
-| Preparation | `src/preparation` | 07:00, retries 08:00 and 09:00 MSK | one game per active child: prompt with age-banded skills and the child's profile → model → deterministic gate → corrective retries → fallback model → library |
+| Preparation | `src/preparation` | 02:00, retries 04:00, 07:00 and 09:00 MSK | one game per active child: prompt with age-banded skills and the child's profile → model → deterministic gate → corrective retries → fallback model → library |
 | Delivery | `src/delivery` | 10:00, catch-up 10:12 | one delivery per recipient (VK or Telegram); idempotent; recovers an interrupted send from the messenger history; adds the child's name for a shared chat, birthday greetings (public holidays are left to the community's wall posts), the invitation to reply or a gentle reminder to write (`src/feedback/nudge.py`); with `GAME_CARDS` the game comes as one message with a picture for its skill (`src/delivery/cards.py`), with `GAME_BUTTONS` with one-tap reactions under it (`src/feedback/buttons.py`) |
 | Outcome check | `src/ops/day_outcome_check.py` | 10:15, 11:15, 13:15, 17:15 | independently verifies that every delivery of the day is `sent` |
 | Feedback ingress (VK) | `worker/` + `src/feedback/queue_consumer.py` | always | Worker validates the callback and puts the event straight on the storage queue (a reply in 2–4 s); the host stores the raw text before any model call; stickers and photos become labels; with `GAME_VOICE` a voice message is transcribed (Whisper on Workers AI, `src/feedback/voice.py`) and only the text is kept; a VK reply to a game carries that message's id |
@@ -103,7 +103,7 @@ environment.
 ```text
 03:10  retention terms (docs/privacy.md)
 03:30  local backup (integrity check, retention)      03:45  encrypted off-site copy
-07:00  preparation for every active child (08:00, 09:00 retry only what is missing)
+02:00  preparation for every active child, one owner summary per run (04:00, 07:00, 09:00 retry only what is missing)
 10:00  delivery to every recipient                    10:12  catch-up and reconciliation
 10:15  outcome check (again 11:15, 13:15, 17:15)
 */2    feedback insights                               */5    host health (infra repository), pulse to the Worker

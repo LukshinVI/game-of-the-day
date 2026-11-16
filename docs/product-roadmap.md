@@ -80,9 +80,9 @@ A referral is not needed now.
 
 ## Next
 
-- **More families on the same host.** Prepare games at night instead of 07:00 and raise
-  the deliberate caps (20 active children, 20 feedback analyses a day), within the
-  subscription's limits ([scaling](scaling.md), step 1).
+- ~~**More families on the same host.**~~ Done 16.11: preparation at 02:00 MSK, caps 50
+  active children and 60 feedback analyses a day, one owner summary per run
+  ([scaling](scaling.md), step 1).
 
 ## Backlog (agreed, not scheduled)
 

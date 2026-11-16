@@ -176,6 +176,9 @@ class TwoChildren(TempDb):
         patcher = mock.patch.object(gd, "send_ops_notification")
         patcher.start()
         self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(gp, "notify_now")
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def prepare(self, select):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):

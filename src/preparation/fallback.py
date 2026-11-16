@@ -32,7 +32,7 @@ def fallback_model():
 
 
 def daily_budget_usd():
-    value = os.environ.get("PREPARATION_DAILY_BUDGET_USD", "3").strip()
+    value = os.environ.get("PREPARATION_DAILY_BUDGET_USD", "6").strip()
     return float(value) if value else None
 
 

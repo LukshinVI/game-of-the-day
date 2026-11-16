@@ -63,12 +63,15 @@ MAX_NAME_CHARS = 40
 # Matches the candidate schema (age_months <= 36): the games are designed for 0-3 years.
 MAX_AGE_MONTHS = 36
 MAX_FEEDBACK_CHARS = 4000
+# Preparation runs at 02:00, 04:00, 07:00, 09:00 MSK and each picks up children without a
+# game. A child subscribed before 07:00 still has two runs (07:00 and the 09:00 retry), so
+# "today" is promised only until then.
 PREPARATION_HOUR_MSK = 7
 DELIVERY_TIME_MSK = "10:00"
 # Abuse limits. Every active child costs one model run a day, so the caps bound
 # the spend even if an invite leaks or a member misbehaves.
 MAX_CHILDREN_PER_CHAT = int(os.environ.get("GAME_MAX_CHILDREN_PER_CHAT", "3"))
-MAX_ACTIVE_CHILDREN = int(os.environ.get("GAME_MAX_ACTIVE_CHILDREN", "20"))
+MAX_ACTIVE_CHILDREN = int(os.environ.get("GAME_MAX_ACTIVE_CHILDREN", "50"))
 MAX_FEEDBACK_PER_DAY = int(os.environ.get("GAME_MAX_FEEDBACK_PER_DAY", "20"))
 STRANGER_REPLY_EVERY_SECONDS = 24 * 3600
 POLL_TIMEOUT_SECONDS = 30

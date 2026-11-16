@@ -93,7 +93,7 @@ that the long-running services are up afterwards.
 
 | unit | schedule |
 |---|---|
-| `ops/preparation/game-preparation.{service,timer}` | 07:00, retries 08:00 and 09:00 MSK (idempotent) |
+| `ops/preparation/game-preparation.{service,timer}` | 02:00, retries 04:00, 07:00 and 09:00 MSK (idempotent) |
 | `ops/preparation/game-reserve.{service,timer}` | Sundays 04:30 MSK: top up the warm reserve of validated games |
 | `ops/delivery/game-digest.{service,timer}` | Sundays 19:00 MSK: digest for parents |
 | `ops/delivery/game-album.{service,timer}` | the 1st, 10:15 MSK: album of the month (`GAME_ALBUM=1`); needs `python3-pil` on the host |

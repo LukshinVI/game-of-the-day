@@ -2,10 +2,14 @@
 Description=Game of the Day - prepare today's game before the 10:00 delivery
 
 [Timer]
-# Preparation is idempotent: once today's game exists, a later run exits without
-# calling the model. The extra runs are retries for a failed or missed morning run.
+# Preparation is idempotent: once a child's game exists, a later run skips it without
+# calling the model. The night run prepares everyone (about 25 s a child, so 50 children
+# fit in well under an hour); the later runs pick up only what a failed or cut-short
+# run left, and stay silent when there is nothing to do. The date is Moscow's, so the
+# 02:00 run already prepares for the day that has begun.
+OnCalendar=*-*-* 02:00:00 Europe/Moscow
+OnCalendar=*-*-* 04:00:00 Europe/Moscow
 OnCalendar=*-*-* 07:00:00 Europe/Moscow
-OnCalendar=*-*-* 08:00:00 Europe/Moscow
 OnCalendar=*-*-* 09:00:00 Europe/Moscow
 Persistent=true
 

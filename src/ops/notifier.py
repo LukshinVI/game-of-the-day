@@ -18,7 +18,7 @@ def require_env(name):
     return value
 
 
-def send_message(text):
+def send_message(text, silent=False):
     token = require_env("TELEGRAM_BOT_TOKEN")
     chat_id = require_env("TELEGRAM_CHAT_ID")
 
@@ -28,6 +28,7 @@ def send_message(text):
         "chat_id": chat_id,
         "text": text,
         "disable_web_page_preview": "true",
+        **({"disable_notification": "true"} if silent else {}),
     }).encode("utf-8")
 
     request = urllib.request.Request(
@@ -49,25 +50,25 @@ def send_message(text):
     return data["result"].get("message_id")
 
 
-def notify_info(title, details=None):
+def notify_info(title, details=None, silent=False):
     text = f"🟢 {title}"
     if details:
         text += f"\n\n{details}"
-    return send_message(text)
+    return send_message(text, silent)
 
 
-def notify_warning(title, details=None):
+def notify_warning(title, details=None, silent=False):
     text = f"🟡 {title}"
     if details:
         text += f"\n\n{details}"
-    return send_message(text)
+    return send_message(text, silent)
 
 
-def notify_critical(title, details=None):
+def notify_critical(title, details=None, silent=False):
     text = f"🔴 {title}"
     if details:
         text += f"\n\n{details}"
-    return send_message(text)
+    return send_message(text, silent)
 
 
 def main():
@@ -79,6 +80,7 @@ def main():
     )
     parser.add_argument("title")
     parser.add_argument("--details")
+    parser.add_argument("--silent", action="store_true", help="no sound on the phone")
 
     args = parser.parse_args()
 
@@ -91,6 +93,7 @@ def main():
     message_id = functions[args.level](
         args.title,
         args.details,
+        args.silent,
     )
 
     print(

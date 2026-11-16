@@ -26,8 +26,9 @@ Environment=PYTHONDONTWRITEBYTECODE=1
 StateDirectory=game-of-the-day
 Environment=HOME=/var/lib/game-of-the-day
 ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/preparation/game_preparation.py prepare
-# Up to three model attempts with web research, each bounded by PREPARATION_MODEL_TIMEOUT.
-TimeoutStartSec=35min
+# Up to three model attempts per child, each bounded by PREPARATION_MODEL_TIMEOUT; a run
+# for 50 children takes ~20 min, a bad day ~1 h. A run cut short is finished by the next timer.
+TimeoutStartSec=2h
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
