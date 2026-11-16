@@ -317,6 +317,8 @@ class ProductBot:
             return "Эта кнопка больше не работает.", None, None
         if ask:
             return buttons.TOAST, markup, (buttons.QUESTION, buttons.telegram_markup(game_id, (), buttons.REASON_ROWS))
+        if answer == buttons.CHALLENGE:
+            return buttons.TOAST, markup, answer
         return buttons.TOAST, markup, buttons.note(code, self.game_skill(game_id))
 
     def dispatch(self, con, chat_id, text, message, sender):

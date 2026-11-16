@@ -5,7 +5,8 @@ with a verbatim quote, src/feedback/insights.py); this module turns the last 60 
 them into a small summary that preparation puts into the prompt:
 
 - per skill, the direction for the next game ("harder" / "easier"), from difficulty
-  signals weighted by recency (half-life 14 days);
+  signals weighted by recency (half-life 14 days); "too hard" on a game the family
+  liked is a challenge the child enjoys, not a reason to make the next game easier;
 - what went well and what was hard, per skill;
 - whether attention is short for now (keep games short and lively, not easier);
 - likes and dislikes;
@@ -44,6 +45,15 @@ def _age_days(created_at, now):
     return max(0.0, (now - then).total_seconds() / 86400)
 
 
+def liked_game_ids(observations):
+    """Games whose latest outcome is «liked»: their "too hard" means a challenge enjoyed."""
+    latest = {}
+    for obs in sorted(observations, key=lambda o: o["created_at"]):
+        if obs["kind"] == "outcome" and obs.get("game_id") is not None:
+            latest[obs["game_id"]] = obs["value"]
+    return {game for game, value in latest.items() if value == "liked"}
+
+
 def build(observations, now=None):
     """observations: dicts with kind, value, skill, evidence, created_at, game_title."""
     now = now or datetime.now(timezone.utc)
@@ -55,6 +65,7 @@ def build(observations, now=None):
     why_not = defaultdict(list)
     settings, trend = [], None
 
+    enjoyed = liked_game_ids(observations)
     for obs in sorted(observations, key=lambda o: o["created_at"], reverse=True):
         age = _age_days(obs["created_at"], now)
         if age > WINDOW_DAYS:
@@ -62,6 +73,8 @@ def build(observations, now=None):
         weight = 0.5 ** (age / HALF_LIFE_DAYS)
         kind, value, skill = obs["kind"], obs["value"], obs.get("skill")
         if kind == "difficulty" and skill and value in DIFFICULTY_SCORE:
+            if value == "too_hard" and obs.get("game_id") in enjoyed:
+                continue  # hard but liked: keep the level
             difficulty[skill] += weight * DIFFICULTY_SCORE[value]
         elif kind == "skill" and skill:
             target = went_well if value == "went_well" else hard if value == "hard" else None
@@ -125,7 +138,7 @@ def rebuild(con, child_id, now=None):
     rows = [dict(r) for r in con.execute(
         # Recency counts from when the parent wrote, not from when it was analysed.
         "SELECT o.kind, o.value, o.skill, o.evidence, COALESCE(f.received_at, o.created_at) AS created_at, "
-        "g.title AS game_title FROM observations o LEFT JOIN games g ON g.id = o.game_id "
+        "o.game_id, g.title AS game_title FROM observations o LEFT JOIN games g ON g.id = o.game_id "
         "LEFT JOIN feedback f ON f.id = o.feedback_id WHERE o.child_id = ?",
         (child_id,),
     )]
@@ -172,6 +185,12 @@ def required_next(con, child_id, history):
     if row is None:
         return None
     value, skill = row
+    outcome = con.execute(
+        "SELECT value FROM observations WHERE game_id = ? AND kind = 'outcome' ORDER BY id DESC LIMIT 1",
+        (latest[0],),
+    ).fetchone()
+    if value == "too_hard" and outcome is not None and outcome[0] == "liked":
+        return None  # hard but liked: no "easier" game next
     last = [g.get("skill") for g in history[-2:]]
     if len(last) == 2 and all(s == skill for s in last):
         return None

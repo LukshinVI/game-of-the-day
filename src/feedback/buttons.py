@@ -9,6 +9,9 @@ few words of their own); the reason steers the next games through the child's pr
     [ 😐 Не заинтересовало ] [ 🧸 Не было нужного дома ]
     [ ⏱ Долго/сложно готовить ] [ 👶 Не по возрасту ]
 
+«Понравилось» with «Сложно» on the same game means "hard but enjoyable": the next game
+is not made easier (src/feedback/profile.py).
+
 A tap becomes the same observation a written "too easy" or "liked it" would, attached to
 the exact game the button sits under (so siblings in one chat never mix), and the child's
 profile is rebuilt at once. One answer per row and game: a second tap replaces the first.
@@ -157,10 +160,16 @@ def record(con, game_id, code, channel, address, now=None):
         return record(con, game_id, "hard", channel, address, now) and reply(code, game[1])
     if game[2] is not None:
         profile.rebuild(con, game[2], now)
+    if code in ("liked", "hard") and {"liked", "hard"} <= chosen(con, game_id, channel, address):
+        return CHALLENGE
     return reply(code, game[1])
 
 
 TOAST = "Спасибо, учли 💛"
+# «Понравилось» together with «Сложно»: hard but enjoyable, the child is learning. Agreed
+# with the owner (16.11): the level is not lowered (src/feedback/profile.py), whichever
+# of the two was pressed first.
+CHALLENGE = "Здорово, что нравится преодолевать 💪 Уровень оставим — пусть растёт дальше."
 
 
 def note(code, skill):

@@ -16,6 +16,10 @@ on the commit that completed each milestone.
   one message per run instead of one per child: silent when every game came from the
   model, loud with the problems first when a game came from the reserve or failed; a
   retry run with nothing to do stays quiet.
+- «👍 Понравилось» together with «🧗 Сложно» on the same game (buttons or words, either
+  order) means hard but enjoyable: the next game is not made easier and the bot answers
+  «Здорово, что нравится преодолевать 💪». «Сложно» alone or with «Не зашло» still eases
+  the next game. Found by the owner in the live VK test.
 
 ### Added
 - The watcher outside the host (`worker/src/watch.js`, `src/ops/heartbeat.py`): the host

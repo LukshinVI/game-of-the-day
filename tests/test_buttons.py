@@ -155,6 +155,42 @@ class Reasons(Base):
         self.assertEqual(profile.load(self.con(), self.child)["next_difficulty"], {"fine_motor": "easier"})
         self.assertNotIn("why_not", profile.load(self.con(), self.child))
 
+    def test_liked_and_hard_keeps_the_level_in_either_order(self):
+        for first, second in (("liked", "hard"), ("hard", "liked")):
+            with self.subTest(first=first):
+                con = self.con()
+                con.execute("DELETE FROM observations")
+                con.execute("DELETE FROM feedback")
+                buttons.record(con, 11, first, "vk", "777")
+                reply = buttons.record(con, 11, second, "vk", "777")
+                con.commit()
+                self.assertEqual(reply, buttons.CHALLENGE)
+                self.assertNotIn("next_difficulty", profile.load(self.con(), self.child))
+                history = [{"skill": "speech"}]
+                self.assertIsNone(profile.required_next(self.con(), self.child, history))
+
+    def test_hard_alone_or_disliked_still_makes_it_easier(self):
+        con = self.con()
+        buttons.record(con, 11, "liked", "vk", "777")
+        buttons.record(con, 11, "hard", "vk", "777")
+        reply = buttons.record(con, 11, "disliked", "vk", "777")  # changed their mind
+        con.commit()
+        self.assertNotEqual(reply, buttons.CHALLENGE)
+        self.assertEqual(profile.load(self.con(), self.child)["next_difficulty"], {"speech": "easier"})
+        nxt = profile.required_next(self.con(), self.child, [{"skill": "speech"}])
+        self.assertEqual(nxt["direction"], "easier")
+
+    def test_hard_but_liked_in_words_counts_the_same(self):
+        obs = [
+            {"kind": "outcome", "value": "liked", "skill": None, "evidence": "понравилось", "game_id": 5,
+             "created_at": "2026-11-16T10:00:00+00:00", "game_title": "Игра"},
+            {"kind": "difficulty", "value": "too_hard", "skill": "speech", "evidence": "сложно", "game_id": 5,
+             "created_at": "2026-11-16T10:00:01+00:00", "game_title": "Игра"},
+        ]
+        now = profile.datetime(2026, 11, 16, 12, tzinfo=profile.timezone.utc)
+        self.assertNotIn("next_difficulty", profile.build(obs, now))
+        self.assertEqual(profile.build(obs[1:], now)["next_difficulty"], {"speech": "easier"})
+
     def test_not_for_age_replaces_an_earlier_easy(self):
         con = self.con()
         buttons.record(con, 10, "easy", "telegram", "555")
