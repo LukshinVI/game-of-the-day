@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Cloudflare Worker: VK callback ingress and durable hand-off to the host",
   "scripts": {
-    "test": "node tests/reactionLabels.test.js && node tests/routing.test.js"
+    "test": "node tests/reactionLabels.test.js && node tests/routing.test.js && node tests/watch.test.js"
   },
   "license": "MIT",
   "type": "module",

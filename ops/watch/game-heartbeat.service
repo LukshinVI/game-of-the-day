@@ -1,0 +1,20 @@
+[Unit]
+Description=Game of the Day - pulse for the watcher outside the host (Cloudflare Worker)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Slice=game-of-the-day.slice
+Type=oneshot
+User=gotd
+Group=gotd
+WorkingDirectory=/srv/game-of-the-day
+EnvironmentFile=-/etc/game-of-the-day/watch.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/ops/heartbeat.py
+# No OnFailure: a missed beat is exactly what the Worker reports, from outside.
+TimeoutStartSec=60
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes

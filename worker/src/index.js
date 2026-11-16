@@ -1,8 +1,19 @@
 // Community ID is deployment-specific: set with `wrangler secret put VK_GROUP_ID`.
 // If it is missing, Number(undefined) is NaN and every callback is rejected (fail closed).
 
+import { handleWatch, noteCallback, scheduled, Watch } from './watch.js';
+
+export { Watch };
+
 export default {
-    async fetch(request, env) {
+    scheduled,
+
+    async fetch(request, env, ctx) {
+        // The host's pulse and canary receipts (src/ops/heartbeat.py), not VK.
+        if (new URL(request.url).pathname.startsWith('/watch/')) {
+            return handleWatch(request, env);
+        }
+
         if (request.method !== 'POST') {
             return new Response(
                 'webhook-ok',
@@ -50,6 +61,10 @@ export default {
                 'ok',
                 { status: 200 }
             );
+        }
+
+        if (env.WATCH && ctx?.waitUntil) {
+            ctx.waitUntil(noteCallback(env));
         }
 
         if (

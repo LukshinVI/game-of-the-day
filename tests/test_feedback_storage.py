@@ -478,6 +478,32 @@ class ConsumerPersistenceBoundary(FeedbackTestCase):
         self.ack.assert_not_called()
         self.assertEqual(self.feedback_rows(), [])
 
+    def test_watcher_canary_is_acked_reported_and_never_stored(self):
+        seen = self._patch("report_canary")
+        with mock.patch.object(consumer.heartbeat, "canary_seen") as reported:
+            consumer.process_message(_message({"version": "canary-v1", "id": "canary-1763294400000"}))
+        self.ack.assert_called_once_with("lease-1")
+        seen.assert_called_once_with("canary-1763294400000")
+        reported.assert_not_called()  # report_canary itself is patched here
+        self.assertEqual(self.feedback_rows(), [])
+
+    def test_canary_report_needs_the_watcher_and_never_raises(self):
+        with mock.patch.dict(os.environ, {"WATCH_URL": "", "WATCH_SECRET": ""}), \
+                mock.patch.object(consumer.heartbeat, "canary_seen") as reported:
+            consumer.report_canary("canary-1")
+        reported.assert_not_called()
+        with mock.patch.dict(os.environ, {"WATCH_URL": "https://w.example", "WATCH_SECRET": "s"}), \
+                mock.patch.object(consumer.heartbeat, "canary_seen", side_effect=OSError("down")) as reported:
+            consumer.report_canary("canary-1")
+        reported.assert_called_once_with("canary-1")
+
+    def test_something_that_only_looks_like_a_canary_is_validated_as_feedback(self):
+        for label, body in {"no id": {"version": "canary-v1"},
+                            "foreign id": {"version": "canary-v1", "id": "x" * 10}}.items():
+            with self.subTest(label), self.assertRaises(ValueError):
+                consumer.process_message(_message(body))
+        self.ack.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

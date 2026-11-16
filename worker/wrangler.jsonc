@@ -9,5 +9,11 @@
         "binding": "FEEDBACK_STORAGE_QUEUE"
       }
     ]
-  }
+  },
+  // The watcher outside the host (src/watch.js): pulse and the hourly VK canary.
+  "durable_objects": {
+    "bindings": [{ "name": "WATCH", "class_name": "Watch" }]
+  },
+  "migrations": [{ "tag": "watch-v1", "new_sqlite_classes": ["Watch"] }],
+  "triggers": { "crons": ["*/5 * * * *"] }
 }

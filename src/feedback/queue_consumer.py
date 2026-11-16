@@ -19,6 +19,7 @@ from src.db import children as ch
 from src.delivery import game_delivery
 from src.feedback import buttons, reactions, vk_inbound, voice
 from src.feedback.storage import DB_PATH, StorageError, save_analysis, save_raw
+from src.ops import heartbeat
 
 
 LOG = logging.getLogger("game-feedback-consumer")
@@ -254,6 +255,27 @@ def validate_envelope(payload):
     }
 
 
+CANARY_VERSION = "canary-v1"
+
+
+def is_canary(payload):
+    return (isinstance(payload, dict) and payload.get("version") == CANARY_VERSION
+            and isinstance(payload.get("id"), str) and payload["id"].startswith("canary-")
+            and len(payload["id"]) <= 40)
+
+
+def report_canary(canary_id):
+    """Tell the watcher the canary arrived; a failure only means a later alert."""
+    if not heartbeat.configured():
+        LOG.info("Canary received, watcher not configured: %s", canary_id)
+        return
+    try:
+        heartbeat.canary_seen(canary_id)
+        LOG.info("Canary received and reported: %s", canary_id)
+    except Exception as exc:  # noqa: BLE001 - feedback storage must go on
+        LOG.warning("Canary report failed: %s", type(exc).__name__)
+
+
 def with_transcript(payload):
     """Replace the voice label with what was said, once per event.
 
@@ -328,9 +350,16 @@ def process_message(message):
     if not isinstance(lease_id, str) or not lease_id:
         raise ValueError("lease_id is missing")
 
-    payload = validate_envelope(
-        decode_message(message)
-    )
+    decoded = decode_message(message)
+
+    # The watcher's hourly canary (worker/src/watch.js): proof that the queue reaches
+    # the host. Dropped at once: no model call, nothing written to the database.
+    if is_canary(decoded):
+        ack(lease_id)
+        report_canary(decoded["id"])
+        return
+
+    payload = validate_envelope(decoded)
 
     payload = with_transcript(payload)
 
