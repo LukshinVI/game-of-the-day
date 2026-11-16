@@ -78,16 +78,17 @@ FROM days LEFT JOIN first_sent fs ON fs.d = days.d AND fs.child_id = :child;
 ```
 
 Detection already exists: the outcome check alerts at 10:15, 11:15, 13:15 and 17:15 MSK
-when a delivery of the day is not `sent`, and the watcher outside the host notices a host
-that is silent for 26 hours.
+when a delivery of the day is not `sent`; the pulse at the Worker notices a silent host
+within 15 minutes (the GitHub watcher, 26 hours, stays as a second line); and the SLO
+alert (`src/ops/slo_watch.py`, daily at 17:25 MSK) writes when a budget over 7 or 28
+days changes level.
 
 ## Not built yet
 
 - The SLIs are computed by `src/ops/slo.py` (`/slo` in the ops bot, and the Monday
   report), together with the share of games made by the model rather than the library or
-  reserve and the age of the newest backup. Burn rate does not alert yet.
+  reserve and the age of the newest backup. Budget levels alert on change (above); a
+  multi-window burn rate in the strict sense is not computed.
 - Pauses are logged as owner-facing events per chat, not as per-child intervals, so a
   paused child-day cannot be excluded by the query yet; it covers children that were
   never paused.
-- Time to detect a host that is down is 26 hours — the weakest number here. A heartbeat
-  with a shorter interval outside the host would bring it to minutes.

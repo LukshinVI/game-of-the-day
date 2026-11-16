@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -371,6 +371,26 @@ CREATE TABLE IF NOT EXISTS albums (
 """
 
 
+MIGRATION_22 = """
+-- VK messages the consumer could not handle, kept instead of dropped by the queue
+-- (src/feedback/quarantine.py). Service data: 30 days, removed with the family.
+CREATE TABLE IF NOT EXISTS quarantine (
+    id INTEGER PRIMARY KEY,
+    event_id TEXT UNIQUE,
+    channel TEXT,
+    address TEXT,
+    body TEXT NOT NULL,
+    content_type TEXT NOT NULL DEFAULT 'json',
+    error TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    replay_requested_at TEXT,
+    replayed_at TEXT,
+    replay_error TEXT
+);
+"""
+
+
 def migrate(con):
     """Bring an existing database to SCHEMA_VERSION. Idempotent and additive only."""
     con.executescript(MIGRATION_2)
@@ -388,6 +408,7 @@ def migrate(con):
     con.executescript(MIGRATION_17)
     con.executescript(MIGRATION_18)
     con.executescript(MIGRATION_21)
+    con.executescript(MIGRATION_22)
     # Schema 16: an erased family still counts in the retention cohorts (src/ops/cohorts.py).
     for column in ("first_game", "last_game"):
         if column not in columns(con, "erasures"):

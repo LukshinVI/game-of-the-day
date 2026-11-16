@@ -74,6 +74,7 @@ FAMILY_TABLES = (
 TRANSIENT = (
     ("outbox", "(channel || ':' || address) IN ({addrs})"),
     ("inbound_events", "(channel || ':' || address) IN ({addrs})"),
+    ("quarantine", "(channel || ':' || address) IN ({addrs})"),
 )
 
 

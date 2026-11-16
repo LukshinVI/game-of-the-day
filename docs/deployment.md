@@ -40,6 +40,7 @@ what it needs. Variable names are listed in [`.env.example`](../.env.example).
 | `preparation.env` | preparation | `PREPARATION_BACKEND`, `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` |
 | `feedback.env` | feedback consumer | `CF_ACCOUNT_ID`, `CF_STORAGE_QUEUE_ID`, `CF_QUEUE_API_TOKEN` |
 | `ops-bot.env` | alerts, ops bot | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` |
+| `watch.env` (optional) | heartbeat, feedback consumer | `WATCH_URL` (the Worker), `WATCH_SECRET` (the same value as the Worker secret) |
 | `voice.env` (optional) | feedback consumer, product bot | `CF_AI_TOKEN` (Workers AI), `CF_ACCOUNT_ID`; the switch itself is `GAME_VOICE=1` in `features.env` |
 | `offsite.env` | off-site backup units | see [the backup runbook](../ops/backup/README.md) |
 | `worker-deploy.env` (owner's host only) | deploying the Worker by hand | a Cloudflare token for `wrangler deploy` |
@@ -103,6 +104,8 @@ that the long-running services are up afterwards.
 | `ops/day-outcome/game-day-outcome.{service,timer}` | 10:15, 11:15, 13:15, 17:15 MSK |
 | `ops/backup/game-backup*.{service,timer}` | 03:30 backup, 12:00 freshness check |
 | `ops/backup/game-offsite-{push,verify}.{service,timer}` | 03:45 encrypted off-site copy; Sundays 05:00 restore test |
+| `ops/watch/game-heartbeat.{service,timer}` | every 5 minutes: the pulse for the watcher in the Worker |
+| `ops/watch/game-slo-watch.{service,timer}` | 17:25 MSK: SLO alert on a change of budget level |
 | `ops/retention/game-retention.{service,timer}` | 03:10 MSK: retention terms ([privacy](privacy.md)) |
 | `ops/bot/game-bot.service` | always on (owner only) |
 | `ops/llm-report/game-llm-report.{service,timer}` | Mondays 10:30 MSK: model report to the owner |
@@ -138,6 +141,9 @@ npx wrangler secret put VK_GROUP_ID          # numeric community id
 npx wrangler secret put VK_CALLBACK_SECRET
 npx wrangler secret put VK_CONFIRMATION_CODE
 npx wrangler secret put VK_TEST_PEER_ID     # only labels test messages in the logs
+npx wrangler secret put WATCH_SECRET        # the same value as in watch.env on the host
+npx wrangler secret put OPS_BOT_TOKEN       # the ops bot, for the watcher's alerts
+npx wrangler secret put OPS_CHAT_ID
 npx wrangler deploy
 ```
 
@@ -149,3 +155,7 @@ Deploy the **host first**, then the Worker. The Worker passes every private VK d
 with the sender's peer id (`address`); a host older than schema 12 would ignore the
 address and store a stranger's message as feedback on the latest VK game. The host
 accepts events with and without an address, so the order host → Worker is safe.
+
+The watcher (`worker/src/watch.js`) needs the host to know the canary first (schema 22
+and the consumer that drops `canary-v1`): deploy the host, then the Worker, then enable
+`game-heartbeat.timer`. Until the first beat the Worker checks nothing.

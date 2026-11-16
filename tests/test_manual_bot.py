@@ -88,6 +88,22 @@ class Commands(unittest.TestCase):
         self.assertEqual((h.runs, h.started), ([], []))
 
 
+class QuarantineCommands(unittest.TestCase):
+    def test_list_and_replay_only_mark_and_start_nothing(self):
+        from unittest import mock
+        h = Harness()
+        with mock.patch.object(bot, "quarantine_list", return_value="Карантин пуст") as listing, \
+                mock.patch.object(bot, "quarantine_replay", return_value="#3: повторит") as replay:
+            self.assertEqual(h.say("/quarantine"), "Карантин пуст")
+            self.assertEqual(h.say("/replay #3"), "#3: повторит")
+            self.assertIn("Формат", h.say("/replay"))
+            self.assertIn("Формат", h.say("/replay abc"))
+        listing.assert_called_once_with()
+        replay.assert_called_once_with(3)
+        self.assertEqual((h.runs, h.started), ([], []))
+        self.assertIn("/quarantine", bot.HELP)
+
+
 class SendFlow(unittest.TestCase):
     def test_send_without_a_code_starts_nothing(self):
         h = Harness()

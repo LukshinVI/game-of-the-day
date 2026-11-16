@@ -505,5 +505,136 @@ class ConsumerPersistenceBoundary(FeedbackTestCase):
         self.ack.assert_not_called()
 
 
+class Quarantine(FeedbackTestCase):
+    """A message that keeps failing is kept in the quarantine, not dropped by the queue."""
+
+    def setUp(self):
+        super().setUp()
+        from src.db import children as ch
+        con = sqlite3.connect(self.db_path)
+        ch.migrate(con)
+        con.close()
+        self.add_game(1, "001", "2026-09-01")
+        for name, value in (("DB_PATH", self.db_path),):
+            patcher = mock.patch.object(consumer, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.ack = self._patch("ack")
+        self.retry = self._patch("retry")
+        self.warn = self._patch_notifier("notify_warning")
+        self.info = self._patch_notifier("notify_info")
+
+    def _patch(self, name, **kw):
+        patcher = mock.patch.object(consumer, name, **kw)
+        self.addCleanup(patcher.stop)
+        return patcher.start()
+
+    def _patch_notifier(self, name):
+        patcher = mock.patch.object(consumer.notifier, name)
+        self.addCleanup(patcher.stop)
+        return patcher.start()
+
+    def rows(self):
+        return self.db().execute("SELECT * FROM quarantine ORDER BY id").fetchall()
+
+    def test_retries_grow_and_the_third_failure_is_kept_acked_and_reported(self):
+        envelope = {**_envelope(text="Мишка понравился"), "address": "777"}
+        for attempts, delay in ((1, 5), (2, 60)):
+            consumer.failed({**_message(envelope), "attempts": attempts}, RuntimeError("db locked"))
+            self.assertEqual(self.retry.call_args.args, ("lease-1", delay))
+        self.ack.assert_not_called()
+        self.assertEqual(self.rows(), [])
+
+        consumer.failed({**_message(envelope), "attempts": 3}, RuntimeError("db locked"))
+        self.ack.assert_called_once_with("lease-1")
+        [row] = self.rows()
+        self.assertEqual((row["event_id"], row["address"], row["attempts"]), ("e1", "777", 3))
+        self.assertIn("db locked", row["error"])
+        self.assertEqual(self.feedback_rows(), [], "nothing reaches the child's tables")
+        self.warn.assert_called_once()
+        alert = self.warn.call_args.args[1]
+        self.assertIn("/replay 1", alert)
+        self.assertIn("Мишка понравился", alert)
+        self.assertIn("…777", alert)
+
+        # A redelivery of the same event is not a second row nor a second alert.
+        consumer.failed({**_message(envelope, lease="lease-2"), "attempts": 4}, RuntimeError("db locked"))
+        self.assertEqual(len(self.rows()), 1)
+        self.warn.assert_called_once()
+
+    def test_unreadable_message_is_kept_too(self):
+        consumer.failed({"lease_id": "l", "body": "{oops", "metadata": {}, "attempts": 3}, ValueError("bad json"))
+        [row] = self.rows()
+        self.assertIsNone(row["event_id"])
+        self.assertEqual(row["body"], "{oops")
+
+    def test_a_broken_quarantine_falls_back_to_a_retry(self):
+        with mock.patch.object(consumer.quarantine, "put", side_effect=sqlite3.OperationalError("locked")):
+            consumer.failed({**_message(_envelope()), "attempts": 3}, RuntimeError("x"))
+        self.ack.assert_not_called()
+        self.retry.assert_called_once()
+
+    def test_replay_on_request_stores_the_feedback_once_and_reports(self):
+        consumer.failed({**_message(_envelope(text="Отличная игра")), "attempts": 3}, RuntimeError("down"))
+        consumer.replay_quarantined()
+        self.assertEqual(self.feedback_rows(), [], "nothing happens before the owner asks")
+
+        from src.feedback import quarantine
+        con = sqlite3.connect(self.db_path)
+        self.assertIn("повторит", quarantine.request_replay(con, 1))
+        self.assertIn("нет #9", quarantine.request_replay(con, 9))
+        con.close()
+        self.ack.reset_mock()
+        consumer.replay_quarantined()
+        [fb] = self.feedback_rows()
+        self.assertEqual(fb["raw_text"], "Отличная игра")
+        self.ack.assert_not_called()  # a replay has no lease
+        self.assertIsNotNone(self.rows()[0]["replayed_at"])
+        self.info.assert_called_once()
+        consumer.replay_quarantined()
+        self.assertEqual(len(self.feedback_rows()), 1, "replayed once")
+        con = sqlite3.connect(self.db_path)
+        self.assertIn("уже обработано", quarantine.request_replay(con, 1))
+        self.assertIn("обработано повторно", quarantine.listing(con))
+        con.close()
+
+    def test_a_failed_replay_is_reported_and_can_be_asked_again(self):
+        consumer.failed({**_message(_envelope()), "attempts": 3}, RuntimeError("down"))
+        from src.feedback import quarantine
+        con = sqlite3.connect(self.db_path)
+        quarantine.request_replay(con, 1)
+        con.close()
+        with mock.patch.object(consumer, "persist", side_effect=RuntimeError("still down")):
+            consumer.replay_quarantined()
+        row = self.rows()[0]
+        self.assertIsNone(row["replayed_at"])
+        self.assertIsNone(row["replay_requested_at"])
+        self.assertIn("still down", row["replay_error"])
+        self.assertEqual(self.warn.call_count, 2)
+        con = sqlite3.connect(self.db_path)
+        self.assertIn("повтор не удался", quarantine.listing(con))
+        con.close()
+
+    def test_kept_thirty_days_and_removed_with_the_family(self):
+        from datetime import datetime
+        from src.bot import erasure
+        from src.ops import retention
+        consumer.failed({**_message({**_envelope(), "address": "777"}), "attempts": 3}, RuntimeError("x"))
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE quarantine SET at = '2026-10-01 00:00:00'")
+        retention.collect(con, datetime(2026, 10, 30))
+        self.assertEqual(con.execute("SELECT count(*) FROM quarantine").fetchone()[0], 1, "29 days: kept")
+        retention.collect(con, datetime(2026, 11, 1))
+        self.assertEqual(con.execute("SELECT count(*) FROM quarantine").fetchone()[0], 0, "31 days: gone")
+        con.close()
+        self.assertIn("quarantine", [table for table, _ in erasure.TRANSIENT])
+
+    def test_empty_listing(self):
+        from src.feedback import quarantine
+        con = sqlite3.connect(self.db_path)
+        self.assertIn("пуст", quarantine.listing(con))
+        con.close()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

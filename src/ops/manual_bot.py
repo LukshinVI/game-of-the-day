@@ -13,6 +13,7 @@ Commands, accepted only from the owner's private chat:
   /slo             reliability objectives over 28 days and their error budgets
   /dash            the dashboard as an HTML file (charts, children, reliability)
   /llm             the last 7 days of game selection: attempts, latency, tokens, cost, rejections
+  /quarantine      VK messages the consumer could not handle; /replay N marks one for a replay
 
 It also forwards owner-facing events the product bot records in SQLite (new member,
 new child, pause, limit, block) within one polling cycle, so the public product bot
@@ -37,6 +38,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.bot import channel_link, vk_dialog  # noqa: E402
+from src.feedback import quarantine  # noqa: E402
 from src.db import children as ch  # noqa: E402
 from src.ops import dashboard, llm_report, product_metrics, slo, users_report  # noqa: E402
 
@@ -67,6 +69,7 @@ HELP = (
     "/ideas - пожелания пользователей\n"
     "/metrics - продуктовые метрики за неделю"
     "\n/slo - надёжность за 28 дней: цели и запас ошибок"
+    "\n/quarantine - сообщения из VK, которые не удалось обработать; /replay N - повторить"
     "\n/dash - дашборд файлом: графики, дети, надёжность (вид: /dash ops | report | product)"
 )
 
@@ -198,6 +201,20 @@ class Controller:
             except Exception as exc:  # noqa: BLE001
                 return f"Не удалось построить отчёт: {type(exc).__name__}"
 
+        if command == "/quarantine":
+            try:
+                return quarantine_list()
+            except Exception as exc:  # noqa: BLE001
+                return f"Не удалось прочитать карантин: {type(exc).__name__}"
+
+        if command == "/replay":
+            if len(parts) != 2 or not parts[1].lstrip("#").isdigit():
+                return "Формат: /replay N (номер из /quarantine)"
+            try:
+                return quarantine_replay(int(parts[1].lstrip("#")))
+            except Exception as exc:  # noqa: BLE001
+                return f"Не удалось отметить повтор: {type(exc).__name__}"
+
         if command in ("/send", "/retry"):
             return self.request(command[1:], parts[1:])
 
@@ -289,6 +306,23 @@ def send_document(token, chat_id, filename, content, caption, timeout=30):
                                      headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read())
+
+
+def quarantine_list(db_path=None):
+    con = ch.connect_db(db_path or users_report.DB_PATH)
+    try:
+        return quarantine.listing(con)
+    finally:
+        con.close()
+
+
+def quarantine_replay(row_id, db_path=None):
+    con = ch.connect_db(db_path or users_report.DB_PATH)
+    con.execute("PRAGMA busy_timeout = 10000")
+    try:
+        return quarantine.request_replay(con, row_id)
+    finally:
+        con.close()
 
 
 def decide_application(app_id, approve, db_path=None):

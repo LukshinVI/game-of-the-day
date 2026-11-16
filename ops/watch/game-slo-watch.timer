@@ -1,0 +1,9 @@
+[Unit]
+Description=Game of the Day - SLO alert daily after the last outcome check
+
+[Timer]
+OnCalendar=*-*-* 17:25:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target

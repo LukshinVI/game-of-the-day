@@ -305,7 +305,7 @@ CREATE TABLE month_themes (
     chosen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (child_id, month)
 );
-INSERT INTO migration_meta(key, value) VALUES ('schema_version', '21');
+INSERT INTO migration_meta(key, value) VALUES ('schema_version', '22');
 
 -- One-time request to star the project on GitHub (src/ops/weekly_digest.py).
 CREATE TABLE star_requests (
@@ -346,4 +346,21 @@ CREATE TABLE inbound_events (
     reply TEXT,
     handled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (channel, event_id)
+);
+
+-- VK messages the consumer could not handle, kept instead of dropped by the queue
+-- (src/feedback/quarantine.py). Service data: 30 days, removed with the family.
+CREATE TABLE quarantine (
+    id INTEGER PRIMARY KEY,
+    event_id TEXT UNIQUE,
+    channel TEXT,
+    address TEXT,
+    body TEXT NOT NULL,
+    content_type TEXT NOT NULL DEFAULT 'json',
+    error TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    replay_requested_at TEXT,
+    replayed_at TEXT,
+    replay_error TEXT
 );

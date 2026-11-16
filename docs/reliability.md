@@ -31,7 +31,10 @@ model serves, and how far it is from them, are in [slo.md](slo.md).
 | voice transcription fails (no token, too long, download or model error) | the consumer / product bot | the `[голосовое]` label is stored and the family is asked once for a few words |
 | local backup missing or stale | backup check 12:00 | owner alert |
 | off-site backup broken | weekly restore test, Sundays | owner alert; local backups still present |
-| the whole host down or unreachable | GitHub watcher every 6 hours (no backup for 26 h) | GitHub notification; rebuild from the repository and the encrypted off-site backup |
+| the whole host down or unreachable | the pulse: no beat for 15 minutes at the Worker (`worker/src/watch.js`); GitHub watcher every 6 hours as a second line (no backup for 26 h) | 🔴 to the ops bot from Cloudflare, a reminder every 6 hours, 🟢 when the beats return; rebuild from the repository and the encrypted off-site backup |
+| VK feedback stops reaching the host (queue or consumer broken) | the hourly canary through the storage queue, not seen within 30 minutes while the host beats | 🔴 to the ops bot; 🟢 when a canary arrives again |
+| a VK message keeps failing on the host | the consumer: retries after 5 s, 1 min, 5 min | kept in the quarantine instead of dropped, 🟡 to the owner, `/replay N` after the fix (`src/feedback/quarantine.py`) |
+| an error budget runs out | daily SLO alert at 17:25 MSK over 7 and 28 days (`src/ops/slo_watch.py`) | 🟡/🔴 on a change of level, 🟢 on recovery; silence while unchanged |
 | disk, memory, load, VPN services, ports | host health every 5 minutes (infra repository) | owner alert on change, reminder every 6 hours, recovery notice |
 | host lease or the Claude token expiring | daily reminder 30/14/7/3/1/0 days before | renew; reminders continue daily when overdue |
 | a deploy breaks the tests | `ops/deploy.sh` | code rolled back before the migration, database untouched |
@@ -70,18 +73,21 @@ host is restored with `ops/backup/offsite-git.sh restore`.
 | families: join, new child, pause, limits, block, wishes | ops bot, instantly |
 | model quality, latency, tokens, cost, reserve days | ops bot, Mondays and `/llm` |
 | host and VPN health, lease and credential expiry | owner's channel bot (infrastructure) |
-| host silent for 26 hours | GitHub notification |
+| host silent for 15 minutes; VK → host chain broken | ops bot, from the Worker (outside the host) |
+| a VK message in the quarantine | ops bot: 🟡 with the reason and `/replay N` |
+| an error budget changes level | ops bot, daily at 17:25 |
+| host silent for 26 hours | GitHub notification (second line) |
 
 ## Known gaps
 
-- **The host watcher notifies by e-mail.** It runs outside the host, as it must, but posts
-  to Telegram only once a GitHub token for repository secrets is provided.
-- **VK ingress has no health signal.** If the Worker or Cloudflare Queues fail, VK feedback
-  is lost without an alert; there is no cheap reliable way to tell "nobody wrote" from
-  "nothing arrived".
+- **The watcher does not see VK itself.** The pulse and the canary prove the host and
+  the queue → host path; if VK stops calling the Worker (a changed secret, the callback
+  server switched off), nothing alerts. The canary alert says when the last real VK
+  message arrived.
+- **The watcher is one Worker.** If Cloudflare's cron stops, nothing says so; the GitHub
+  watcher (26 h) remains the second line.
+
 - **Queue retention is one day.** A host outage longer than that loses queued VK feedback.
-- **Queues have no dead-letter destination.** A message that keeps failing is eventually
-  dropped instead of quarantined.
 - **Similarity is by category.** A mechanic tag with a 7-game window catches "the same idea
   under a new name", but two different games of one kind are also kept apart, and the tag
   is the model's own label (checked against a fixed list, not against the text).

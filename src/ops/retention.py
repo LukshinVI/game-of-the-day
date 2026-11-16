@@ -132,6 +132,8 @@ def collect(con, now):
                         (_ago(now, SERVICE_DAYS),))
     if _has(con, "outbox"):
         service += _run(con, "DELETE FROM outbox WHERE coalesce(sent_at, created_at) < ?", (_ago(now, SERVICE_DAYS),))
+    if _has(con, "quarantine"):  # src/feedback/quarantine.py
+        service += _run(con, "DELETE FROM quarantine WHERE at < ?", (_ago(now, SERVICE_DAYS),))
     if _has(con, "inbound_events"):
         service += _run(con, "DELETE FROM inbound_events WHERE handled_at < ?", (_ago(now, SERVICE_DAYS),))
     if _has(con, "channel_links"):

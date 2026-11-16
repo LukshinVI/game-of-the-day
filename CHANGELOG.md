@@ -8,6 +8,18 @@ on the commit that completed each milestone.
 ## [Unreleased]
 
 ### Added
+- The watcher outside the host (`worker/src/watch.js`, `src/ops/heartbeat.py`): the host
+  beats every 5 minutes and the Worker writes «🔴 сервер молчит» to the ops bot after 15
+  minutes of silence (a reminder every 6 hours, 🟢 on return); an hourly canary through
+  the storage queue proves the VK → host chain, dropped by the consumer without a model
+  call or a database write. Time to detect a host down: 26 hours → 15 minutes. One
+  SQLite-backed Durable Object, Worker cron every 5 minutes, no new service.
+- Quarantine for VK messages (`src/feedback/quarantine.py`, schema 22): retries after
+  5 s, 1 min and 5 min instead of four in a row; after the third failure the message is
+  kept as it arrived, acked, and the owner is told; `/quarantine` and `/replay N` in the
+  ops bot. 30 days, removed with the family.
+- SLO alert (`src/ops/slo_watch.py`, daily 17:25 MSK): error budgets over 7 and 28 days,
+  a message only when a level changes.
 - Album of the month (`GAME_ALBUM`, `src/ops/monthly_album.py`): on the 1st at 10:15 MSK
   every family gets one picture of the month that passed: the month and the child on
   the season's illustration, games received and marked, up to three games they liked

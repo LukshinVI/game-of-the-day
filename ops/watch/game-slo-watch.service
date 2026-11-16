@@ -1,0 +1,21 @@
+[Unit]
+Description=Game of the Day - SLO alert: an error budget changed level (docs/slo.md)
+OnFailure=game-backup-alert@%n.service
+
+[Service]
+Slice=game-of-the-day.slice
+Type=oneshot
+User=gotd
+Group=gotd
+WorkingDirectory=/srv/game-of-the-day
+EnvironmentFile=/etc/game-of-the-day/ops-bot.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+StateDirectory=game-of-the-day
+ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/ops/slo_watch.py
+TimeoutStartSec=2min
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+# Read-only queries; SQLite in WAL mode still needs the -shm file next to the database.
+ReadWritePaths=/srv/game-of-the-day/data

@@ -65,6 +65,9 @@ controls. They share nothing but the database.
 | Parents' digest | `src/ops/weekly_digest.py` | Sundays 19:00 | the week's games and skills, what went well, one or two home ideas for next week (no age norms), a monthly question; with `GAME_DIGEST_PULSE` a one-tap «полезно ли?» score; optionally (off unless `GAME_DIGEST_STAR_REQUEST=1`) a one-time request to star the project on GitHub |
 | Album of the month | `src/ops/monthly_album.py` | the 1st, 10:15 | `GAME_ALBUM` (off for now): one picture per family of the month's games, skills and a quote of the parent (Pillow); idempotent through `albums` |
 | Warm reserve | `src/preparation/fallback.py` | Sundays 04:30 | keeps at least three validated games for each child's next two months |
+| Watcher | `worker/src/watch.js`, `src/ops/heartbeat.py` | every 5 minutes (Worker cron) | outside the host: the host beats every 5 minutes, silence for 15 → 🔴 to the ops bot; an hourly canary through the storage queue proves VK → host; one Durable Object holds the state |
+| Quarantine | `src/feedback/quarantine.py` | in the consumer | a VK message that fails three times (after 5 s, 1 min, 5 min) is kept, acked and reported; `/quarantine`, `/replay N` |
+| SLO alert | `src/ops/slo_watch.py` | 17:25 MSK | budgets over 7 and 28 days; writes only when a level changes |
 | Retention | `ops/retention` | 03:10 | personal data past its term removed (`docs/privacy.md`) |
 | Backups | `ops/backup` | 03:30 local, 03:45 off-site, Sundays restore test | SQLite online backup → age-encrypted copy in a private repository → weekly restore into a sandbox |
 | Deploy | `ops/deploy.sh` | by hand | backup → fast-forward → tests → migrate → units → restart → health |
@@ -86,10 +89,11 @@ children ──< recipients (channel, address, active)
 members ── invites (hash only) · onboarding (questionnaire state)
 reserve_games · model_runs · user_events · wishes · digests · pulses · nudges
 month_themes · albums · swaps · star_requests · applications · outbox · inbound_events
+quarantine
 channel_links · erasures · erasure_addresses · exit_surveys
 ```
 
-All migrations are additive (`src/db/children.py migrate`, schema version 21): the
+All migrations are additive (`src/db/children.py migrate`, schema version 22): the
 previous code keeps working on a migrated database, which is what makes a code rollback
 safe. A database with no children runs in the original single-child mode from the
 environment.
@@ -102,7 +106,8 @@ environment.
 07:00  preparation for every active child (08:00, 09:00 retry only what is missing)
 10:00  delivery to every recipient                    10:12  catch-up and reconciliation
 10:15  outcome check (again 11:15, 13:15, 17:15)
-*/2    feedback insights                               */5    host health (infra repository)
+*/2    feedback insights                               */5    host health (infra repository), pulse to the Worker
+17:25  SLO alert (only on a change)                    hourly canary VK queue → host (Worker)
 Mon    LLM report                                     Sun    reserve top-up, restore test, parents' digest 19:00
 1st    album of the month 10:15 (when GAME_ALBUM=1)
 ```

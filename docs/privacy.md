@@ -20,6 +20,7 @@ short version in `/faq` (`src/bot/faq.txt`) and the VK help.
 | which games carried a reminder to write | `nudges` | not more than once in 30 days, three times in all |
 | the theme of the month (a skill or none) | `month_themes` | more games of that kind |
 | which month's album was sent to which chat | `albums` | once per month; the picture itself is not stored |
+| a VK message the host could not handle, as it arrived | `quarantine` | not lost; replayed by the owner after a fix |
 
 **Not stored:** photos, videos, voice audio, stickers. Only a label (`[фото]`) is
 kept: these are pictures of children, the fact that they arrived is enough
@@ -52,7 +53,7 @@ while the switch is on (`src/feedback/voice.py`).
 | a family with no active recipient and no activity | 365 days | deleted entirely | `retention.inactive_families` |
 | an archived family (asked to be deleted) | 14 days | purged; a hash of the address and the counts stay | `src/bot/erasure.py` |
 | unfinished questionnaire | 7 days | deleted | `retention.collect` |
-| rejected application, queued and handled messages, unused link codes, VK visitors who never subscribed | 30 days | deleted | `retention.collect` |
+| rejected application, queued and handled messages, quarantined VK messages, unused link codes, VK visitors who never subscribed | 30 days | deleted | `retention.collect` |
 | owner-facing event texts | 90 days | text and chat removed; the kind stays for the counts | `retention.collect` |
 | exit survey free text, «полезно ли?» comment | 180 days | removed; the reason or the score stays | `retention.collect` |
 | local backups | 14 days (at least 7 copies) | rotated | `ops/backup/game-backup.sh` |

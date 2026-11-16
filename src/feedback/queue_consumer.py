@@ -17,9 +17,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.db import children as ch
 from src.delivery import game_delivery
-from src.feedback import buttons, reactions, vk_inbound, voice
+from src.feedback import buttons, quarantine, reactions, vk_inbound, voice
 from src.feedback.storage import DB_PATH, StorageError, save_analysis, save_raw
-from src.ops import heartbeat
+from src.ops import heartbeat, notifier
 
 
 LOG = logging.getLogger("game-feedback-consumer")
@@ -136,7 +136,7 @@ def ack(lease_id):
         )
 
 
-def retry(lease_id):
+def retry(lease_id, delay_seconds=5):
     api_post(
         "ack",
         {
@@ -144,7 +144,7 @@ def retry(lease_id):
             "retries": [
                 {
                     "lease_id": lease_id,
-                    "delay_seconds": 5,
+                    "delay_seconds": delay_seconds,
                 }
             ],
         },
@@ -344,7 +344,10 @@ def persist(payload):
     return raw_result, analysis_result
 
 
-def process_message(message):
+def process_message(message, ack_fn=None):
+    """Handle one queue message. `ack_fn` replaces the queue ack for a replay from the
+    quarantine (there is no lease then)."""
+    ack = ack_fn or globals()["ack"]
     lease_id = message.get("lease_id")
 
     if not isinstance(lease_id, str) or not lease_id:
@@ -427,6 +430,66 @@ def vk_reply(peer, text, random_id, keyboard=None):
         return game_delivery.vk_send(text, random_id, peer_id=peer)
 
 
+def failed(message, error):
+    """Retry later, with growing pauses; after QUARANTINE_AFTER attempts keep the message
+    in the quarantine and tell the owner, instead of letting Cloudflare drop it."""
+    lease_id = message["lease_id"]
+    attempts = message.get("attempts") or 1
+    if not quarantine.due(attempts):
+        retry(lease_id, quarantine.retry_delay(attempts))
+        return
+    con = ch.connect_db(DB_PATH)
+    try:
+        row_id, created = quarantine.put(con, message, error)
+    except Exception:
+        LOG.exception("Quarantine failed, retrying instead")
+        retry(lease_id, quarantine.retry_delay(attempts))
+        return
+    finally:
+        con.close()
+    ack(lease_id)
+    LOG.warning("Message quarantined id=%s attempts=%s", row_id, attempts)
+    if created:
+        try:
+            notifier.notify_warning("Отзыв из VK в карантине", quarantine.alert_text(row_id, message, error))
+        except Exception:  # noqa: BLE001 - the row is kept; /quarantine shows it
+            LOG.exception("Quarantine alert failed")
+
+
+def replay_quarantined():
+    """Replays the owner asked for in the ops bot (/replay N)."""
+    try:
+        con = ch.connect_db(DB_PATH)
+        try:
+            rows = quarantine.requested(con)
+        finally:
+            con.close()
+    except Exception:  # noqa: BLE001
+        LOG.exception("Quarantine read failed")
+        return
+    for row_id, body, content_type in rows:
+        message = {"lease_id": f"replay-{row_id}", "body": body,
+                   "metadata": {"CF-Content-Type": content_type}}
+        try:
+            process_message(message, ack_fn=lambda _lease: None)
+            error = None
+        except Exception as exc:  # noqa: BLE001
+            LOG.exception("Quarantine replay failed id=%s", row_id)
+            error = f"{type(exc).__name__}: {exc}"
+        con = ch.connect_db(DB_PATH)
+        try:
+            quarantine.mark(con, row_id, error)
+        finally:
+            con.close()
+        try:
+            if error is None:
+                notifier.notify_info(f"Карантин #{row_id}: обработано повторно")
+            else:
+                notifier.notify_warning(f"Карантин #{row_id}: повтор не удался", error[:300])
+        except Exception:  # noqa: BLE001
+            LOG.exception("Quarantine replay notice failed")
+
+
 def send_outbox():
     try:
         sent = vk_inbound.drain_outbox(vk_reply)
@@ -450,6 +513,7 @@ def run():
     while True:
         try:
             send_outbox()
+            replay_quarantined()
             messages = pull()
 
             if not messages:
@@ -464,27 +528,16 @@ def run():
                 try:
                     process_message(message)
 
-                except StorageError as error:
-                    LOG.error(
-                        "Persistence rejected message: %s",
-                        error,
-                    )
-
-                    if lease_id:
-                        retry(lease_id)
-
-                except Exception:
-                    LOG.exception(
-                        "Feedback message processing failed"
-                    )
-
+                except Exception as error:  # noqa: BLE001 - every failure: retry or quarantine
+                    if isinstance(error, StorageError):
+                        LOG.error("Persistence rejected message: %s", error)
+                    else:
+                        LOG.exception("Feedback message processing failed")
                     if lease_id:
                         try:
-                            retry(lease_id)
+                            failed(message, error)
                         except Exception:
-                            LOG.exception(
-                                "Queue retry request failed"
-                            )
+                            LOG.exception("Queue retry request failed")
 
         except Exception:
             LOG.exception(
