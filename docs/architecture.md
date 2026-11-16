@@ -22,6 +22,7 @@ flowchart LR
     subgraph Edge["Cloudflare"]
         W[Worker: VK callback]
         Q[[Queue: storage]]
+        AI[Workers AI<br/>Whisper: voice → text]
     end
     CC[Claude Code headless<br/>Sonnet · Haiku]
     VK[VK]
@@ -33,6 +34,7 @@ flowchart LR
     DB --> DEL --> VK & TG
     VK -->|reply| W --> Q --> CON --> DB
     TG <-->|reply, /commands| PB --> DB
+    CON & PB -.->|voice| AI
     INS <--> CC
     INS --> DB
     INS -->|"«Учли: …»"| VK & TG
@@ -50,16 +52,18 @@ controls. They share nothing but the database.
 | component | code | runs | does |
 |---|---|---|---|
 | Preparation | `src/preparation` | 07:00, retries 08:00 and 09:00 MSK | one game per active child: prompt with age-banded skills and the child's profile → model → deterministic gate → corrective retries → fallback model → library |
-| Delivery | `src/delivery` | 10:00, catch-up 10:12 | one delivery per recipient (VK or Telegram); idempotent; recovers an interrupted send from the messenger history; adds the child's name for a shared chat, birthday greetings and the invitation to reply |
+| Delivery | `src/delivery` | 10:00, catch-up 10:12 | one delivery per recipient (VK or Telegram); idempotent; recovers an interrupted send from the messenger history; adds the child's name for a shared chat, birthday greetings (public holidays are left to the community's wall posts), the invitation to reply or a gentle reminder to write (`src/feedback/nudge.py`); with `GAME_CARDS` the game comes as one message with a picture for its skill (`src/delivery/cards.py`), with `GAME_BUTTONS` with one-tap reactions under it (`src/feedback/buttons.py`) |
 | Outcome check | `src/ops/day_outcome_check.py` | 10:15, 11:15, 13:15, 17:15 | independently verifies that every delivery of the day is `sent` |
-| Feedback ingress (VK) | `worker/` + `src/feedback/queue_consumer.py` | always | Worker validates the callback and puts the event straight on the storage queue (a reply in 2–4 s); the host stores the raw text before any model call; stickers and photos become labels |
+| Feedback ingress (VK) | `worker/` + `src/feedback/queue_consumer.py` | always | Worker validates the callback and puts the event straight on the storage queue (a reply in 2–4 s); the host stores the raw text before any model call; stickers and photos become labels; with `GAME_VOICE` a voice message is transcribed (Whisper on Workers AI, `src/feedback/voice.py`) and only the text is kept; a VK reply to a game carries that message's id |
 | VK dialog | `src/bot/vk_dialog.py` + `src/feedback/vk_inbound.py` | always (in the consumer) | every private VK message arrives with the sender's peer id: a subscribed family's text is a command or feedback on its own games; anyone else gets the questionnaire, which ends in an application the owner approves in the ops bot; replies and the outbox are sent once (inbound events, VK `random_id`) |
 | Feedback ingress (Telegram) | `src/bot/product_bot.py` | always | stores the text with an explicit game id (reply-to message or the chat's latest game) |
-| Feedback insights | `src/feedback/insights.py` | every 2 minutes | acknowledged at once on receipt; merges messages sent together, extracts observations with verbatim quotes, rebuilds the child's profile, separates wishes about the service, replies once |
+| Feedback insights | `src/feedback/insights.py` | every 2 minutes, a group settles 3 minutes | acknowledged at once on receipt (`src/feedback/reactions.py`); merges messages sent together, extracts observations with verbatim quotes, rebuilds the child's profile, separates wishes about the service, replies once; with `GAME_FEEDBACK_CONTEXT` it sees the child's recent games and recent observations, so it can attach words to an earlier game, note where the family plays (`setting`: bedtime, outdoors, on the go) and how recent games went (`recent`), and drop an observation the parent corrects |
+| Theme of the month | `src/feedback/month_theme.py` | in delivery and preparation | `GAME_MONTH_THEME`: a skill the family would like more of («тема»); about every other game trains it; never a goal or a measure |
 | Product bot | `src/bot` | always | invite-only onboarding, FAQ, `/children`, `/add_child`, `/pause`, `/resume`, `/idea` |
 | Ops bot | `src/ops/manual_bot.py` | always | `/status`, `/send`, `/retry` with one-time codes; `/users`, `/llm`, `/ideas`; forwards product events |
 | Reports | `src/ops/llm_report.py`, `users_report.py` | Mondays 10:30; on demand | model quality, latency, tokens, cost, reserve days; families; wishes |
-| Parents' digest | `src/ops/weekly_digest.py` | Sundays 19:00 | the week's games and skills, what went well, one or two home ideas for next week (no age norms), a monthly question; optionally (off unless `GAME_DIGEST_STAR_REQUEST=1`) a one-time request to star the project on GitHub |
+| Parents' digest | `src/ops/weekly_digest.py` | Sundays 19:00 | the week's games and skills, what went well, one or two home ideas for next week (no age norms), a monthly question; with `GAME_DIGEST_PULSE` a one-tap «полезно ли?» score; optionally (off unless `GAME_DIGEST_STAR_REQUEST=1`) a one-time request to star the project on GitHub |
+| Album of the month | `src/ops/monthly_album.py` | the 1st, 10:15 | `GAME_ALBUM` (off for now): one picture per family of the month's games, skills and a quote of the parent (Pillow); idempotent through `albums` |
 | Warm reserve | `src/preparation/fallback.py` | Sundays 04:30 | keeps at least three validated games for each child's next two months |
 | Retention | `ops/retention` | 03:10 | personal data past its term removed (`docs/privacy.md`) |
 | Backups | `ops/backup` | 03:30 local, 03:45 off-site, Sundays restore test | SQLite online backup → age-encrypted copy in a private repository → weekly restore into a sandbox |
@@ -75,15 +79,17 @@ children ──< recipients (channel, address, active)
    ├──< games (date, age, skill, origin: model | fallback_model | library, candidate_json)
    │       └──< deliveries (channel, recipient, status, idempotency_key, external_message_id)
    │       └──< feedback (raw text, channel event id, insights status)
-   │                └──< observations (kind, value, skill, verbatim evidence)
+   │                └──< observations (kind, value, skill, game, verbatim evidence)
    ├── child_profiles (built by code from observations)
    └── (is_test: gets games only from a manual run)
 
 members ── invites (hash only) · onboarding (questionnaire state)
-reserve_games · model_runs · user_events · wishes · digests · star_requests
+reserve_games · model_runs · user_events · wishes · digests · pulses · nudges
+month_themes · albums · swaps · star_requests · applications · outbox · inbound_events
+channel_links · erasures · erasure_addresses · exit_surveys
 ```
 
-All migrations are additive (`src/db/children.py migrate`, schema version 11): the
+All migrations are additive (`src/db/children.py migrate`, schema version 21): the
 previous code keeps working on a migrated database, which is what makes a code rollback
 safe. A database with no children runs in the original single-child mode from the
 environment.
@@ -96,8 +102,9 @@ environment.
 07:00  preparation for every active child (08:00, 09:00 retry only what is missing)
 10:00  delivery to every recipient                    10:12  catch-up and reconciliation
 10:15  outcome check (again 11:15, 13:15, 17:15)
-*/15   feedback insights                              */5    host health (infra repository)
+*/2    feedback insights                               */5    host health (infra repository)
 Mon    LLM report                                     Sun    reserve top-up, restore test, parents' digest 19:00
+1st    album of the month 10:15 (when GAME_ALBUM=1)
 ```
 
 ## 5. Delivery invariants
@@ -129,11 +136,16 @@ reads them; the Worker makes no model call.
 - raw feedback is durable before any model call; a model failure leaves it pending;
 - an external event identity makes ingestion idempotent;
 - a retry resolves the existing record, never a newer activity;
-- feedback attaches to an explicit game when the channel allows it (Telegram reply,
-  chat-scoped lookup); a test child's games never absorb unattributed feedback;
+- feedback attaches to a game in this order: an explicit game (Telegram reply, a
+  button under the game), the VK message it replies to (`deliveries.external_message_id`),
+  the newest sent game of that address still without feedback, else its newest sent
+  game; a test child's games never absorb unattributed feedback; with context on, the
+  analyzer may move a single observation to an earlier game the parent names;
+- every written message gets one immediate acknowledgement and one considered reply;
 - an observation is kept only if its quote is verbatim in the feedback;
 - wishes about the service never enter the child's profile;
-- stickers, photos and voice messages are labels, never stored media.
+- stickers and photos are labels, never stored media; a voice message is kept only as
+  its transcript (or a label when transcription is off or fails), never as audio.
 
 ## 7. Deterministic / AI boundary
 
@@ -142,11 +154,12 @@ workflow state, idempotency, retries and recovery, persistence and record linkin
 skills offered at each age, the safety gate, the fallback chain and the library choice,
 the child's profile, budgets and caps, and every external side effect.
 
-Models are used for exactly two things, each behind a schema and a deterministic check:
+Models are used for these things, each behind a schema and a deterministic check:
 
 1. proposing the day's activity (Claude Sonnet; Haiku as fallback), and reviewing its
    safety after the gate (Haiku);
-2. extracting observations and wishes from feedback, for VK and Telegram alike (Claude Haiku).
+2. extracting observations and wishes from feedback, for VK and Telegram alike (Claude Haiku);
+3. transcribing a voice message (Whisper on Cloudflare Workers AI), text only.
 
 A third, offline use is the evals judge (Opus), which never touches production state.
 The model is never the application's memory, workflow engine or source of truth.
