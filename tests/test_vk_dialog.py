@@ -192,6 +192,23 @@ class Family(Base):
         self.assertEqual(self.q("SELECT name FROM children ORDER BY id"), [("Маша",), ("Петя",)])
 
 
+class NamesWithDates(Base):
+    def test_a_date_typed_with_the_name_goes_straight_to_the_confirmation(self):
+        self.say(777, "Здравствуйте")
+        self.assertIn("Тимоша, 12.11.2025", self.say(777, "Тимоша 12.11.2025"))
+        self.assertIn("Заявка отправлена", self.say(777, "да"))
+        self.assertEqual(self.q("SELECT name, birth_date FROM applications"), [("Тимоша", "2025-11-12")])
+
+    def test_digits_are_not_a_name_and_odd_names_are_flagged(self):
+        self.say(777, "Здравствуйте")
+        self.assertIn("только имя", self.say(777, "Маша2"))
+        self.say(777, "Маша наша любимая доча")
+        self.say(777, "15.03.2025")
+        self.say(777, "да")
+        text = self.q("SELECT text FROM user_events WHERE kind LIKE 'application:%'")[0][0]
+        self.assertIn("⚠️ проверьте имя", text)
+
+
 class FeedbackTarget(Base):
     """With the sender address, two VK families never answer each other's games."""
 

@@ -17,7 +17,7 @@ Deterministic code only: no model call here.
 """
 
 import os
-from datetime import date, datetime
+from datetime import datetime
 
 from src.bot import channel_link, erasure, swap
 from src.bot import product_bot as pb
@@ -276,14 +276,17 @@ class VkDialog:
     def questionnaire(self, con, peer, key, current, text, family):
         today = self.now().date()
         if current["step"] == "name":
-            name = " ".join(text.split())
-            if not name or len(name) > pb.MAX_NAME_CHARS:
-                return f"Имя — до {pb.MAX_NAME_CHARS} символов. " + pb.ASK_NAME
+            name, birth, reply = pb.read_name(text, today)
+            if name is None:
+                return reply
             if any(r["name"].casefold() == name.casefold() for r in self.children(con, peer)):
                 return (f"{name} у вас уже подписан(а). Если это другой ребёнок, напишите имя иначе "
                         "(например, «Маша младшая»). «отмена» — прервать.")
+            if birth:
+                pb.ProductBot.set_step(con, key, "confirm", name=name, birth_date=birth)
+                return pb.confirm_text(name, birth, today)
             pb.ProductBot.set_step(con, key, "birth_date", name=name)
-            return pb.ASK_BIRTH
+            return f"{reply} {pb.ASK_BIRTH}" if reply else pb.ASK_BIRTH
 
         if current["step"] == "birth_date":
             try:
@@ -291,9 +294,7 @@ class VkDialog:
             except ValueError as exc:
                 return str(exc)
             pb.ProductBot.set_step(con, key, "confirm", name=current["name"], birth_date=birth)
-            shown = date.fromisoformat(birth).strftime("%d.%m.%Y")
-            return (f"{current['name']}, {shown} — сейчас {pb.describe_age(birth, today)}. Всё верно?\n"
-                    "Ответьте «да» или «нет».")
+            return pb.confirm_text(current["name"], birth, today)
 
         answer = normalize(text)
         if answer in pb.NO:
@@ -308,7 +309,7 @@ class VkDialog:
                 return limit
             create_child(con, peer, current["name"], current["birth_date"])
             pb.ProductBot.notify_owner(
-                f"👶 ВК {peer}: подписан ещё один ребёнок — {current['name']}, "
+                f"👶 ВК {peer}: подписан ещё один ребёнок — {pb.name_mark(current['name'])}{current['name']}, "
                 f"{pb.describe_age(current['birth_date'], today)}",
                 con, key, "child",
             )
@@ -318,7 +319,8 @@ class VkDialog:
             (peer, current["name"], current["birth_date"]),
         ).lastrowid
         pb.ProductBot.notify_owner(
-            f"📝 Заявка #{app_id} из ВК: {current['name']}, {pb.describe_age(current['birth_date'], today)} "
+            f"📝 Заявка #{app_id} из ВК: {pb.name_mark(current['name'])}{current['name']}, "
+            f"{pb.describe_age(current['birth_date'], today)} "
             f"(vk.com/id{peer})",
             con, key, f"application:{app_id}",
         )

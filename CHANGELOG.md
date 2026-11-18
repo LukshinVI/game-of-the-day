@@ -86,6 +86,10 @@ on the commit that completed each milestone.
   goes to the dialog's newest game.
 - VK voice messages served from `vkuserphoto.ru` were kept as a bare label instead of
   being transcribed.
+- The child's name in the questionnaire (Telegram and VK): a birth date typed with the
+  name («Тимоша 12.11.2025») is taken as the birth date and the date step is skipped; a
+  name with digits, a link or no letters is asked again; the owner's notification marks
+  an odd name (long, more than two words, symbols) with ⚠️.
 
 ## [2.0.0] - 2026-11-15 — Easier to answer
 

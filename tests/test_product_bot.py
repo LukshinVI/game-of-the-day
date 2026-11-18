@@ -281,6 +281,46 @@ class SameNames(BotTest):
         self.assertEqual(self.rows("SELECT count(*) FROM children WHERE name = 'Маша'"), [(2,)])
 
 
+class NamesWithDates(BotTest):
+    def start(self, chat="42"):
+        link = self.say(OWNER, "/invite")
+        self.say(chat, "/start " + link.split("start=")[1].split()[0])
+
+    def test_a_date_typed_with_the_name_is_the_birth_date(self):
+        self.start()
+        self.assertIn("Тимоша, 12.11.2025 — сейчас 11 месяцев", self.say("42", "Тимоша 12.11.2025"))
+        self.say("42", "да")
+        self.assertEqual(self.rows("SELECT name, birth_date FROM children"), [("Тимоша", "2025-11-12")])
+        self.assertNotIn("⚠️", self.rows("SELECT text FROM user_events WHERE kind='child'")[0][0])
+
+    def test_a_bad_date_with_the_name_keeps_the_name_and_asks_for_the_date(self):
+        self.start()
+        reply = self.say("42", "Тим, 01.01.2020")
+        self.assertIn("до 3 лет", reply)
+        self.assertIn("Дата рождения", reply)
+        self.assertEqual(self.rows("SELECT step, name FROM onboarding"), [("birth_date", "Тим")])
+
+    def test_digits_links_and_bare_emoji_are_not_names(self):
+        self.start()
+        for text in ("Петя2", "vk.com/id1", "https://example.org", "😀"):
+            self.assertIn("только имя", self.say("42", text), text)
+        self.assertEqual(self.rows("SELECT step FROM onboarding"), [("name",)])
+        self.assertIn("Дата рождения", self.say("42", "Анна-Мария"))
+
+    def test_an_odd_name_is_flagged_for_the_owner(self):
+        self.onboard("42", name="Маша 🌸 солнышко наше")
+        self.assertIn("⚠️ проверьте имя", self.rows("SELECT text FROM user_events WHERE kind='child'")[0][0])
+
+    def test_read_name(self):
+        today = date(2026, 11, 18)
+        self.assertEqual(pb.read_name("Тимоша, 12.11.2025 г.", today), ("Тимоша", "2025-11-12", None))
+        self.assertEqual(pb.read_name("2025-11-12 Тимоша", today), ("Тимоша", "2025-11-12", None))
+        self.assertEqual(pb.read_name("Ваня (12.11.2025)", today), ("Ваня", "2025-11-12", None))
+        self.assertEqual(pb.read_name("  Маша   младшая ", today), ("Маша младшая", None, None))
+        self.assertFalse(pb.odd_name("Маша младшая"))
+        self.assertTrue(pb.odd_name("Очень-очень длинное прозвище"))
+
+
 class Parsing(unittest.TestCase):
     def test_age_words(self):
         self.assertEqual([pb.months_word(n) for n in (1, 2, 5, 11, 12, 21, 22)],

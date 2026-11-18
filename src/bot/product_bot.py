@@ -37,6 +37,7 @@ answer can never attach to another family's game.
 import hashlib
 import json
 import os
+import re
 import secrets
 import sys
 import time
@@ -151,6 +152,57 @@ def parse_birth_date(text, today):
     if age_months(value, today) > MAX_AGE_MONTHS:
         raise ValueError("Игры рассчитаны на детей до 3 лет.")
     return value.isoformat()
+
+
+# A date typed together with the name ("Тимоша 12.11.2025", production 2026-11-16): the
+# date is taken as the birth date, the rest as the name.
+DATE_IN_NAME = re.compile(
+    r"(?<!\d)(\d{1,2}[./]\d{1,2}[./]\d{4}|\d{4}-\d{1,2}-\d{1,2})(?!\d)(\s*(?:г\.|года|год|г)(?![^\W\d_]))?"
+)
+NAME_EDGES = " ,.;:-–—()"
+ONLY_NAME = "Напишите, пожалуйста, только имя или прозвище — без цифр и ссылок. "
+ODD_NAME_CHARS = 20
+
+
+def read_name(text, today):
+    """The name step: (name, birth_date or None, reply or None).
+
+    A date inside the text becomes the birth date (a bad one is explained, and the date
+    step follows). A name with digits, a link or no letters at all is not accepted:
+    reply is set and the step is kept.
+    """
+    text = " ".join(text.split())
+    birth, reply = None, None
+    found = DATE_IN_NAME.search(text)
+    if found:
+        text = " ".join((text[:found.start()] + " " + text[found.end():]).split()).strip(NAME_EDGES)
+        try:
+            birth = parse_birth_date(found.group(1), today)
+        except ValueError as exc:
+            reply = str(exc)
+    name = text.strip(NAME_EDGES) if found else text
+    lowered = name.casefold()
+    if (not any(c.isalpha() for c in name) or any(c.isdigit() for c in name)
+            or any(mark in lowered for mark in ("http", "www.", "@", "/", "\\", ".ru", ".com"))):
+        return None, None, ONLY_NAME + ASK_NAME
+    if len(name) > MAX_NAME_CHARS:
+        return None, None, f"Имя — до {MAX_NAME_CHARS} символов. " + ASK_NAME
+    return name, birth, reply
+
+
+def odd_name(name):
+    """For the owner's notification: a name worth a look (long, many words, symbols)."""
+    return (len(name) > ODD_NAME_CHARS or len(name.split()) > 2
+            or any(not (c.isalpha() or c in " -'’.") for c in name))
+
+
+def name_mark(name):
+    return "⚠️ проверьте имя: " if odd_name(name) else ""
+
+
+def confirm_text(name, birth, today):
+    shown = date.fromisoformat(birth).strftime("%d.%m.%Y")
+    return f"{name}, {shown} — сейчас {describe_age(birth, today)}. Всё верно?\nОтветьте «да» или «нет»."
 
 
 def age_months(birth, today):
@@ -502,16 +554,19 @@ class ProductBot:
     def questionnaire(self, con, chat_id, current, text):
         today = self.now().date()
         if current["step"] == "name":
-            name = " ".join(text.split())
-            if not name or len(name) > MAX_NAME_CHARS:
-                return f"Имя — до {MAX_NAME_CHARS} символов. " + ASK_NAME
+            name, birth, reply = read_name(text, today)
+            if name is None:
+                return reply
             if any(r["name"].casefold() == name.casefold() for r in self.chat_children(con, chat_id)):
                 return (
                     f"{name} у вас уже подписан(а). Если это другой ребёнок, напишите имя иначе, "
                     "чтобы сообщения можно было различить (например, «Маша младшая»). /cancel — отменить."
                 )
+            if birth:
+                self.set_step(con, chat_id, "confirm", name=name, birth_date=birth)
+                return confirm_text(name, birth, today)
             self.set_step(con, chat_id, "birth_date", name=name)
-            return ASK_BIRTH
+            return f"{reply} {ASK_BIRTH}" if reply else ASK_BIRTH
 
         if current["step"] == "birth_date":
             try:
@@ -519,11 +574,7 @@ class ProductBot:
             except ValueError as exc:
                 return str(exc)
             self.set_step(con, chat_id, "confirm", name=current["name"], birth_date=birth)
-            shown = date.fromisoformat(birth).strftime("%d.%m.%Y")
-            return (
-                f"{current['name']}, {shown} — сейчас {describe_age(birth, today)}. Всё верно?\n"
-                "Ответьте «да» или «нет»."
-            )
+            return confirm_text(current["name"], birth, today)
 
         answer = text.lower().strip(" .!")
         if answer in NO:
@@ -544,7 +595,8 @@ class ProductBot:
         )
         con.execute("DELETE FROM onboarding WHERE chat_id = ?", (chat_id,))
         self.notify_owner(
-            f"👶 Подписан ребёнок: {current['name']}, {describe_age(current['birth_date'], today)} (chat {chat_id})",
+            f"👶 Подписан ребёнок: {name_mark(current['name'])}{current['name']}, "
+            f"{describe_age(current['birth_date'], today)} (chat {chat_id})",
             con, chat_id, "child",
         )
         when = "сегодня" if self.now().hour < PREPARATION_HOUR_MSK else "завтра"
