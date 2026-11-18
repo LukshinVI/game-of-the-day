@@ -8,6 +8,7 @@ it is manual on purpose, never part of CI.
     python3 evals/preparation/run_selection_evals.py --model opus
     python3 evals/preparation/run_selection_evals.py --model sonnet --judge opus
     python3 evals/preparation/run_selection_evals.py --model sonnet --cases mouthing-age-9m,speech-24m
+    python3 evals/preparation/run_selection_evals.py --model sonnet --judge opus --repeat 3 --out /tmp/r
 
 Scores per case:
 - validator: the production gate (schema, safety terms, age, duration, duplicates);
@@ -15,6 +16,12 @@ Scores per case:
   materials, message length, https source, finished goal sentence);
 - judge (optional): another model rates age fit, clarity and developmental value 1-5
   and flags safety concerns, against a fixed rubric.
+
+--repeat N runs every case N times: the model is not deterministic, so one run says
+little about the next. The report then adds how often each case passed the gate, whether
+the same skill was chosen, and how far the judge's scores spread across the repeats. How
+good the judge itself is gets measured separately, against answers known in advance:
+evals/safety/.
 
 Writes evals/preparation/reports/<date>-<model>.json and a Markdown summary next to it.
 """
@@ -145,7 +152,7 @@ def summary(model, judge_model, records):
     lines = [
         f"# Selection evals — {model} — {date.today().isoformat()}",
         "",
-        f"- cases: {n}; passed the production gate: {len(passed)}/{n}; on the first attempt: {first}/{n}",
+        f"- runs: {n}; passed the production gate: {len(passed)}/{n}; on the first attempt: {first}/{n}",
         f"- attempts per case: {sum(r['attempts'] for r in records) / max(n, 1):.2f}",
         f"- clean lint: {sum(1 for r in passed if not r['lint'])}/{len(passed)}",
         f"- time: {sum(r['wall_ms'] for r in records) / 1000 / max(n, 1):.0f} s per case; "
@@ -160,6 +167,7 @@ def summary(model, judge_model, records):
         fits = [j["profile_fit"] for j in judged if j.get("profile_fit")]
         if fits:
             lines.append(f"- profile fit (cases with a profile): {sum(fits) / len(fits):.1f} of 5")
+    lines += reproducibility(records)
     lines += ["", "| case | gate | attempts | lint | judge | title |", "|---|---|---|---|---|---|"]
     for r in records:
         j = r.get("judge") or {}
@@ -173,11 +181,44 @@ def summary(model, judge_model, records):
     return "\n".join(lines) + "\n"
 
 
+def reproducibility(records):
+    """Per case across repeats: gate passes, skills chosen, judge score spread."""
+    by_case = {}
+    for r in records:
+        by_case.setdefault(r["id"], []).append(r)
+    if max(len(runs) for runs in by_case.values()) < 2:
+        return []
+    lines = ["", "Reproducibility across repeats:", "",
+             "| case | gate passes | skills chosen | judge age/clarity/value: min–max | distinct titles |",
+             "|---|---|---|---|---|"]
+    spreads = []
+    for case_id, runs in by_case.items():
+        passed = [r for r in runs if r["passed"]]
+        chosen = sorted({(r.get("candidate") or {}).get("skill", "?") for r in passed})
+        judged = [r["judge"] for r in passed if isinstance(r.get("judge"), dict) and "age_fit" in r["judge"]]
+        ranges = []
+        for key in ("age_fit", "clarity", "developmental_value"):
+            values = [j[key] for j in judged]
+            if values:
+                ranges.append(f"{min(values)}–{max(values)}")
+                spreads.append(max(values) - min(values))
+        titles = len({(r.get("candidate") or {}).get("title") for r in passed})
+        lines.append(f"| {case_id} | {len(passed)}/{len(runs)} | {', '.join(chosen) or '—'} | "
+                     f"{' / '.join(ranges) or '—'} | {titles} |")
+    if spreads:
+        lines += ["", f"Judge spread: a score moved by {sum(spreads) / len(spreads):.2f} points on average "
+                      f"between repeats of the same case; {sum(1 for x in spreads if x >= 2)} of {len(spreads)} "
+                      "scores moved by 2 or more."]
+    return lines
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="selection-evals")
     parser.add_argument("--model", required=True, help="opus | sonnet | a full model id")
     parser.add_argument("--judge", help="model that scores the result (optional, costs one more call per case)")
     parser.add_argument("--cases", help="comma-separated case ids (default: all)")
+    parser.add_argument("--repeat", type=int, default=1, help="runs per case (reproducibility)")
+    parser.add_argument("--out", type=Path, default=REPORTS, help="report directory")
     args = parser.parse_args(argv)
 
     os.environ["PREPARATION_BACKEND"] = "claude"
@@ -189,13 +230,16 @@ def main(argv=None):
 
     records = []
     for case in cases:
-        print(f"{case['id']} ...", end=" ", flush=True)
-        record = run_case(case, args.judge)
-        records.append(record)
-        print("pass" if record["passed"] else "FAIL", f"({record['attempts']} att.)", flush=True)
+        for n in range(args.repeat):
+            print(f"{case['id']} #{n + 1} ...", end=" ", flush=True)
+            record = run_case(case, args.judge)
+            record["repeat"] = n + 1
+            records.append(record)
+            print("pass" if record["passed"] else "FAIL", f"({record['attempts']} att.)", flush=True)
 
-    REPORTS.mkdir(exist_ok=True)
-    stem = REPORTS / f"{date.today().isoformat()}-{args.model.replace('/', '_')}"
+    args.out.mkdir(parents=True, exist_ok=True)
+    suffix = f"-x{args.repeat}" if args.repeat > 1 else ""
+    stem = args.out / f"{date.today().isoformat()}-{args.model.replace('/', '_')}{suffix}"
     stem.with_suffix(".json").write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
     text = summary(args.model, args.judge, records)
     stem.with_suffix(".md").write_text(text, encoding="utf-8")
