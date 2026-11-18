@@ -39,10 +39,13 @@ class Base(unittest.TestCase):
         con.execute("PRAGMA foreign_keys = ON")
         con.executescript((ROOT / "src/db/schema.sql").read_text())
         # Family 1: Тёма, in VK and Telegram. Family 2: Аня, Telegram only (another chat).
+        # Fixed dates, not the wall clock: retention terms are measured from NOW.
         con.execute("INSERT INTO children (id, name, birth_date, created_at) "
                     "VALUES (1, 'Тёма', '2025-05-01', '2026-10-01 08:00:00')")
-        con.execute("INSERT INTO recipients (child_id, channel, address) VALUES (1, 'vk', ?)", (VK,))
-        con.execute("INSERT INTO recipients (child_id, channel, address) VALUES (1, 'telegram', ?)", (TG,))
+        con.execute("INSERT INTO recipients (child_id, channel, address, created_at) "
+                    "VALUES (1, 'vk', ?, '2026-10-01 08:00:00')", (VK,))
+        con.execute("INSERT INTO recipients (child_id, channel, address, created_at) "
+                    "VALUES (1, 'telegram', ?, '2026-10-01 08:00:00')", (TG,))
         con.execute("INSERT INTO members (chat_id, display_name) VALUES (?, 'Мама Тёмы')", (TG,))
         con.execute("INSERT INTO members (chat_id) VALUES (?)", (f"vk:{VK}",))
         con.execute("INSERT INTO children (id, name, birth_date) VALUES (2, 'Аня', '2025-01-01')")
