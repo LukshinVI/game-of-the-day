@@ -51,6 +51,7 @@ sys.path.insert(0, str(ROOT))
 from src.bot import channel_link, erasure, swap  # noqa: E402
 from src.db import children as ch  # noqa: E402
 from src.feedback import buttons, insights, month_theme, reactions, storage, voice  # noqa: E402
+from src.ops import telegram_errors  # noqa: E402
 from src.ops import pulse  # noqa: E402
 
 DB_PATH = ch.DB_PATH
@@ -758,7 +759,7 @@ def answer_callback(token, bot, update, call=None):
             call(token, "sendMessage", {"chat_id": message["chat"]["id"], "text": note_text,
                                         **({"reply_markup": note_markup} if note_markup else {})}, 20)
     except Exception as exc:  # noqa: BLE001 - "message is not modified" and the like are harmless
-        print(f"callback answer failed: {type(exc).__name__}", flush=True)
+        print(f"callback answer failed: {telegram_errors.describe(exc)}", flush=True)
 
 
 def main():
@@ -794,7 +795,7 @@ def main():
             telegram(token, "sendMessage", {"chat_id": chat_id, "text": text[:3500],
                                             **({"reply_markup": markup} if markup else {})}, 20)
         except Exception as exc:  # noqa: BLE001 - never log tokens or URLs
-            print(f"send failed: {type(exc).__name__}", flush=True)
+            print(f"send failed: {telegram_errors.describe(exc)}", flush=True)
 
     from src.feedback import vk_inbound  # here: vk_inbound -> vk_dialog -> this module
 
@@ -811,7 +812,7 @@ def main():
             try:  # messages queued by other processes (e.g. a link approved in the ops bot)
                 vk_inbound.drain_outbox(send_queued, DB_PATH, channel="telegram")
             except Exception as exc:  # noqa: BLE001 - the outbox must not stop the bot
-                print(f"outbox failed: {type(exc).__name__}", flush=True)
+                print(f"outbox failed: {telegram_errors.describe(exc)}", flush=True)
             for update in result.get("result", []):
                 offset = update["update_id"] + 1
                 if "callback_query" in update:
@@ -826,7 +827,7 @@ def main():
                 if reply and chat_id is not None:
                     send(chat_id, reply)
         except Exception as exc:  # noqa: BLE001
-            print(f"poll error: {type(exc).__name__}", flush=True)
+            print(f"poll error: {telegram_errors.describe(exc)}", flush=True)
             if time.time() - last_success > EXIT_AFTER_FAILING_SECONDS:
                 print("no successful poll for too long; exiting", flush=True)
                 sys.exit(1)

@@ -39,6 +39,7 @@ sys.path.insert(0, str(ROOT))
 
 from src.bot import channel_link, vk_dialog  # noqa: E402
 from src.feedback import quarantine  # noqa: E402
+from src.ops import telegram_errors  # noqa: E402
 from src.db import children as ch  # noqa: E402
 from src.ops import dashboard, llm_report, product_metrics, slo, users_report  # noqa: E402
 
@@ -435,12 +436,12 @@ def main():
                     "text": f"{message.get('text', '')}\n\n{text}"[:MAX_REPLY_CHARS],
                 }, 20)
         except Exception as exc:  # noqa: BLE001
-            print(f"callback answer failed: {type(exc).__name__}", flush=True)
+            print(f"callback answer failed: {telegram_errors.describe(exc)}", flush=True)
 
     try:
         reply("🟢 Ops-бот на связи (запуск или перезапуск службы). Ничего не отправлено. /help")
     except Exception as exc:  # noqa: BLE001 - the loop below reports real problems
-        print(f"start message failed: {type(exc).__name__}", flush=True)
+        print(f"start message failed: {telegram_errors.describe(exc)}", flush=True)
 
     while True:
         try:
@@ -477,7 +478,7 @@ def main():
             forward_user_events(reply, ask=ask)
 
         except Exception as exc:  # noqa: BLE001 - log the type only, never URLs or tokens
-            print(f"poll error: {type(exc).__name__}", flush=True)
+            print(f"poll error: {telegram_errors.describe(exc)}", flush=True)
 
             # A bot that is "active" but cannot reach Telegram is dead in practice: exit so
             # that systemd restarts it and the journal shows the loop.
