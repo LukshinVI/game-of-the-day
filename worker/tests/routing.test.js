@@ -88,6 +88,20 @@ try {
     await worker.fetch(callback(777, 'без ответа', 12), env);
     assert.equal(env.stored.at(-1).reply_to, undefined);
 
+    // A wrong or missing secret is rejected, and so is everything when the Worker has no
+    // secret configured (fail closed).
+    const before = env.stored.length;
+    const forged = (secret, workerEnv) => worker.fetch(new Request('https://worker.example/', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'message_new', ...(secret === undefined ? {} : { secret }), group_id: 42,
+            event_id: `forged-${secret}`, object: { message: { peer_id: 777, text: 'x', id: 99 } } })
+    }), workerEnv);
+    await forged('t', env);
+    await forged('ss', env);
+    await forged(undefined, env);
+    await forged(undefined, { ...env, VK_CALLBACK_SECRET: undefined });
+    assert.equal(env.stored.length, before, 'forged callbacks never reach the queue');
+
     // The Worker consumes no queue and makes no model call.
     assert.equal(worker.queue, undefined);
 } finally {

@@ -1,7 +1,7 @@
 // Community ID is deployment-specific: set with `wrangler secret put VK_GROUP_ID`.
 // If it is missing, Number(undefined) is NaN and every callback is rejected (fail closed).
 
-import { handleWatch, noteCallback, scheduled, Watch } from './watch.js';
+import { handleWatch, noteCallback, sameSecret, scheduled, Watch } from './watch.js';
 
 export { Watch };
 
@@ -47,9 +47,10 @@ export default {
             );
         }
 
+        // Constant-time, and a missing VK_CALLBACK_SECRET rejects everything (fail
+        // closed): before, an unset secret matched a callback without one.
         if (
-            event.secret !==
-                env.VK_CALLBACK_SECRET ||
+            !sameSecret(event.secret, env.VK_CALLBACK_SECRET) ||
             event.group_id !==
                 Number(env.VK_GROUP_ID)
         ) {

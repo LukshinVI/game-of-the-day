@@ -33,13 +33,19 @@ async function call(env, action, body) {
     if (!response.ok) throw new Error(`watch ${action}: ${response.status}`);
 }
 
-function authorized(request, env) {
-    const expected = env.WATCH_SECRET;
-    const given = (request.headers.get('Authorization') || '').replace(/^Bearer /, '');
-    if (!expected || given.length !== expected.length) return false;
+/* A shared secret compared in constant time; a missing expected secret never matches
+ * (fail closed). Used for the host's watch calls and for VK's callback secret. */
+export function sameSecret(given, expected) {
+    if (typeof given !== 'string' || typeof expected !== 'string' || !expected) return false;
+    if (given.length !== expected.length) return false;
     let diff = 0;
     for (let i = 0; i < given.length; i++) diff |= given.charCodeAt(i) ^ expected.charCodeAt(i);
     return diff === 0;
+}
+
+function authorized(request, env) {
+    const given = (request.headers.get('Authorization') || '').replace(/^Bearer /, '');
+    return sameSecret(given, env.WATCH_SECRET);
 }
 
 /* /watch/beat and /watch/canary from the host. Anything else under /watch/ is 404. */
