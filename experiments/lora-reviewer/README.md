@@ -44,6 +44,13 @@ python3 experiments/lora-reviewer/label.py --limit 300 --double 0.2
 Both spend quota, so the dataset is built in daily portions that leave the production
 reserve intact; `label.py` is resumable.
 
+Then `export.py` writes `train.jsonl` / `val.jsonl` (stratified by the teacher's verdict,
+prompt-completion format), and `train_reviewer.ipynb` runs steps 2-4 in Google Colab on a
+T4: the base model through the safety evals and val, QLoRA training, the same
+measurement after. [Open in Colab](https://colab.research.google.com/github/LukshinVI/game-of-the-day/blob/main/experiments/lora-reviewer/train_reviewer.ipynb).
+The notebook cells were dry-run on CPU with a tiny model up to training; the training cell
+itself could not be (the host's Python 3.14 breaks `datasets`), Colab runs Python 3.12.
+
 ## Findings so far
 
 Trial on 2026-11-18 (30 activities):

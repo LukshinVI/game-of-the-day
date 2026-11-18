@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "experiments" / "lora-reviewer"))
 
 import common  # noqa: E402
+import export  # noqa: E402
 import generate  # noqa: E402
 import label  # noqa: E402
 
@@ -75,6 +76,18 @@ class Data(unittest.TestCase):
             self.assertEqual(rows[0]["label"]["by_rules"], ["Уберите батарейки подальше."])
             self.assertIn("ACTIVITY (JSON)", call.call_args[0][0])
             self.assertEqual(json.loads(json.dumps(rows[0]))["teacher"], "sonnet")
+
+    def test_export_is_a_stratified_prompt_completion_split(self):
+        rows = [{"id": f"r{i}", "age_months": 6, "intended": "safe", "activity": activity(f"Игра {i}"),
+                 "label": {"block": ["опасно"] if i % 2 else [], "fix": [] if i % 2 else ["проверьте"]}}
+                for i in range(20)]
+        train, val = export.split(rows, 0.1, 1)
+        self.assertEqual((len(train), len(val)), (18, 2))
+        self.assertEqual(sorted(label.verdict_of(r["label"]) for r in val), ["block", "fix"])
+        ex = export.example(rows[1])
+        self.assertTrue(ex["prompt"][0]["content"].endswith(export.FORMAT))
+        self.assertEqual(json.loads(ex["completion"][0]["content"]), {"block": ["опасно"], "fix": []})
+        self.assertEqual(ex["verdict"], "block")
 
 
 if __name__ == "__main__":
