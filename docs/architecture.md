@@ -157,8 +157,9 @@ reads them; the Worker makes no model call.
 - a retry resolves the existing record, never a newer activity;
 - feedback attaches to a game in this order: an explicit game (Telegram reply, a
   button under the game), the VK message it replies to (`deliveries.external_message_id`),
-  the newest sent game of that address still without feedback, else its newest sent
-  game; a test child's games never absorb unattributed feedback; with context on, the
+  the newest game sent to that address (not "the newest without feedback": after a
+  button tap that rule sent the voice note to a days-old game); a test child's games
+  never absorb unattributed feedback; with context on, the
   analyzer may move a single observation to an earlier game the parent names;
 - every written message gets one immediate acknowledgement and one considered reply;
 - an observation is kept only if its quote is verbatim in the feedback;

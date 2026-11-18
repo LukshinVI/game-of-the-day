@@ -157,51 +157,24 @@ def replied_game(con, channel, address, reply_to):
 
 def resolve_feedback_target(con, channel="vk", address=None):
     """
-    Resolve feedback without an explicit game to the newest successfully
-    sent game that has no feedback yet (the legacy Google Sheets rule),
-    among games delivered on the channel the feedback came from.
+    Resolve feedback without an explicit game (no button, no reply to a game message).
 
-    With several children, games for a child reached only on another channel
-    must not absorb this feedback. With the sender address (the VK peer id, sent
-    by the Worker) only games delivered to that address are candidates, so two
-    families in one channel never answer each other's games. Events without an
-    address (sent before the Worker passed it) keep the channel-wide rule.
+    With the sender address (the VK peer id, sent by the Worker): the newest game sent
+    to that very dialog. A parent writes about the game they just got; one who means an
+    earlier game names it, and the analyzer moves the observation there (insights).
 
-    When every game sent to that address already has feedback, a further message
-    goes to the newest of them: before 2.0 a second message (a follow-up, a voice
-    note after a button tap) found no target and was dropped after the queue's
-    retries.
+    Until 2026-11-18 this was "the newest sent game still without feedback" (the legacy
+    Google Sheets rule). The reaction buttons broke it: a tap gives today's game its
+    feedback, and the voice note sent seconds later skipped today's game and landed on
+    the newest game without feedback, days older (production 17-18 Nov).
+
+    Without an address (events sent before the Worker passed it) the channel-wide legacy
+    rule stays: the newest sent game without feedback, never a test child's game.
 
     Explicit game identity is handled by resolve_game().
     """
 
-    row = con.execute(
-        """
-        SELECT g.id
-        FROM games AS g
-        JOIN deliveries AS d
-          ON d.game_id = g.id
-        WHERE d.status = 'sent'
-          AND d.channel = ?
-          AND (? IS NULL OR d.recipient = ?)
-          AND ({not_test} OR ? IS NOT NULL)
-          AND NOT EXISTS (
-              SELECT 1
-              FROM feedback AS f
-              WHERE f.game_id = g.id
-          )
-        ORDER BY
-            g.game_date DESC,
-            g.id DESC
-        LIMIT 1
-        """.format(not_test=not_test_clause(con)),
-        (channel, address, address, address),
-    ).fetchone()
-
-    if row is None and address is not None:
-        # A second message about the same game (a follow-up, a voice note after a
-        # tap): every game already has feedback, so it belongs to the newest game
-        # sent to this very dialog. Without an address there is no such guess.
+    if address is not None:
         row = con.execute(
             """
             SELECT g.id
@@ -218,12 +191,34 @@ def resolve_feedback_target(con, channel="vk", address=None):
             """,
             (channel, address),
         ).fetchone()
+    else:
+        row = con.execute(
+            """
+            SELECT g.id
+            FROM games AS g
+            JOIN deliveries AS d
+              ON d.game_id = g.id
+            WHERE d.status = 'sent'
+              AND d.channel = ?
+              AND {not_test}
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM feedback AS f
+                  WHERE f.game_id = g.id
+              )
+            ORDER BY
+                g.game_date DESC,
+                g.id DESC
+            LIMIT 1
+            """.format(not_test=not_test_clause(con)),
+            (channel,),
+        ).fetchone()
 
     if row is None:
         raise StorageError(
             409,
             "feedback_target_not_found",
-            "No sent game without feedback was found",
+            "No sent game was found for this feedback",
         )
 
     return row["id"]
@@ -306,8 +301,8 @@ def save_raw(data):
                 "game": game_payload,
             }
 
-        # Explicit game identity wins. Without one, preserve the
-        # legacy production rule: newest sent game without feedback.
+        # Explicit game identity wins; then the game message the parent replied to;
+        # then the newest game of this dialog (resolve_feedback_target).
         explicit_game_id = data.get("game_id")
         explicit_legacy_id = data.get("game_legacy_id")
 

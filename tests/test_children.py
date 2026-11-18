@@ -475,6 +475,31 @@ class TestChild(TempDb):
         with self.assertRaises(storage.StorageError):
             storage.resolve_feedback_target(con, "vk")            # no address: no guess
 
+    def test_a_voice_note_after_a_button_tap_stays_on_todays_game(self):
+        """Production 17-18 Nov: the tap gave today's game its feedback, and the voice
+        note seconds later went to the newest game without feedback, days older."""
+        from src.feedback import storage
+        con = self.con()
+        child = ch.add_child(con, "Маша", OLDER)
+        ch.add_recipient(con, child, "vk", "3000001")
+        ids = []
+        for day, title in (("2026-11-15", "Позавчерашняя"), ("2026-11-16", "Вчерашняя"), ("2026-11-17", "Сегодняшняя")):
+            game = con.execute("INSERT INTO games(legacy_id, game_date, title, child_id) VALUES (?, ?, ?, ?)",
+                               (title, day, title, child)).lastrowid
+            con.execute("INSERT INTO deliveries(game_id, channel, recipient, idempotency_key, status) "
+                        "VALUES (?, 'vk', '3000001', ?, 'sent')", (game, f"k-{title}"))
+            ids.append(game)
+        con.execute("INSERT INTO feedback(game_id, channel, external_event_id, raw_text, received_at) "
+                    "VALUES (?, 'vk', 'btn:3000001:x:outcome', '[кнопка] 👍', '2026-11-17T13:14:18')", (ids[2],))
+        con.commit()
+        con.close()
+        with mock.patch.object(storage, "DB_PATH", self.db):
+            result = storage.save_raw({"event_id": "voice-1", "channel": "vk", "address": "3000001",
+                                       "raw_text": "[голосовое] Отличная игра, всё получилось"})
+        con = self.con()
+        self.assertEqual(con.execute("SELECT game_id FROM feedback WHERE id = ?", (result["feedback_id"],)).fetchone()[0],
+                         ids[2])
+
     def test_a_vk_reply_to_a_game_lands_on_that_game(self):
         from src.feedback import storage
         con = self.con()
