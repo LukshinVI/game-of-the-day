@@ -244,6 +244,22 @@ class Erasure(Base):
                          [tuple(r) for r in before])
 
 
+    def test_an_address_with_sql_in_it_stays_data(self):
+        # Addresses reach SQL as one bound JSON array, never spliced into the statement.
+        hostile = "1') OR 1=1 --"
+        con = ch.connect_db(self.db)
+        con.execute("UPDATE recipients SET address = ? WHERE child_id = 2", (hostile,))
+        con.commit()
+        kids, addrs = erasure.family(con, "telegram", hostile)
+        self.assertEqual(kids, {2})
+        erasure.remove(con, kids, addrs)
+        con.commit()
+        con.close()
+        self.assertEqual([r[0] for r in self.q("SELECT name FROM children")], ["Тёма"])
+        self.assertEqual(self.count("recipients", "child_id = 1"), 2)
+        self.assertEqual(self.count("members", "chat_id = ?", (TG,)), 1)
+
+
 class Retention(Base):
     def run_at(self, days, dry_run=False):
         return retention.run(self.db, now=NOW + timedelta(days=days), dry_run=dry_run)

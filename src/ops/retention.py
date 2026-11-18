@@ -63,17 +63,18 @@ def inactive_families(con, now):
         else:
             kids, addrs = erasure.family(con, channel, address)
         seen |= kids
-        ids = erasure._in(kids)
-        if con.execute(f"SELECT 1 FROM recipients WHERE child_id IN ({ids}) AND active = 1").fetchone():
+        ids = {"ids": erasure.as_json(kids)}
+        family_ids = "SELECT value FROM json_each(:ids)"
+        if con.execute(f"SELECT 1 FROM recipients WHERE child_id IN ({family_ids}) AND active = 1", ids).fetchone():
             continue
         last = con.execute(
             f"SELECT max(t) FROM ("
-            f" SELECT max(created_at) AS t FROM children WHERE id IN ({ids})"
-            f" UNION ALL SELECT max(created_at) FROM recipients WHERE child_id IN ({ids})"
+            f" SELECT max(created_at) AS t FROM children WHERE id IN ({family_ids})"
+            f" UNION ALL SELECT max(created_at) FROM recipients WHERE child_id IN ({family_ids})"
             f" UNION ALL SELECT max(d.sent_at) FROM deliveries d JOIN games g ON g.id = d.game_id"
-            f"   WHERE g.child_id IN ({ids})"
+            f"   WHERE g.child_id IN ({family_ids})"
             f" UNION ALL SELECT max(f.received_at) FROM feedback f JOIN games g ON g.id = f.game_id"
-            f"   WHERE g.child_id IN ({ids}))").fetchone()[0]
+            f"   WHERE g.child_id IN ({family_ids}))", ids).fetchone()[0]
         if last is None or str(last).replace("T", " ")[:19] < cutoff:
             found.append((kids, addrs))
     return found

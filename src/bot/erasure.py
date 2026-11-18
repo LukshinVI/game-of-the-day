@@ -102,11 +102,13 @@ def _ids(con, sql, params=()):
     return {row[0] for row in con.execute(sql, params)}
 
 
-def _in(values):
-    """SQL literal list for an IN clause; values are ids or quoted strings we built."""
-    if not values:
-        return "NULL"
-    return ", ".join(str(v) if isinstance(v, int) else "'" + str(v).replace("'", "''") + "'" for v in sorted(values))
+# A set of values goes into SQL as one bound JSON array, never as text spliced into the
+# statement: `x IN (SELECT value FROM json_each(?))`. An empty set matches nothing.
+IN = "SELECT value FROM json_each(?)"
+
+
+def as_json(values):
+    return json.dumps(sorted(values), ensure_ascii=False)
 
 
 def family(con, channel, address):
@@ -126,36 +128,40 @@ def family(con, channel, address):
 
 
 def _scope(con, kids, addrs):
-    games = _ids(con, f"SELECT id FROM games WHERE child_id IN ({_in(kids)})")
-    feedback = _ids(con, f"SELECT id FROM feedback WHERE game_id IN ({_in(games)})")
-    return {"kids": _in(kids), "games": _in(games), "feedback": _in(feedback),
-            "keys": _in({member_key(c, a) for c, a in addrs}), "addrs": _in({f"{c}:{a}" for c, a in addrs})}
+    """(sql fragments, bound values) for the FAMILY_TABLES and TRANSIENT conditions: each
+    {name} becomes a subquery over the named parameter :name, a JSON array."""
+    games = _ids(con, f"SELECT id FROM games WHERE child_id IN ({IN})", (as_json(kids),))
+    feedback = _ids(con, f"SELECT id FROM feedback WHERE game_id IN ({IN})", (as_json(games),))
+    values = {"kids": kids, "games": games, "feedback": feedback,
+              "keys": {member_key(c, a) for c, a in addrs}, "addrs": {f"{c}:{a}" for c, a in addrs}}
+    return ({name: f"SELECT value FROM json_each(:{name})" for name in values},
+            {name: as_json(v) for name, v in values.items()})
 
 
 def snapshot(con, kids, addrs):
     """{table: [row dicts]} for the family, in FAMILY_TABLES order."""
-    scope = _scope(con, kids, addrs)
-    return {table: [dict(r) for r in con.execute(f"SELECT * FROM {table} WHERE {where.format(**scope)}")]
+    scope, params = _scope(con, kids, addrs)
+    return {table: [dict(r) for r in con.execute(f"SELECT * FROM {table} WHERE {where.format(**scope)}", params)]
             for table, where, _ in FAMILY_TABLES if _has(con, table)}
 
 
 def remove(con, kids, addrs):
     """Delete the family from the live tables. Returns {table: rows deleted}."""
-    scope = _scope(con, kids, addrs)
+    scope, params = _scope(con, kids, addrs)
     counts = {}
     for table, where in TRANSIENT:
         if _has(con, table):
-            counts[table] = con.execute(f"DELETE FROM {table} WHERE {where.format(**scope)}").rowcount
+            counts[table] = con.execute(f"DELETE FROM {table} WHERE {where.format(**scope)}", params).rowcount
     if _has(con, "user_events"):
         counts["user_events"] = con.execute(
-            f"UPDATE user_events SET text = '', chat_id = NULL WHERE chat_id IN ({scope['keys']})").rowcount
+            f"UPDATE user_events SET text = '', chat_id = NULL WHERE chat_id IN ({scope['keys']})", params).rowcount
     if _has(con, "model_runs"):  # the spend stays measured; the link to the child goes
-        con.execute(f"UPDATE model_runs SET child_id = NULL WHERE child_id IN ({scope['kids']})")
+        con.execute(f"UPDATE model_runs SET child_id = NULL WHERE child_id IN ({scope['kids']})", params)
     if _has(con, "invites"):
-        con.execute(f"UPDATE invites SET used_by = NULL WHERE used_by IN ({scope['keys']})")
+        con.execute(f"UPDATE invites SET used_by = NULL WHERE used_by IN ({scope['keys']})", params)
     for table, where, _ in reversed(FAMILY_TABLES):
         if _has(con, table):
-            counts[table] = con.execute(f"DELETE FROM {table} WHERE {where.format(**scope)}").rowcount
+            counts[table] = con.execute(f"DELETE FROM {table} WHERE {where.format(**scope)}", params).rowcount
     return counts
 
 
@@ -222,7 +228,7 @@ def handle(con, channel, address, text, now, notify):
 
 def request(con, channel, address, now):
     kids, addrs = family(con, channel, address)
-    names = [r[0] for r in con.execute(f"SELECT name FROM children WHERE id IN ({_in(kids)}) ORDER BY id")]
+    names = [r[0] for r in con.execute(f"SELECT name FROM children WHERE id IN ({IN}) ORDER BY id", (as_json(kids),))]
     con.execute("INSERT INTO erasures(channel, address, requested_at, children) VALUES (?, ?, ?, ?)",
                 (channel, address, _utc(now), len(kids)))
     what = (f"{', '.join(names)}, историю игр и ваши отзывы" if names
@@ -241,11 +247,11 @@ def _dates(row, now):
 
 def archive(con, row, now, notify):
     kids, addrs = family(con, row["channel"], row["address"])
-    first = con.execute(f"SELECT min(created_at) FROM children WHERE id IN ({_in(kids)})").fetchone()[0]
+    first = con.execute(f"SELECT min(created_at) FROM children WHERE id IN ({IN})", (as_json(kids),)).fetchone()[0]
     days_used = (now.astimezone(timezone.utc).replace(tzinfo=None) - datetime.fromisoformat(first)).days if first else 0
     span = con.execute(
         f"SELECT min(g.game_date), max(g.game_date) FROM games g JOIN deliveries d ON d.game_id = g.id "
-        f"WHERE g.child_id IN ({_in(kids)}) AND d.status = 'sent'").fetchone()
+        f"WHERE g.child_id IN ({IN}) AND d.status = 'sent'", (as_json(kids),)).fetchone()
     data = snapshot(con, kids, addrs)
     remove(con, kids, addrs)
     if not kids:  # nothing to come back to: a questionnaire or an application at most
