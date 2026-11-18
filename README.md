@@ -9,6 +9,113 @@ It runs in production for real families (VK and a Telegram bot, invite-only). It
 
 > Not a medical or diagnostic product.
 
+## What a family sees
+
+Real examples from production, translated for this README; families receive everything
+in Russian, and the original is under each block.
+
+**1. The model proposes, the reviewer blocks** (17 Nov 2026, a 4-month-old). The first
+candidate passed the deterministic gate; the safety reviewer rejected it:
+
+> At 4 months a ball with sewn-on parts is dangerous: the parts can come off and get into the mouth or airway, and one sentence cannot fix that, so the game needs a ball without sewn-on parts.
+
+The corrective retry kept the same game and fixed only that. The second version passed
+both lines, and this is what the family got at 10:00:
+
+```text
+🎲 Game of the day: "A soft ball for little hands"
+⏱ 5 minutes
+🎯 Goal: Practise grasping: the baby reaches for the ball, takes it and holds on.
+🤲 Skill: fine motor.
+🧸 You need: A plain soft fabric ball made of one piece of cloth, bigger than an adult's fist; a firm mat or blanket on the floor.
+
+How to play:
+1. Check the ball: smooth, one colour, seams intact, nothing sewn on or coming loose outside, bigger than the baby's fist and too big to fit in the mouth. If anything sticks out or comes off, take another ball.
+2. Lay the baby on their back on the mat on the floor and sit next to them.
+3. Slowly show the ball at the baby's arm's length, at chest level, and name it: "Ball!"
+4. Wait for the baby to reach; if needed, touch the baby's palm with the ball.
+5. When the baby grabs the ball, don't pull: let them hold it, look at it and touch it, and praise them.
+6. Gently take the ball back and repeat 3–4 times, offering it from a different side.
+
+✅ Safety: Play next to the baby, never leave them alone with the ball, and check it before every game. Make sure the ball does not cover the face and cannot go into the mouth whole. Stop if the baby is tired or fussy.
+
+Source: CDC: Milestones by 4 Months
+https://www.cdc.gov/act-early/milestones/4-months.html
+```
+
+<details><summary>Original (Russian), as delivered</summary>
+
+```text
+🎲 Игра дня: «Мягкий мячик в ладошки»
+⏱ 5 минут
+🎯 Цель: Тренировать хват: малыш замахивается на мячик, берёт его в руки и удерживает.
+🤲 Навык: мелкая моторика.
+🧸 Нужно: Однотонный мягкий тканевый мячик из цельной ткани, крупнее кулака взрослого; Плотный коврик или одеяло на полу.
+
+Как играть:
+1. Проверьте мячик: он гладкий, однотонный, швы целые, снаружи нет ничего пришитого или отрывающегося, он крупнее кулака малыша и не пролезет в рот целиком. Если что-то торчит или отходит, возьмите другой мячик.
+2. Положите малыша на спину на коврик на полу, рядом с ним сядьте сами.
+3. Медленно покажите мячик на расстоянии вытянутой руки малыша, на уровне груди, и назовите его: «Мячик!».
+4. Подождите, пока малыш замахнётся; если нужно, коснитесь мячиком его ладошки.
+5. Когда малыш схватил мячик, не тяните: дайте подержать, рассмотреть и потрогать, хвалите голосом.
+6. Мягко возьмите мячик обратно и повторите 3-4 раза, меняя сторону, с которой подносите мячик.
+
+✅ Безопасность: Играйте рядом, не оставляйте малыша одного с мячиком и проверяйте его перед каждой игрой. Следите, чтобы мячик не закрывал лицо и не лез в рот целиком. Закончите, если малыш устал или раскапризничался.
+
+Источник: CDC: Milestones by 4 Months
+https://www.cdc.gov/act-early/milestones/4-months.html
+```
+
+Reviewer's finding on the first candidate: «В 4 месяца мячик с пришитыми деталями опасен: детали могут оторваться и попасть в рот или дыхательные пути, и одной фразой это не исправить, поэтому нужен мячик без пришитых деталей.»
+</details>
+
+Under every game: one-tap buttons (👍 liked · 👎 didn't · 🪶 easy · 👌 just right · 🧗 hard);
+«другую» ("another one") swaps today's game for a validated one from the library.
+
+**2. The parent answers, the next game changes** (15 Nov 2026, the owner's live test in
+VK). A voice message, transcribed (lightly edited for length):
+
+> We liked the game itself, the baby squealed but got distracted quickly. We play before
+> bed, so we need something calmer.
+
+A small model extracts observations, each with a verbatim quote that code checks; code
+builds the reply and the child's profile:
+
+```text
+Thanks for the feedback! Taken into account for the next games:
+• the game was liked → similar ones more often
+• attention is hard to hold for now → shorter, livelier games
+• likes: calm games
+```
+
+The next selection prompt carries that profile. Another case from the live test: «👍 liked»
+together with «🧗 hard» used to make the next game easier; now it means "hard but
+enjoyable", the level stays and the bot says so.
+
+<details><summary>Original (Russian)</summary>
+
+```text
+Голосовое: Сама игра нам понравилась, малыш пищал, но быстро отвлёкся. Мы играем перед сном, нужно что-то менее активное.
+
+Спасибо за отзыв! Учли к следующим играм:
+• игра понравилась — похожие будут чаще
+• внимание пока трудно удержать → сделаем игры короче и живее
+• любит: спокойные игры
+```
+</details>
+
+**3. In numbers** (as of 18 Nov 2026, aggregates only)
+
+| | |
+|---|---|
+| in production | since 1 Sep 2026; 5 children in VK and Telegram |
+| games delivered | 85 of 85 prepared, each confirmed by the messenger |
+| days missed | 2 in September, and 24 in October when the only host was lost ([postmortem](docs/postmortems/2026-10-host-loss.md)) |
+| who chose the game | the model 84, the reserve library 1 |
+| safety reviewer | 56 checks since 9 Nov, 13 rejections; a rejected candidate is never delivered |
+| feedback | on 14 of 85 games (buttons, text and voice) |
+| model cost | ≈ 0.07 USD a child a day, game and review ([scaling](docs/scaling.md)) |
+
 ## What is interesting here
 
 | Problem | How it is solved |
