@@ -12,7 +12,9 @@ on the commit that completed each milestone.
   09:00) with a 2-hour limit per run instead of 35 minutes; caps raised to 50 active
   children (`GAME_MAX_ACTIVE_CHILDREN`), 60 feedback analyses a day
   (`INSIGHTS_GLOBAL_PER_DAY`) and a 6 USD daily model budget
-  (`PREPARATION_DAILY_BUDGET_USD`, ≈ 0.07 USD a child with the reviewer). The owner gets
+  (`PREPARATION_DAILY_BUDGET_USD`, ≈ 0.07 USD a child with the reviewer). These are
+  computed ceilings, not a load test: measured so far is the first night run, 5 children
+  in 2.5 minutes (≈ 25 s a child, 0.38 USD). The owner gets
   one message per run instead of one per child: silent when every game came from the
   model, loud with the problems first when a game came from the reserve or failed; a
   retry run with nothing to do stays quiet.

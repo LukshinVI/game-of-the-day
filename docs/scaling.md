@@ -17,6 +17,13 @@ the plan, so that today's simplicity is a choice with a known ceiling, not an ac
 | database | a few thousand rows | far away | SQLite with one writer handles this write load by orders of magnitude |
 | availability | one host | the host | recovery point 24 h (nightly off-site copy), recovery time hours (rebuild from the repository) |
 
+**Measured vs computed.** Measured in production: the first night run on 17 Nov 2026,
+5 children in 2 min 32 s (≈ 25 s a child, 0.38 USD, peak memory 321 MB), all delivered at
+10:00. Everything in the ceiling column is computed from those per-child numbers; no run
+with 50 children has happened yet. The cap of 50 is set so that the computed load stays
+far below every limit in the table (≈ 21 minutes of an 8-hour window, ≈ 3.5 of 6 USD), and
+the first run that approaches it is the test.
+
 The first walls are **cost and preparation time**, not the database. That shapes the
 order of the steps below.
 
