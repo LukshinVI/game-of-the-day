@@ -87,7 +87,11 @@ sudo /srv/game-of-the-day/ops/deploy.sh           # backup, fast-forward, tests,
 The script refuses a non-fast-forward, backs the database up first, runs the test suite
 on the new code before migrating (a failure rolls the code back and leaves the database
 untouched), installs changed units, installs new ones without enabling them, and checks
-that the long-running services are up afterwards.
+that the long-running services are up afterwards. If one is not, it rolls the code and the
+changed units back to the previous commit, restarts again and tells the owner in the ops
+bot; the database stays migrated, which the previous code tolerates because migrations are
+additive. A failed integrity check after the migration stops the deploy and tells the
+owner; restoring the database from `pre-deploy-*.db` is left to a person.
 
 ### Units
 

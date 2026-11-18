@@ -11,6 +11,11 @@
 # - the test suite runs on the new code BEFORE the migration; a failure rolls the code
 #   back to the previous commit and leaves the database untouched;
 # - migrations are additive, so the previous code keeps working on the migrated schema;
+# - a service that does not come back after the restart rolls the code and the changed
+#   units back to the previous commit and restarts again (the database stays migrated,
+#   which the previous code tolerates); the owner is told either way;
+# - a failed integrity check after the migration stops the deploy and tells the owner:
+#   restoring a database automatically is a decision for a person, not for a script;
 # - new units are installed but never enabled automatically: that stays a decision.
 set -euo pipefail
 
@@ -23,6 +28,20 @@ G=(git -c "safe.directory=$APP" -C "$APP")
 
 log() { printf '%s deploy: %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 die() { log "ERROR: $*" >&2; exit 1; }
+# The owner's ops bot; a failed alert never changes what the deploy does.
+alert() {
+    # shellcheck source=/dev/null
+    ( set -a; . /etc/game-of-the-day/ops-bot.env 2>/dev/null; set +a
+      python3 "$APP/src/ops/notifier.py" critical "$1" --details "$2" ) >/dev/null 2>&1 || true
+}
+not_running() {
+    local service
+    for service in "${SERVICES[@]}"; do
+        if systemctl is-enabled --quiet "$service" 2>/dev/null && ! systemctl is-active --quiet "$service"; then
+            printf '%s ' "$service"
+        fi
+    done
+}
 
 [ "$(id -u)" -eq 0 ] || die "run as root"
 exec 9> /run/game-deploy.lock
@@ -62,16 +81,22 @@ log "tests passed: $(grep -Eo 'Ran [0-9]+ tests' "/tmp/deploy-tests-$stamp.log")
 rm -f "/tmp/deploy-tests-$stamp.log"
 
 sudo -u "$USER_NAME" python3 "$APP/src/db/children.py" migrate
-[ "$(sqlite3 "$DB" 'PRAGMA integrity_check;')" = "ok" ] || die "integrity_check failed after migration (backup: pre-deploy-$stamp.db)"
+if [ "$(sqlite3 "$DB" 'PRAGMA integrity_check;')" != "ok" ]; then
+    alert "Деплой остановлен: база не прошла проверку целостности" \
+        "После миграции integrity_check не ok. Код новый, сервисы не перезапускались. Копия до деплоя: pre-deploy-$stamp.db"
+    die "integrity_check failed after migration (backup: pre-deploy-$stamp.db)"
+fi
 
 changed_units=()
 new_units=()
+previous_units=$(mktemp -d "/tmp/deploy-units-$stamp.XXXX")
 while IFS= read -r unit; do
     name=$(basename "$unit")
     target="/etc/systemd/system/$name"
     if [ ! -e "$target" ]; then
         new_units+=("$name")
     elif ! cmp -s "$unit" "$target"; then
+        cp -p "$target" "$previous_units/$name"
         install -m 644 "$unit" "$target"
         changed_units+=("$name")
     fi
@@ -89,12 +114,32 @@ for service in "${SERVICES[@]}"; do
     fi
 done
 sleep 3
-failed=()
-for service in "${SERVICES[@]}"; do
-    if systemctl is-enabled --quiet "$service" 2>/dev/null && ! systemctl is-active --quiet "$service"; then
-        failed+=("$service")
+failed=$(not_running)
+if [ -n "$failed" ]; then
+    log "not running after restart: $failed; rolling back to $old"
+    "${G[@]}" reset -q --hard "$old"
+    chown -R "$USER_NAME" "$APP"
+    for saved in "$previous_units"/*; do
+        [ -e "$saved" ] && install -m 644 "$saved" "/etc/systemd/system/$(basename "$saved")"
+    done
+    rm -rf "$previous_units"
+    systemctl daemon-reload
+    for service in "${SERVICES[@]}"; do
+        if systemctl is-enabled --quiet "$service" 2>/dev/null; then
+            systemctl restart "$service"
+        fi
+    done
+    sleep 3
+    still=$(not_running)
+    if [ -z "$still" ]; then
+        alert "Деплой откатан" \
+            "После рестарта не поднялись: $failed. Код и юниты возвращены к $old, сервисы работают. База осталась после миграции (миграции аддитивные). Новая версия: $new"
+        die "rolled back to $old; services are running on the previous code"
     fi
-done
-[ ${#failed[@]} -eq 0 ] || die "not running after restart: ${failed[*]} (previous code: $old)"
+    alert "Деплой откатан, но сервисы не работают" \
+        "Не поднялись на новой версии: $failed. После отката к $old всё ещё лежат: $still. Нужен человек: journalctl -u <служба>"
+    die "rolled back to $old, still not running: $still"
+fi
+rm -rf "$previous_units"
 
 log "deployed $("${G[@]}" log --oneline -1)"
