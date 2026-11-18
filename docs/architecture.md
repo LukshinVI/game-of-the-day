@@ -72,6 +72,20 @@ controls. They share nothing but the database.
 | Backups | `ops/backup` | 03:30 local, 03:45 off-site, Sundays restore test | SQLite online backup → age-encrypted copy in a private repository → weekly restore into a sandbox |
 | Deploy | `ops/deploy.sh` | by hand | backup → fast-forward → tests → migrate → units → restart → health |
 
+Inside `src/preparation`, one file per responsibility:
+
+| file | owns |
+|---|---|
+| `game_preparation.py` | the entry point: the night run over children, the reserve top-up, the CLI |
+| `chain.py` | one child's selection: prompt → model → gate → safety review → corrective retries, then fallback model → library; `ChildRun` carries the child's profile, theme, model and attempt log explicitly (no module state) |
+| `backend.py` | the model call (Claude Code headless or Codex), its latency, tokens and cost |
+| `gate.py` | the deterministic checks, the dangerous-term list among them |
+| `review.py` | the safety reviewer (block or caution) |
+| `layout.py` | the parent-facing message, built by code from the candidate's fields |
+| `store.py` | history, the game with its deliveries in one transaction, the attempt log |
+| `alerts.py` | owner alerts, one message per night run |
+| `fallback.py`, `skills.py`, `mechanics.py`, `themes.py` | budget and the library; age-banded skills; mechanic rotation; seasonal themes |
+
 ## 3. Data model
 
 Product state belongs to a **child**, not to a messenger dialog.

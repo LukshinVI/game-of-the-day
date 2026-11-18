@@ -17,6 +17,10 @@ sys.path.insert(0, str(ROOT))
 
 from src.ops import llm_report as lr  # noqa: E402
 from src.preparation import game_preparation as gp  # noqa: E402
+from src.preparation import alerts  # noqa: E402
+from src.preparation import backend  # noqa: E402
+from src.preparation import chain  # noqa: E402
+from src.preparation import store  # noqa: E402
 
 ENVELOPE = {
     "subtype": "success", "is_error": False, "duration_ms": 61000, "duration_api_ms": 58000, "num_turns": 4,
@@ -43,10 +47,10 @@ class Capture(unittest.TestCase):
         con = sqlite3.connect(self.db)
         con.executescript((ROOT / "src/db/schema.sql").read_text())
         con.close()
-        for target in (mock.patch.object(gp, "DB_PATH", self.db),
-                       mock.patch.object(gp, "send_preparation_success_alert"),
-                       mock.patch.object(gp, "send_failure_alert"),
-                       mock.patch.object(gp, "notify_now"),
+        for target in (mock.patch.object(store, "DB_PATH", self.db),
+                       mock.patch.object(alerts, "send_preparation_success_alert"),
+                       mock.patch.object(chain, "send_failure_alert"),
+                       mock.patch.object(alerts, "notify_now"),
                        mock.patch.dict("os.environ", {"CHILD_BIRTH_DATE": "2025-09-07", "VK_PEER_ID": "1",
                                                       "PREPARATION_FALLBACK_MODEL": ""})):
             target.start()
@@ -62,7 +66,7 @@ class Capture(unittest.TestCase):
 
     def fake_claude(self, candidates):
         def run(prompt, model=None, meta=None):
-            meta.update(gp.claude_meta(ENVELOPE))
+            meta.update(backend.claude_meta(ENVELOPE))
             item = candidates.pop(0)
             if isinstance(item, Exception):
                 raise item
@@ -70,9 +74,9 @@ class Capture(unittest.TestCase):
         return run
 
     def prepare(self, candidates):
-        age = gp.child_age_months("2026-11-09", "2025-09-07")
+        age = chain.child_age_months("2026-11-09", "2025-09-07")
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), \
-                mock.patch.object(gp, "run_claude", self.fake_claude(candidates)):
+                mock.patch.object(backend, "run_claude", self.fake_claude(candidates)):
             try:
                 gp.prepare_run("2026-11-09")
             except RuntimeError:

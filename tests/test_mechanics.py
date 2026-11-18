@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.preparation import fallback, mechanics  # noqa: E402
-from src.preparation import game_preparation as gp  # noqa: E402
+from src.preparation import backend  # noqa: E402
+from src.preparation import chain  # noqa: E402
 
 
 class Tags(unittest.TestCase):
@@ -22,12 +23,12 @@ class Tags(unittest.TestCase):
         self.assertEqual(mechanics.violations(None, history), [])
 
     def test_the_prompt_offers_only_fresh_tags_and_the_schema_requires_one(self):
-        prompt = gp.build_prompt([{"title": "Мяч", "skill": "coordination", "mechanic_tag": "ball_throw_roll"}], 14,
+        prompt = chain.build_prompt([{"title": "Мяч", "skill": "coordination", "mechanic_tag": "ball_throw_roll"}], 14,
                                  today="2026-11-09")
         context = json.loads(prompt.split("INPUT CONTEXT:\n", 1)[1])
         self.assertNotIn("ball_throw_roll", context["mechanic_tags"])
         self.assertEqual(context["recent_mechanic_tags"], ["ball_throw_roll"])
-        schema = json.loads(gp.SCHEMA_PATH.read_text())
+        schema = json.loads(backend.SCHEMA_PATH.read_text())
         self.assertIn("mechanic_tag", schema["required"])
         self.assertEqual(set(schema["properties"]["mechanic_tag"]["enum"]), set(mechanics.TAGS))
 

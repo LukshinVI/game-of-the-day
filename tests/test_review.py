@@ -11,7 +11,10 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.preparation import game_preparation as gp  # noqa: E402
+from src.preparation import alerts  # noqa: E402
+from src.preparation import backend  # noqa: E402
+from src.preparation import chain  # noqa: E402
+from src.preparation import store  # noqa: E402
 from src.preparation import review  # noqa: E402
 
 
@@ -43,11 +46,11 @@ class Reviewer(unittest.TestCase):
             return {"structured_output": {"serious_problems": item}, "total_cost_usd": 0.001}
 
         with contextlib.redirect_stdout(io.StringIO()), mock.patch.dict(os.environ, env), \
-                mock.patch.object(gp, "run_model", side_effect=fake_model), \
+                mock.patch.object(backend, "run_model", side_effect=fake_model), \
                 mock.patch.object(review, "_run", fake_review), \
-                mock.patch.object(gp, "send_failure_alert"):
-            self.run = gp.ChildRun()
-            result = gp.select_candidate([], "2026-11-09", age_months=9, run=self.run)
+                mock.patch.object(chain, "send_failure_alert"):
+            self.run = chain.ChildRun()
+            result = chain.select_candidate([], "2026-11-09", age_months=9, run=self.run)
         return result, prompts
 
     def test_off_by_default(self):
@@ -87,11 +90,11 @@ class Tiers(Reviewer):
             return {"structured_output": {"block": block, "fix": fix}, "total_cost_usd": 0.001}
 
         with contextlib.redirect_stdout(io.StringIO()), mock.patch.dict(os.environ, self.ENV), \
-                mock.patch.object(gp, "run_model", side_effect=fake_model), \
+                mock.patch.object(backend, "run_model", side_effect=fake_model), \
                 mock.patch.object(review, "_run", fake_review), \
-                mock.patch.object(gp, "send_failure_alert"):
-            self.run = gp.ChildRun()
-            result = gp.select_candidate([], "2026-11-09", age_months=9, run=self.run)
+                mock.patch.object(chain, "send_failure_alert"):
+            self.run = chain.ChildRun()
+            result = chain.select_candidate([], "2026-11-09", age_months=9, run=self.run)
         return result, prompts
 
     def test_a_fix_is_added_to_the_safety_notes_and_the_game_passes(self):
@@ -145,7 +148,7 @@ class Tiers(Reviewer):
 
     def test_without_the_flag_every_finding_rejects_as_before(self):
         self.assertFalse(review.tiers_enabled())
-        prompt = gp.build_retry_prompt("P", candidate(), ["safety review: x"])
+        prompt = chain.build_retry_prompt("P", candidate(), ["safety review: x"])
         self.assertNotIn("Keep the same activity", prompt)
 
 
@@ -179,9 +182,9 @@ class Summary(unittest.TestCase):
                         "VALUES ('x', '2026-11-11', 'T', 'sensory', ?, 'library')", (child,))
             con.commit()
             con.close()
-            with mock.patch.object(gp, "DB_PATH", db):
-                text = gp.review_summary("2026-11-11", "2026-11-11 04:00:00")
-                self.assertIsNone(gp.review_summary("2026-11-11", "2026-11-11 05:00:00"))
+            with mock.patch.object(store, "DB_PATH", db):
+                text = alerts.review_summary("2026-11-11", "2026-11-11 04:00:00")
+                self.assertIsNone(alerts.review_summary("2026-11-11", "2026-11-11 05:00:00"))
         self.assertIn("Проверок: 3, отклонено: 2 (67%), из них правилом кода: 1.", text)
         self.assertIn("⛔ Тимофей (правило кода, модель считала это оговоркой): Проверьте крышку", text)
         self.assertIn("⛔ Тимофей: Батарейки в фонарике", text)

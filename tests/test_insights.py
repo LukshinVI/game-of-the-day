@@ -123,12 +123,12 @@ class Insights(InsightsSetup):
         self.assertEqual(profile.build([obs("too_easy", 90)], now), {})   # outside the window
 
     def test_the_selection_prompt_carries_the_profile(self):
-        from src.preparation import game_preparation as gp
+        from src.preparation import chain
         profile = {"next_difficulty": {"fine_motor": "harder"}}
-        context = json.loads(gp.build_prompt([], 14, today="2026-11-09", profile=profile)
+        context = json.loads(chain.build_prompt([], 14, today="2026-11-09", profile=profile)
                              .split("INPUT CONTEXT:\n", 1)[1])
         self.assertEqual(context["child_profile"]["next_difficulty"], {"fine_motor": "harder"})
-        context = json.loads(gp.build_prompt([], 14, today="2026-11-09").split("INPUT CONTEXT:\n", 1)[1])
+        context = json.loads(chain.build_prompt([], 14, today="2026-11-09").split("INPUT CONTEXT:\n", 1)[1])
         self.assertNotIn("child_profile", context)
 
     def test_a_model_failure_leaves_feedback_pending(self):
@@ -284,7 +284,7 @@ class RequiredNext(InsightsSetup):
         con.close()
 
     def test_the_gate_rejects_another_skill(self):
-        from src.preparation import game_preparation as gp
+        from src.preparation import backend, chain
         from unittest import mock
         import contextlib, io
         def cand(skill):
@@ -292,11 +292,11 @@ class RequiredNext(InsightsSetup):
                     "mechanics": f"{skill} m", "materials": ["Кубики"], "steps": ["Раз.", "Два."],
                     "safety": "Под присмотром.", "source_name": "CDC", "source_url": "https://www.cdc.gov/x"}
         answers = [cand("speech"), cand("fine_motor")]
-        run = gp.ChildRun(profile={"required_next": {"skill": "fine_motor", "direction": "harder",
+        run = chain.ChildRun(profile={"required_next": {"skill": "fine_motor", "direction": "harder",
                                                      "after": "Башенка"}})
         with contextlib.redirect_stdout(io.StringIO()), \
-                mock.patch.object(gp, "run_model", side_effect=lambda p, **_: answers.pop(0)):
-            _, attempts = gp.select_candidate([], "2026-11-09", age_months=14, run=run)
+                mock.patch.object(backend, "run_model", side_effect=lambda p, **_: answers.pop(0)):
+            _, attempts = chain.select_candidate([], "2026-11-09", age_months=14, run=run)
         self.assertEqual(attempts, 2)
 
 

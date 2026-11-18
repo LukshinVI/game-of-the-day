@@ -13,7 +13,8 @@ spec = importlib.util.spec_from_file_location("evals_run", ROOT / "evals/prepara
 ev = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ev)
 
-from src.preparation import game_preparation as gp  # noqa: E402
+from src.preparation import backend  # noqa: E402
+from src.preparation import chain  # noqa: E402
 
 
 def candidate(age, skill="speech", **extra):
@@ -33,7 +34,7 @@ class Harness(unittest.TestCase):
         self.assertGreaterEqual(len(cases), 5)
         self.assertEqual(len({c["id"] for c in cases}), len(cases))
         for c in cases:
-            self.assertTrue(1 <= c["age_months"] <= gp.MAX_AGE_MONTHS_SUPPORTED, c["id"])
+            self.assertTrue(1 <= c["age_months"] <= chain.MAX_AGE_MONTHS_SUPPORTED, c["id"])
 
     def test_a_case_records_gate_attempts_lint_and_cost(self):
         case = {"id": "x", "age_months": 6, "why": "w", "history": [
@@ -44,7 +45,7 @@ class Harness(unittest.TestCase):
             meta.update({"model": "m", "cost_usd": 0.5})
             return answers.pop(0)
 
-        with mock.patch.object(gp, "run_claude", fake):
+        with mock.patch.object(backend, "run_claude", fake):
             record = ev.run_case(case)
         self.assertTrue(record["passed"])
         self.assertEqual(record["attempts"], 3)
@@ -58,7 +59,7 @@ class Harness(unittest.TestCase):
     def test_a_failing_case_is_a_result_not_a_crash(self):
         def broken(prompt, **_):
             raise RuntimeError("Claude failed")
-        with mock.patch.object(gp, "run_claude", broken):
+        with mock.patch.object(backend, "run_claude", broken):
             record = ev.run_case({"id": "y", "age_months": 9, "why": "w", "history": []})
         self.assertFalse(record["passed"])
         self.assertIn("Claude failed", record["error"])

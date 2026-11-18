@@ -32,7 +32,9 @@ order of the steps below.
 - ~~Prepare at night~~ — done (Nov 2026): 02:00 MSK with three retries, the window is eight
   hours. Preparing **the evening before** would widen it further if ever needed.
 - Prepare children **concurrently** with a small bound (for example 4), keeping the
-  per-child transaction and idempotency as they are.
+  per-child transaction and idempotency as they are. The prerequisite is done (Nov 2026):
+  a preparation carries its child in an explicit `ChildRun`, no module state, so two
+  children prepared at once cannot see each other's profile or attempt log.
 - ~~Raise the cap~~ to 50 — done (Nov 2026); make the model budget a planned monthly line (the revisit condition
   of ADR 0003).
 - Put the SLIs from [slo.md](slo.md) into the weekly report and alert on burn rate.

@@ -1,6 +1,6 @@
 """Graceful degradation for daily preparation: a day is never lost to the model.
 
-Chain (game_preparation.obtain_candidate):
+Chain (chain.obtain_candidate):
   primary model (PREPARATION_CLAUDE_MODEL, validated, corrective retries)
   -> fallback model (PREPARATION_FALLBACK_MODEL, same gate), skipped when the
      subscription quota is exhausted (the same quota) or the daily budget is spent

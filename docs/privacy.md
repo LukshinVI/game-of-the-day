@@ -40,7 +40,7 @@ while the switch is on (`src/feedback/voice.py`).
   months with the history of games for selection.
 - Cloudflare (Workers AI) receives a **voice message's audio** for transcription when
   `GAME_VOICE=1`; it is not kept by us beyond the call. **Names and birth dates are never sent
-  to a model** by the code (`src/preparation/game_preparation.py` builds the prompt from the age).
+  to a model** by the code (`src/preparation/chain.py` builds the prompt from the age).
   A feedback text goes as the parent wrote it, so it may name the child.
 - Families never see each other: every reply is bound to the chat it came from
   (`tests/test_product_bot.py: a reply cannot reach a game sent to another chat`).

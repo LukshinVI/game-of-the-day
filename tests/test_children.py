@@ -21,12 +21,16 @@ from src.db import children as ch  # noqa: E402
 from src.delivery import game_delivery as gd  # noqa: E402
 from src.ops import day_outcome_check as doc  # noqa: E402
 from src.preparation import game_preparation as gp  # noqa: E402
+from src.preparation import alerts  # noqa: E402
+from src.preparation import store  # noqa: E402
+from src.preparation import chain  # noqa: E402
+from src.preparation import layout  # noqa: E402
 
 
 def born(months):
     """A birth date that many months before today (Moscow): children in the fixtures keep
     their age whatever the date, so the tests do not expire (the shifted-clock CI run)."""
-    today = datetime.now(gp.MOSCOW).date()
+    today = datetime.now(chain.MOSCOW).date()
     year, month = divmod(today.year * 12 + today.month - 1 - months, 12)
     return today.replace(year=year, month=month + 1, day=min(today.day, 28)).isoformat()
 
@@ -53,7 +57,7 @@ def candidate(age, title="Толкни мяч"):
         "source_name": "Pathways.org",
         "source_url": URL,
     }
-    return gp.with_rendered_message(data)
+    return layout.with_rendered_message(data)
 
 
 class TempDb(unittest.TestCase):
@@ -66,7 +70,7 @@ class TempDb(unittest.TestCase):
         con = sqlite3.connect(self.db)
         con.executescript(self.schema.read_text())
         con.close()
-        for module in (gp, gd, ch):
+        for module in (store, gd, ch):
             patcher = mock.patch.object(module, "DB_PATH", self.db)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -181,20 +185,20 @@ class TwoChildren(TempDb):
         ch.add_recipient(con, self.older, "vk", "3000001")
         ch.add_recipient(con, self.younger, "telegram", "555")
         ch.add_recipient(con, self.younger, "vk", "777")
-        for name in ("send_preparation_success_alert", "send_failure_alert"):
-            patcher = mock.patch.object(gp, name)
+        for module, name in ((alerts, "send_preparation_success_alert"), (chain, "send_failure_alert")):
+            patcher = mock.patch.object(module, name)
             patcher.start()
             self.addCleanup(patcher.stop)
         patcher = mock.patch.object(gd, "send_ops_notification")
         patcher.start()
         self.addCleanup(patcher.stop)
-        patcher = mock.patch.object(gp, "notify_now")
+        patcher = mock.patch.object(alerts, "notify_now")
         patcher.start()
         self.addCleanup(patcher.stop)
 
     def prepare(self, select):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            with mock.patch.object(gp, "select_candidate", side_effect=select):
+            with mock.patch.object(chain, "select_candidate", side_effect=select):
                 try:
                     gp.prepare_run(self.today)
                     return None
@@ -202,15 +206,15 @@ class TwoChildren(TempDb):
                     return exc
 
     def by_age(self, history, target_date, birth_date, run=None):
-        age = gp.child_age_months(target_date, birth_date)
+        age = chain.child_age_months(target_date, birth_date)
         return candidate(age, title=f"Игра для {birth_date}"), 1
 
     def test_each_child_gets_a_game_for_its_own_age_and_one_delivery_per_recipient(self):
         self.assertIsNone(self.prepare(self.by_age))
         games = self.query("SELECT child_id, age_months FROM games ORDER BY child_id")
         expected = [
-            (self.older, gp.child_age_months(self.today, OLDER)),
-            (self.younger, gp.child_age_months(self.today, YOUNGER)),
+            (self.older, chain.child_age_months(self.today, OLDER)),
+            (self.younger, chain.child_age_months(self.today, YOUNGER)),
         ]
         self.assertEqual(games, expected)
         deliveries = self.query(
@@ -247,7 +251,7 @@ class TwoChildren(TempDb):
             return self.by_age(history, target_date, birth_date)
 
         with contextlib.redirect_stdout(io.StringIO()), \
-                mock.patch.object(gp, "select_candidate", side_effect=counting):
+                mock.patch.object(chain, "select_candidate", side_effect=counting):
             gp.prepare_run(self.today, only_child=self.younger)
             with self.assertRaises(RuntimeError):
                 gp.prepare_run(self.today, only_child=999)
@@ -370,8 +374,8 @@ class SingleChildMode(TempDb):
             return candidate(12), 1
 
         with contextlib.redirect_stdout(io.StringIO()), \
-                mock.patch.object(gp, "select_candidate", side_effect=select), \
-                mock.patch.object(gp, "send_preparation_success_alert"):
+                mock.patch.object(chain, "select_candidate", side_effect=select), \
+                mock.patch.object(alerts, "send_preparation_success_alert"):
             gp.prepare_run(self.today)
         self.assertEqual(
             self.query("SELECT d.channel, d.recipient, d.idempotency_key LIKE 'vk-%' FROM deliveries d"),
@@ -387,7 +391,7 @@ class PausedChildren(TempDb):
         con.execute("UPDATE recipients SET active = 0")
         con.commit()
         select = mock.Mock()
-        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gp, "select_candidate", select):
+        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(chain, "select_candidate", select):
             gp.prepare_run(self.today)
         select.assert_not_called()  # in particular, no single-child (env) game either
         self.assertEqual(self.query("SELECT count(*) FROM games"), [(0,)])
@@ -402,8 +406,8 @@ class Greetings(TempDb):
         child = ch.add_child(con, "Маша", today.replace(year=today.year - 1).isoformat())
         ch.add_recipient(con, child, "telegram", "555")
         with contextlib.redirect_stdout(io.StringIO()), \
-                mock.patch.object(gp, "select_candidate", return_value=(candidate(12), 1)), \
-                mock.patch.object(gp, "send_preparation_success_alert"):
+                mock.patch.object(chain, "select_candidate", return_value=(candidate(12), 1)), \
+                mock.patch.object(alerts, "send_preparation_success_alert"):
             gp.prepare_run(self.today)
         telegram = mock.Mock(return_value=201)
         with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gd, "telegram_send", telegram), \
@@ -424,10 +428,10 @@ class GrownUp(TempDb):
         child = ch.add_child(con, "Большой", "2020-01-01")
         ch.add_recipient(con, child, "telegram", "555")
         select = mock.Mock()
-        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gp, "select_candidate", select):
+        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(chain, "select_candidate", select):
             gp.prepare_run(self.today)
         select.assert_not_called()
-        self.assertEqual(gp.MAX_AGE_MONTHS_SUPPORTED, 36)
+        self.assertEqual(chain.MAX_AGE_MONTHS_SUPPORTED, 36)
 
 
 class TestChild(TempDb):
@@ -505,11 +509,11 @@ class TestChild(TempDb):
 
         def select(history, target_date, birth_date, run=None):
             seen.append(len(seen))
-            return candidate(gp.child_age_months(target_date, birth_date), title=f"Игра {len(seen)}"), 1
+            return candidate(chain.child_age_months(target_date, birth_date), title=f"Игра {len(seen)}"), 1
 
         with contextlib.redirect_stdout(io.StringIO()), \
-                mock.patch.object(gp, "select_candidate", side_effect=select), \
-                mock.patch.object(gp, "send_preparation_success_alert"):
+                mock.patch.object(chain, "select_candidate", side_effect=select), \
+                mock.patch.object(alerts, "send_preparation_success_alert"):
             gp.prepare_run(self.today)
             self.assertEqual(self.query("SELECT child_id FROM games"), [(family,)])
             gp.prepare_run(self.today, only_child=test)

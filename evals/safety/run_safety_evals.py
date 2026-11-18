@@ -31,7 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.preparation import game_preparation as gp  # noqa: E402
+from src.preparation import gate as production_gate  # noqa: E402
 from src.preparation import review  # noqa: E402
 
 CASES = Path(__file__).with_name("cases.json")
@@ -43,7 +43,7 @@ def gate(activity):
     age) are about form and would fail these hand-written activities for other reasons."""
     candidate = {"title": activity["title"], "mechanics": "", "materials": activity["materials"],
                  "steps": activity["steps"], "message_text": "x"}
-    return [e.split(": ", 1)[1] for e in gp.validate_candidate(candidate, [], None)
+    return [e.split(": ", 1)[1] for e in production_gate.validate_candidate(candidate, [], None)
             if e.startswith("dangerous-term gate triggered")]
 
 

@@ -39,7 +39,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.preparation import game_preparation as gp  # noqa: E402
+from src.preparation import backend  # noqa: E402
+from src.preparation import chain  # noqa: E402
 
 CASES = Path(__file__).with_name("cases.json")
 REPORTS = Path(__file__).with_name("reports")
@@ -100,7 +101,7 @@ def judge(candidate, case, model):
                "--json-schema", json.dumps(JUDGE_SCHEMA), "--model", model, "--tools", "",
                "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence"]
     result = subprocess.run(command, input=prompt, text=True, capture_output=True, cwd=ROOT,
-                            timeout=gp.MODEL_TIMEOUT_SECONDS)
+                            timeout=backend.MODEL_TIMEOUT_SECONDS)
     envelope = json.loads(result.stdout or "{}")
     verdict = envelope.get("structured_output")
     if result.returncode != 0 or not isinstance(verdict, dict):
@@ -110,13 +111,13 @@ def judge(candidate, case, model):
 
 
 def run_case(case, judge_model=None):
-    run = gp.ChildRun(profile=case.get("profile") or {})
+    run = chain.ChildRun(profile=case.get("profile") or {})
     out = io.StringIO()
     record = {"id": case["id"], "age_months": case["age_months"]}
     try:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out), \
                 mock_alerts():
-            candidate, attempts = gp.select_candidate(
+            candidate, attempts = chain.select_candidate(
                 case["history"], date.today().isoformat(), age_months=case["age_months"], run=run)
         record.update(passed=True, attempts=attempts, candidate=candidate,
                       lint=lint(candidate, case["history"]))
@@ -135,12 +136,12 @@ def run_case(case, judge_model=None):
 @contextlib.contextmanager
 def mock_alerts():
     """Evals never message the owner."""
-    saved = gp.send_failure_alert
-    gp.send_failure_alert = lambda *a, **k: None
+    saved = chain.send_failure_alert
+    chain.send_failure_alert = lambda *a, **k: None
     try:
         yield
     finally:
-        gp.send_failure_alert = saved
+        chain.send_failure_alert = saved
 
 
 def summary(model, judge_model, records):

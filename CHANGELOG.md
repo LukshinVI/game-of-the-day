@@ -8,6 +8,11 @@ on the commit that completed each milestone.
 ## [Unreleased]
 
 ### Changed
+- Preparation code split by responsibility (`chain`, `backend`, `gate`, `layout`, `store`,
+  `alerts`; `game_preparation.py` stays the entry point, 1 418 → ~400 lines) and seven
+  module-level globals replaced by one explicit `ChildRun` per preparation. No behaviour
+  change, shown on a copy of the production database: every prompt, attempt record, game,
+  delivery and owner note of four scenarios is byte-identical before and after.
 - Capacity for more families: preparation runs at night (02:00 MSK, retries 04:00, 07:00,
   09:00) with a 2-hour limit per run instead of 35 minutes; caps raised to 50 active
   children (`GAME_MAX_ACTIVE_CHILDREN`), 60 feedback analyses a day

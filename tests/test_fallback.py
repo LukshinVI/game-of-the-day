@@ -17,14 +17,19 @@ sys.path.insert(0, str(ROOT))
 from src.db import children as ch  # noqa: E402
 from src.preparation import fallback  # noqa: E402
 from src.preparation import game_preparation as gp  # noqa: E402
+from src.preparation import alerts  # noqa: E402
+from src.preparation import backend  # noqa: E402
+from src.preparation import chain  # noqa: E402
+from src.preparation import layout  # noqa: E402
+from src.preparation import store  # noqa: E402
 
-TODAY = datetime.now(gp.MOSCOW).date().isoformat()
+TODAY = datetime.now(chain.MOSCOW).date().isoformat()
 
 
 def born(months):
     """A birth date that many months before today (Moscow): children in the fixtures keep
     their age whatever the date, so the tests do not expire (the shifted-clock CI run)."""
-    today = datetime.now(gp.MOSCOW).date()
+    today = datetime.now(chain.MOSCOW).date()
     year, month = divmod(today.year * 12 + today.month - 1 - months, 12)
     return today.replace(year=year, month=month + 1, day=min(today.day, 28)).isoformat()
 
@@ -40,7 +45,7 @@ def good(age, title="Башенка", skill="fine_motor"):
     }
 
 
-ORIGINAL_SEND = gp.send_ops_notification
+ORIGINAL_SEND = alerts.send_ops_notification
 
 
 class ChainSetup(unittest.TestCase):
@@ -54,10 +59,10 @@ class ChainSetup(unittest.TestCase):
         self.alerts = []
         self.summaries = []
         for target in (
-            mock.patch.object(gp, "DB_PATH", self.db), mock.patch.object(ch, "DB_PATH", self.db),
-            mock.patch.object(gp, "send_ops_notification", lambda level, title, details, notes=None: self.alerts.append((level, title, details))),
-            mock.patch.object(gp, "send_failure_alert", lambda errors, notes=None: self.alerts.append(("critical", "fail", errors))),
-            mock.patch.object(gp, "notify_now", lambda *a, **k: self.summaries.append(a)),
+            mock.patch.object(store, "DB_PATH", self.db), mock.patch.object(ch, "DB_PATH", self.db),
+            mock.patch.object(alerts, "send_ops_notification", lambda level, title, details, notes=None: self.alerts.append((level, title, details))),
+            mock.patch.object(chain, "send_failure_alert", lambda errors, notes=None: self.alerts.append(("critical", "fail", errors))),
+            mock.patch.object(alerts, "notify_now", lambda *a, **k: self.summaries.append(a)),
             mock.patch.dict("os.environ", {"PREPARATION_FALLBACK_MODEL": "haiku", "PREPARATION_DAILY_BUDGET_USD": "3"}),
         ):
             target.start()
@@ -66,7 +71,7 @@ class ChainSetup(unittest.TestCase):
         self.child = ch.add_child(con, "Маша", BORN)
         ch.add_recipient(con, self.child, "telegram", "555")
         con.close()
-        self.age = gp.child_age_months(TODAY, BORN)
+        self.age = chain.child_age_months(TODAY, BORN)
         self.models = []
 
     def library_game(self, title, age, skill, origin="model", child=None, mechanics=None):
@@ -90,7 +95,7 @@ class ChainSetup(unittest.TestCase):
 
     def prepare(self, answers):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), \
-                mock.patch.object(gp, "run_claude", self.model(answers)):
+                mock.patch.object(backend, "run_claude", self.model(answers)):
             try:
                 gp.prepare_run(TODAY)
                 return None
@@ -211,7 +216,7 @@ class WarmReserve(ChainSetup):
         birth = date.fromisoformat(TODAY) - timedelta(days=4 * 30 + 15)
         con.execute("UPDATE children SET birth_date = ?", (birth.isoformat(),))
         con.commit()
-        fallback.add_reserve(con, gp.with_rendered_message(good(3, "Погремушка", "sensory")), "test")
+        fallback.add_reserve(con, layout.with_rendered_message(good(3, "Погремушка", "sensory")), "test")
         con.commit()
         con.close()
         self.assertIsNone(self.prepare([RuntimeError("usage limit reached")]))
@@ -229,12 +234,12 @@ class WarmReserve(ChainSetup):
             skill = [s for s in context["allowed_skills"] if s not in context["last_skills"]][len(made) % 3]
             return good(age, f"Резерв {len(made)}", skill)
 
-        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gp, "run_claude", fake):
+        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(backend, "run_claude", fake):
             count = gp.reserve_top_up(TODAY)
         # three for the current age; they also cover the next two months (age window)
         self.assertEqual(count, gp.RESERVE_MIN)
         self.assertEqual(made, [self.age] * 3)
-        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(gp, "run_claude", fake):
+        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(backend, "run_claude", fake):
             self.assertEqual(gp.reserve_top_up(TODAY), 0)  # nothing missing: no model call
 
 
@@ -245,7 +250,7 @@ class RunSummary(unittest.TestCase):
         return ("info", "Игра подготовлена", f"Ребёнок: {name}\nID: 1\nНазвание: {title}\nНавык: speech\n")
 
     def test_all_good_is_one_silent_message(self):
-        level, title, details, silent = gp.run_summary(2, [self.ok("Маша", "Ладушки"), self.ok("Петя", "Ку-ку")], [])
+        level, title, details, silent = alerts.run_summary(2, [self.ok("Маша", "Ладушки"), self.ok("Петя", "Ку-ку")], [])
         self.assertEqual((level, title, silent), ("info", "Подготовка: готово 2 из 2", True))
         self.assertEqual(details.splitlines(), ["✅ Маша: «Ладушки» (speech)", "✅ Петя: «Ку-ку» (speech)"])
 
@@ -253,7 +258,7 @@ class RunSummary(unittest.TestCase):
         reserve = ("warning", "Игра из резерва (библиотека), а не подобрана",
                    "Ребёнок: Петя\nНазвание: Мячик\nНавык: coordination\nПричина резерва: лимит подписки\n")
         failed = ("critical", "Подготовка игры не удалась", "Ошибки…")
-        level, title, details, silent = gp.run_summary(
+        level, title, details, silent = alerts.run_summary(
             3, [self.ok("Маша", "Ладушки"), reserve, failed], ["Оля (id 3): нет игры"])
         self.assertEqual((level, silent), ("critical", False))
         self.assertEqual(title, "Подготовка: готово 2 из 3, из резерва 1, ошибок 1")
@@ -264,12 +269,12 @@ class RunSummary(unittest.TestCase):
         self.assertEqual(lines[2], "✅ Маша: «Ладушки» (speech)")
 
     def test_a_run_that_prepared_nothing_stays_quiet(self):
-        self.assertIsNone(gp.run_summary(5, [], []))
+        self.assertIsNone(alerts.run_summary(5, [], []))
 
     def test_a_long_run_fits_one_telegram_message(self):
         notes = [self.ok(f"Ребёнок {i}", "Очень длинное название игры " * 3) for i in range(60)]
-        _, _, details, _ = gp.run_summary(60, notes, [])
-        self.assertLessEqual(len(details), gp.TELEGRAM_LIMIT + 2)
+        _, _, details, _ = alerts.run_summary(60, notes, [])
+        self.assertLessEqual(len(details), alerts.TELEGRAM_LIMIT + 2)
 
 
 class OneMessagePerRun(ChainSetup):
@@ -282,8 +287,8 @@ class OneMessagePerRun(ChainSetup):
 
     def test_per_child_alerts_are_collected_into_the_summary(self):
         sent = []
-        with mock.patch.object(gp, "send_ops_notification", ORIGINAL_SEND), \
-                mock.patch.object(gp, "notify_now", lambda *a, **k: sent.append(a)):
+        with mock.patch.object(alerts, "send_ops_notification", ORIGINAL_SEND), \
+                mock.patch.object(alerts, "notify_now", lambda *a, **k: sent.append(a)):
             self.assertIsNone(self.prepare([good(self.age), good(self.age, "Ку-ку")]))
         self.assertEqual(len(sent), 1)
         level, title, details, silent = sent[0]
@@ -293,8 +298,8 @@ class OneMessagePerRun(ChainSetup):
 
     def test_a_retry_run_with_everything_prepared_sends_nothing(self):
         sent = []
-        with mock.patch.object(gp, "send_ops_notification", ORIGINAL_SEND), \
-                mock.patch.object(gp, "notify_now", lambda *a, **k: sent.append(a)):
+        with mock.patch.object(alerts, "send_ops_notification", ORIGINAL_SEND), \
+                mock.patch.object(alerts, "notify_now", lambda *a, **k: sent.append(a)):
             self.prepare([good(self.age), good(self.age, "Ку-ку")])
             sent.clear()
             self.prepare([])
