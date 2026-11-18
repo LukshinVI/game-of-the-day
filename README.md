@@ -68,8 +68,12 @@ The Cloudflare Worker makes no model call: VK and Telegram feedback reach the sa
 |---|---|---|
 | `tests/` (Python, 450+ tests) | delivery state machine, feedback storage idempotency, preparation validation and message layout, child age, model backends, backup script, outcome check, ops bot, multi-child, product bot onboarding | every push (CI) |
 | `worker/tests/` | VK callback routing (private dialogs only, sender passed on) and reaction labels | every push (CI) |
-| `evals/preparation/` (6 synthetic cases) | the real selection path (prompt → model → validator → retries) scored by the gate, deterministic lint and an optional model judge; compares models (e.g. Opus vs Sonnet) | manual, on the host (spends quota) |
-| ShellCheck | backup scripts | every push (CI) |
+| `tests/` on a shifted clock | the same suite a year ahead and on a leap-day midnight (libfaketime): a test that silently depends on today's date fails in the pull request | every push (CI) |
+| `evals/preparation/` (20 synthetic cases, `--repeat`) | the real selection path (prompt → model → validator → reviewer → retries) scored by the gate, deterministic lint and a model judge, with the spread across repeats; atypical inputs and a prompt injection through a parent's quote; compares models (e.g. Opus vs Sonnet) | manual, on the host (spends quota) |
+| `evals/safety/` (27 hand-labelled activities) | both safety lines against known answers: unsafe stopped, safe blocked, verdict stability, and whether the model or a code rule decided each block | manual, on the host (spends quota) |
+| ShellCheck | backup and deploy scripts | every push (CI) |
+
+Latest results: 60/60 selection runs passed the gate, the injection had no effect in 3/3 runs, and the two safety lines together stopped 15/15 unsafe activities; the weak spots are named too ([summary](evals/preparation/reports/2026-11-18-summary.md)).
 
 LLM evals are manual on purpose. The project has a strict no-unplanned-spend policy: running out of free quota must degrade safely, never switch on paid overage.
 
@@ -103,7 +107,7 @@ worker/
   tests/         routing and reaction-label tests
 assets/          card pictures and the album font (Nunito, SIL OFL)
 ops/             systemd units, timers and runbooks (preparation, delivery, feedback, backup, bot, outcome check)
-evals/           selection evals and model comparison reports
+evals/           selection and safety evals, model comparison reports
 docs/            architecture, reliability, AI design, deployment, roadmap, postmortems
 legacy/          the original Google Apps Script sender (reference only)
 ```
