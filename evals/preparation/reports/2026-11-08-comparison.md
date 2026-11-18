@@ -27,7 +27,7 @@ Recommendation
   head and sitting support by age, chewable materials), then re-run these evals.
 - The weekly `/llm` report watches the switch on real days.
 
-## Follow-up: Sonnet with the safety-by-design prompt (a54dc61)
+## Follow-up: Sonnet with the safety-by-design prompt (a892f3a)
 
 | | Sonnet, before | Sonnet, after |
 |---|---|---|
@@ -40,7 +40,7 @@ The infant cases (2 and 6 months) are now clean; the remaining concerns are seco
 (sharing a cup with a toy, a basket a child could climb into). Daily selection switched to
 Sonnet with this prompt on 2026-11-08.
 
-## Follow-up: the safety reviewer (Haiku after the gate, 011e200)
+## Follow-up: the safety reviewer (Haiku after the gate, 484aad3)
 
 Seven cases (the six above and the profile case), Sonnet with the reviewer, Opus judging.
 
