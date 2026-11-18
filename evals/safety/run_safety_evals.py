@@ -52,10 +52,31 @@ def run_case(case, repeat, runner=None):
     record = {"id": case["id"], "label": case["label"], "age_months": case["age_months"],
               "gate": gate(activity), "runs": []}
     for _ in range(repeat):
-        blocks, fixes, meta = review.review_tiered(activity, case["age_months"], runner=runner)
-        record["runs"].append({"block": blocks, "fix": fixes, "error": (meta or {}).get("error"),
+        # The production path applies the code's rules (escalation words, too many fixes)
+        # on top of the model's split; keep what the model itself said as well, so a
+        # wrong verdict can be traced to the model or to the rules.
+        said = {}
+
+        def capture(prompt, name, schema=None):
+            envelope = (runner or review._run)(prompt, name, schema)
+            output = envelope.get("structured_output") or {}
+            said.update(block=list(output.get("block") or []), fix=list(output.get("fix") or []))
+            return envelope
+
+        blocks, fixes, meta = review.review_tiered(activity, case["age_months"], runner=capture)
+        record["runs"].append({"block": blocks, "fix": fixes,
+                               "model_block": said.get("block", []), "model_fix": said.get("fix", []),
+                               "error": (meta or {}).get("error"),
                                "cost_usd": (meta or {}).get("cost_usd") or 0})
     return record
+
+
+def blame(record, run):
+    """Who decided this run's reviewer verdict: 'model' (it said block), 'rules' (the
+    model said fix, the code's rules made it a block) or None (no block)."""
+    if not run["block"]:
+        return None
+    return "model" if run.get("model_block") else "rules"
 
 
 def verdicts(record):
@@ -85,6 +106,14 @@ def summary(model, repeat, records):
     missed = [r["id"] for r in unsafe if not all(verdicts(r))]
     alarms = [r["id"] for r in safe if any(verdicts(r))]
 
+    def who(r):
+        """Why a safe case was blocked: gate, model, rules (per run, joined)."""
+        parts = ["gate"] if r["gate"] else []
+        parts += sorted({b for run in r["runs"] if not run["error"] for b in [blame(r, run)] if b})
+        return "+".join(parts) or "—"
+
+    rescued = sum(1 for r in unsafe for run in r["runs"] if not run["error"] and blame(r, run) == "rules")
+
     lines = [
         f"# Safety evals — reviewer {model} — {date.today().isoformat()}",
         "",
@@ -100,13 +129,19 @@ def summary(model, repeat, records):
         f"- same verdict in every repeat: {stable}/{len(records)} cases",
         f"- reviewer errors: {errors}; API-equivalent cost: ${cost:.2f}",
         f"- unsafe not caught in every run: {', '.join(missed) or 'none'}",
-        f"- safe blocked at least once: {', '.join(alarms) or 'none'}",
+        f"- safe blocked at least once: {', '.join(f'{a} ({who(r)})' for r in safe for a in [r['id']] if a in alarms) or 'none'}",
+        f"- unsafe runs the model itself called a fix and the code's rules turned into a block: {rescued}",
+        "",
+        "Blocks per run: the final count and a letter for who decided it — m: the model said block,",
+        "r: the model said fix and the code's rules made it a block.",
         "",
         "| case | label | gate | reviewer blocks per run | example |",
         "|---|---|---|---|---|",
     ]
     for r in records:
-        blocks = "/".join(str(len(run["block"])) if not run["error"] else "err" for run in r["runs"])
+        blocks = "/".join("err" if run["error"] else
+                          f"{len(run['block'])}" + {"model": "m", "rules": "r", None: ""}[blame(r, run)]
+                          for run in r["runs"])
         example = next((run["block"][0] for run in r["runs"] if run["block"]),
                        next((run["fix"][0] for run in r["runs"] if run["fix"]), ""))
         lines.append(f"| {r['id']} | {r['label']} | {', '.join(r['gate']) or '—'} | {blocks} | "
