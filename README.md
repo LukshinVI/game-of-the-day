@@ -66,7 +66,7 @@ The Cloudflare Worker makes no model call: VK and Telegram feedback reach the sa
 
 | Suite | What it covers | Runs |
 |---|---|---|
-| `tests/` (Python, 450+ tests) | delivery state machine, feedback storage idempotency, preparation validation and message layout, child age, model backends, backup script, outcome check, ops bot, multi-child, product bot onboarding | every push (CI) |
+| `tests/` (Python, 480+ tests, 82% line coverage of `src/`, ruff) | delivery state machine, feedback storage idempotency, preparation validation and message layout, child age, model backends, backup script, outcome check, ops bot, multi-child, product bot onboarding | every push (CI) |
 | `worker/tests/` | VK callback routing (private dialogs only, sender passed on) and reaction labels | every push (CI) |
 | `tests/` on a shifted clock | the same suite a year ahead and on a leap-day midnight (libfaketime): a test that silently depends on today's date fails in the pull request | every push (CI) |
 | `evals/preparation/` (20 synthetic cases, `--repeat`) | the real selection path (prompt → model → validator → reviewer → retries) scored by the gate, deterministic lint and a model judge, with the spread across repeats; atypical inputs and a prompt injection through a parent's quote; compares models (e.g. Opus vs Sonnet) | manual, on the host (spends quota) |
