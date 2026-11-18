@@ -8,6 +8,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -136,7 +137,7 @@ def child_age_months(on_date, birth_date=None):
     return months
 
 
-def build_prompt(history, age_months, today=None):
+def build_prompt(history, age_months, today=None, profile=None, theme=None):
     base = PROMPT_PATH.read_text(encoding="utf-8")
 
     context = {
@@ -145,8 +146,8 @@ def build_prompt(history, age_months, today=None):
         **skills.prompt_context(age_months, history),
         "mechanic_tags": {tag: label for tag, label in mechanic_tags.TAGS.items() if tag not in mechanic_tags.recent(history)},
         "recent_mechanic_tags": mechanic_tags.recent(history),
-        **({"child_profile": PROFILE_CONTEXT} if PROFILE_CONTEXT else {}),
-        **({"theme": THEME_CONTEXT} if THEME_CONTEXT else {}),
+        **({"child_profile": profile} if profile else {}),
+        **({"theme": theme} if theme else {}),
         "previous_games": history,
     }
 
@@ -157,38 +158,50 @@ def build_prompt(history, age_months, today=None):
     )
 
 
-# Observability (issue: model quality and spend). run_model() fills LAST_RUN_META for
-# the attempt it ran; select_candidate() appends one record per attempt to RUN_LOG;
-# prepare_for_child() persists RUN_LOG to model_runs, also when the day failed.
-LAST_RUN_META = {}
-RUN_LOG = []
+@dataclass
+class ChildRun:
+    """What one preparation carries through the chain, passed explicitly: no module
+    state, so two preparations can never see each other's child.
+
+    profile: the child's profile from feedback (src/feedback/profile.py), with
+        required_next when code requires a skill today;
+    theme: the seasonal theme offered today (src/preparation/themes.py), or None;
+    model: the fallback model once the chain moved to it, else None (the configured one);
+    alert_on_exhaustion: select_candidate() alerts when its attempts run out, unless the
+        caller (obtain_candidate, the reserve) alerts once for the whole chain;
+    log: one record per model or reviewer attempt, persisted to model_runs;
+    notes: the run's collector of owner alerts (one message per night run), or None to
+        send each alert at once.
+    """
+    profile: dict = field(default_factory=dict)
+    theme: dict | None = None
+    model: str | None = None
+    alert_on_exhaustion: bool = True
+    log: list = field(default_factory=list)
+    notes: list | None = None
 
 
-def run_model(prompt):
+def run_model(prompt, model=None, meta=None):
     """Ask the configured model backend for one candidate (a dict).
 
     The backend only proposes; validate_candidate() decides. PREPARATION_BACKEND
     selects `claude` (Claude Code headless, the default) or `codex` (Codex CLI).
+    model overrides the configured Claude model (the fallback); meta, when given, is
+    filled with the attempt's backend, latency, tokens and cost (model_runs).
     """
     backend = os.environ.get("PREPARATION_BACKEND", "claude").strip().lower()
-    LAST_RUN_META.clear()
-    LAST_RUN_META["backend"] = backend
+    meta = {} if meta is None else meta
+    meta.clear()
+    meta["backend"] = backend
     if backend == "claude":
-        return run_claude(prompt)
+        return run_claude(prompt, model=model, meta=meta)
     if backend == "codex":
         return run_codex(prompt)
     raise ValueError(f"unknown PREPARATION_BACKEND: {backend!r} (expected claude or codex)")
 
 
-MODEL_OVERRIDE = None  # set by obtain_candidate() for the fallback model
-# The child's profile from feedback (src/feedback/profile.py), set by prepare_for_child().
-PROFILE_CONTEXT = {}
-# The seasonal theme offered for this child today (src/preparation/themes.py), or None.
-THEME_CONTEXT = None
-
-
-def claude_command(schema):
-    model = MODEL_OVERRIDE or os.environ.get("PREPARATION_CLAUDE_MODEL", "opus")
+def claude_command(schema, model=None):
+    model = model or os.environ.get("PREPARATION_CLAUDE_MODEL", "opus")
     return [
         os.environ.get("CLAUDE_BIN", "claude"),
         "--print",
@@ -204,13 +217,13 @@ def claude_command(schema):
     ]
 
 
-def run_claude(prompt):
+def run_claude(prompt, model=None, meta=None):
     schema = SCHEMA_PATH.read_text(encoding="utf-8")
 
     print("Starting Claude candidate selection...", file=sys.stderr)
 
     result = subprocess.run(
-        claude_command(schema),
+        claude_command(schema, model),
         input=prompt,
         text=True,
         cwd=ROOT,
@@ -240,7 +253,8 @@ def run_claude(prompt):
             f"subtype={envelope.get('subtype')} result={str(envelope.get('result'))[:2000]}"
         )
 
-    LAST_RUN_META.update(claude_meta(envelope))
+    if meta is not None:
+        meta.update(claude_meta(envelope, model))
 
     candidate = envelope.get("structured_output")
     if not isinstance(candidate, dict):
@@ -249,13 +263,13 @@ def run_claude(prompt):
     return candidate
 
 
-def claude_meta(envelope):
+def claude_meta(envelope, model=None):
     """Latency, tokens and cost from the Claude Code JSON envelope (missing fields -> None)."""
     usage = envelope.get("usage") or {}
     server = usage.get("server_tool_use") or {}
     models = list((envelope.get("modelUsage") or {}).keys())
     return {
-        "model": ",".join(models) or MODEL_OVERRIDE or os.environ.get("PREPARATION_CLAUDE_MODEL", "opus"),
+        "model": ",".join(models) or model or os.environ.get("PREPARATION_CLAUDE_MODEL", "opus"),
         "api_ms": envelope.get("duration_api_ms") or envelope.get("duration_ms"),
         "num_turns": envelope.get("num_turns"),
         "input_tokens": usage.get("input_tokens"),
@@ -557,14 +571,11 @@ def build_retry_prompt(original_prompt, candidate, errors):
     )
 
 
-# While prepare_run is running, per-child alerts are collected here and sent as one
-# message at the end of the run (50 children must not mean 50 messages, at night).
-_run_notes = None
-
-
-def send_ops_notification(level, title, details):
-    if _run_notes is not None:
-        _run_notes.append((level, title, details))
+def send_ops_notification(level, title, details, notes=None):
+    """Alert the owner. During a night run notes is the run's collector: per-child alerts
+    go into one message at the end (50 children must not mean 50 messages, at night)."""
+    if notes is not None:
+        notes.append((level, title, details))
         return
     notify_now(level, title, details)
 
@@ -613,6 +624,7 @@ def send_preparation_success_alert(
     child_name=None,
     origin="model",
     origin_reason=None,
+    notes=None,
 ):
     details = (
         (f"Ребёнок: {child_name}\n" if child_name else "")
@@ -636,10 +648,11 @@ def send_preparation_success_alert(
         level,
         title,
         details,
+        notes,
     )
 
 
-def send_failure_alert(errors):
+def send_failure_alert(errors, notes=None):
     details = (
         f"Подготовка игры завершилась ошибкой после {MAX_ATTEMPTS} попыток.\n"
         "Игра не была записана в production SQLite.\n"
@@ -647,7 +660,7 @@ def send_failure_alert(errors):
         "Ошибки последней проверки:\n- "
         + "\n- ".join(errors)
     )
-    send_ops_notification("critical", "Подготовка игры не удалась", details)
+    send_ops_notification("critical", "Подготовка игры не удалась", details, notes)
 
 
 def validate_target_date(value):
@@ -793,9 +806,9 @@ def persist_candidate(candidate, target_date, child=None, origin="model", origin
     return game_id, legacy_id
 
 
-def record_attempt(attempt, outcome, errors, started):
-    RUN_LOG.append({
-        **LAST_RUN_META,
+def record_attempt(run, meta, attempt, outcome, errors, started):
+    run.log.append({
+        **meta,
         "attempt": attempt,
         "outcome": outcome,
         "errors": errors,
@@ -809,9 +822,10 @@ RUN_COLUMNS = (
 )
 
 
-def persist_runs(target_date, child_id, dry_run):
-    """Write RUN_LOG to model_runs. Never fails the preparation: metrics are secondary."""
-    runs, RUN_LOG[:] = list(RUN_LOG), []
+def persist_runs(target_date, child_id, dry_run, log):
+    """Write the attempt log to model_runs and empty it. Never fails the preparation:
+    metrics are secondary."""
+    runs, log[:] = list(log), []
     if not runs:
         return
     try:
@@ -830,12 +844,15 @@ def persist_runs(target_date, child_id, dry_run):
         print(f"WARN: model run metrics not saved: {exc}", file=sys.stderr)
 
 
-def select_candidate(history, target_date, birth_date=None, age_months=None):
+def select_candidate(history, target_date, birth_date=None, age_months=None, run=None):
     """Propose, validate and retry. age_months overrides the birth-date computation
-    (used by the selection evals, which describe cases by age)."""
+    (used by the selection evals, which describe cases by age). run carries the
+    child's profile, theme, model and attempt log (a fresh ChildRun when None)."""
+    run = ChildRun() if run is None else run
     if age_months is None:
         age_months = child_age_months(target_date, birth_date)
-    original_prompt = build_prompt(history, age_months, today=str(target_date))
+    original_prompt = build_prompt(history, age_months, today=str(target_date),
+                                   profile=run.profile, theme=run.theme)
     prompt = original_prompt
     last_errors = []
 
@@ -844,14 +861,15 @@ def select_candidate(history, target_date, birth_date=None, age_months=None):
         print(f"=== ПОПЫТКА {attempt}/{MAX_ATTEMPTS} ===")
 
         started = time.monotonic()
+        meta = {}
         try:
-            candidate = with_rendered_message(run_model(prompt))
+            candidate = with_rendered_message(run_model(prompt, model=run.model, meta=meta))
         except Exception as exc:
-            record_attempt(attempt, "error", [f"{type(exc).__name__}: {str(exc)[:300]}"], started)
+            record_attempt(run, meta, attempt, "error", [f"{type(exc).__name__}: {str(exc)[:300]}"], started)
             raise
         errors = validate_candidate(candidate, history, age_months)
-        record_attempt(attempt, "rejected" if errors else "pass", errors, started)
-        required = (PROFILE_CONTEXT or {}).get("required_next")
+        record_attempt(run, meta, attempt, "rejected" if errors else "pass", errors, started)
+        required = (run.profile or {}).get("required_next")
         if not errors and required and candidate.get("skill") != required["skill"]:
             if required["direction"] == "theme":
                 errors = [f"the family chose {required['skill']} as the theme of the month: today's game "
@@ -859,11 +877,11 @@ def select_candidate(history, target_date, birth_date=None, age_months=None):
             else:
                 errors = [f"after the parent's feedback on «{required['after']}» the next game must train "
                           f"{required['skill']} ({required['direction']} than before), not {candidate.get('skill')}"]
-            RUN_LOG[-1]["outcome"], RUN_LOG[-1]["errors"] = "rejected", errors
+            run.log[-1]["outcome"], run.log[-1]["errors"] = "rejected", errors
         if not errors and review.tiers_enabled():
             problems, fixes, meta = review.review_tiered(candidate, age_months)
             if meta is not None:
-                RUN_LOG.append({**meta, "attempt": attempt, "outcome": "rejected" if problems else
+                run.log.append({**meta, "attempt": attempt, "outcome": "rejected" if problems else
                                 ("error" if meta["error"] else "pass"),
                                 "errors": [f"safety review{' (rule)' if p in meta.get('by_rules', ()) else ''}: {p}"
                                            for p in problems]
@@ -877,7 +895,7 @@ def select_candidate(history, target_date, birth_date=None, age_months=None):
         elif not errors:
             problems, meta = review.review(candidate, age_months)
             if meta is not None:
-                RUN_LOG.append({**meta, "attempt": attempt, "outcome": "rejected" if problems else
+                run.log.append({**meta, "attempt": attempt, "outcome": "rejected" if problems else
                                 ("error" if meta["error"] else "pass"),
                                 "errors": [f"safety review: {p}" for p in problems] or
                                 ([meta["error"]] if meta["error"] else [])})
@@ -911,8 +929,8 @@ def select_candidate(history, target_date, birth_date=None, age_months=None):
                 errors,
             )
 
-    if ALERT_ON_EXHAUSTION:
-        send_failure_alert(last_errors)
+    if run.alert_on_exhaustion:
+        send_failure_alert(last_errors, run.notes)
 
     raise RuntimeError(
         f"Подготовка игры не удалась после {MAX_ATTEMPTS} попыток: "
@@ -920,16 +938,12 @@ def select_candidate(history, target_date, birth_date=None, age_months=None):
     )
 
 
-# obtain_candidate() alerts once for the whole chain instead.
-ALERT_ON_EXHAUSTION = True
-
-
-def obtain_candidate(history, target_date, child):
+def obtain_candidate(history, target_date, child, run=None):
     """Primary model -> fallback model -> library. Returns (candidate, attempts, origin, reason).
 
     Raises (after one failure alert) only when nothing fits at all.
     """
-    global ALERT_ON_EXHAUSTION, MODEL_OVERRIDE
+    run = ChildRun() if run is None else run
     birth_date = child["birth_date"] if child else None
     child_id = child["id"] if child else None
     reason = None
@@ -940,12 +954,13 @@ def obtain_candidate(history, target_date, child):
     if budget is not None and spent >= budget:
         reason = f"дневной бюджет модели исчерпан (${spent:.2f} из ${budget:.2f})"
 
-    saved = ALERT_ON_EXHAUSTION
-    ALERT_ON_EXHAUSTION = False
+    # The chain alerts once, at its end, not after each model's attempts.
+    saved = run.alert_on_exhaustion
+    run.alert_on_exhaustion = False
     try:
         if reason is None:
             try:
-                candidate, attempts = select_candidate(history, target_date, birth_date)
+                candidate, attempts = select_candidate(history, target_date, birth_date, run=run)
                 return candidate, attempts, "model", None
             except Exception as exc:  # noqa: BLE001 - every failure moves down the chain
                 quota = fallback.is_quota_error(exc)
@@ -953,17 +968,17 @@ def obtain_candidate(history, target_date, child):
                 print(f"FALLBACK: {reason}", file=sys.stderr)
 
             if not fallback.is_quota_error(reason) and fallback.fallback_model():
-                MODEL_OVERRIDE = fallback.fallback_model()
+                run.model = fallback.fallback_model()
                 try:
-                    candidate, attempts = select_candidate(history, target_date, birth_date)
-                    return candidate, attempts, "fallback_model", f"{MODEL_OVERRIDE}; {reason}"
+                    candidate, attempts = select_candidate(history, target_date, birth_date, run=run)
+                    return candidate, attempts, "fallback_model", f"{run.model}; {reason}"
                 except Exception as exc:  # noqa: BLE001
-                    reason += f"; резервная модель {MODEL_OVERRIDE}: {str(exc)[:200]}"
+                    reason += f"; резервная модель {run.model}: {str(exc)[:200]}"
                     print(f"FALLBACK: {reason}", file=sys.stderr)
                 finally:
-                    MODEL_OVERRIDE = None
+                    run.model = None
     finally:
-        ALERT_ON_EXHAUSTION = saved
+        run.alert_on_exhaustion = saved
 
     age = child_age_months(target_date, birth_date)
     with connect_db() as con:
@@ -971,7 +986,7 @@ def obtain_candidate(history, target_date, child):
     if candidate is not None:
         return candidate, 0, "library", reason
 
-    send_failure_alert([reason or "неизвестная причина", "в библиотеке нет подходящей игры"])
+    send_failure_alert([reason or "неизвестная причина", "в библиотеке нет подходящей игры"], run.notes)
     raise RuntimeError(f"Подготовка игры не удалась, резерва нет: {reason}")
 
 
@@ -1011,20 +1026,17 @@ def prepare_run(target_date, dry_run=False, only_child=None):
     failures = []
     run_started = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
-    global _run_notes
-    _run_notes = []
-    try:
-        for child in plan:
-            label = f"{child['name']} (id {child['id']})" if child else "single-child mode"
-            print()
-            print(f"##### {label} #####")
-            try:
-                prepare_for_child(target_date, child, dry_run)
-            except Exception as exc:  # noqa: BLE001 - reported per child, re-raised below
-                print(f"ERROR: {exc}", file=sys.stderr)
-                failures.append(f"{label}: {exc}")
-    finally:
-        notes, _run_notes = _run_notes, None
+    # Per-child alerts are collected and sent as one message at the end of the run.
+    notes = []
+    for child in plan:
+        label = f"{child['name']} (id {child['id']})" if child else "single-child mode"
+        print()
+        print(f"##### {label} #####")
+        try:
+            prepare_for_child(target_date, child, dry_run, notes=notes)
+        except Exception as exc:  # noqa: BLE001 - reported per child, re-raised below
+            print(f"ERROR: {exc}", file=sys.stderr)
+            failures.append(f"{label}: {exc}")
 
     reviewed = review_summary(target_date, run_started) if not dry_run and review.tiers_enabled() else None
     message = run_summary(len(plan), notes, failures, reviewed)
@@ -1124,7 +1136,7 @@ def review_summary(target_date, since):
     return "\n".join(lines)
 
 
-def prepare_for_child(target_date, child, dry_run=False):
+def prepare_for_child(target_date, child, dry_run=False, notes=None):
     child_id = child["id"] if child else None
 
     # Проверяем ДО вызова модели — повторный запуск ничего не тратит.
@@ -1147,9 +1159,9 @@ def prepare_for_child(target_date, child, dry_run=False):
     print(f"Исторических игр: {len(history)}")
     print(f"Целевая дата: {target_date}")
 
-    global PROFILE_CONTEXT, THEME_CONTEXT
+    run = ChildRun(notes=notes)
     with connect_db() as con:
-        PROFILE_CONTEXT = child_profile.load(con, child_id)
+        run.profile = child_profile.load(con, child_id)
         required = child_profile.required_next(con, child_id, history)
         if required is None:  # a difficulty answer comes first; then the theme of the month
             try:
@@ -1158,25 +1170,22 @@ def prepare_for_child(target_date, child, dry_run=False):
             except Exception as exc:  # noqa: BLE001 - a theme is optional; never fail the day over it
                 print(f"WARN: month theme unavailable: {type(exc).__name__}", file=sys.stderr)
         try:
-            THEME_CONTEXT = themes.context(con, child_id, date.fromisoformat(str(target_date)),
-                                           child_age_months(target_date, child["birth_date"] if child else None))
+            run.theme = themes.context(con, child_id, date.fromisoformat(str(target_date)),
+                                       child_age_months(target_date, child["birth_date"] if child else None))
         except Exception as exc:  # noqa: BLE001 - a theme is optional; never fail the day over it
             print(f"WARN: theme unavailable: {type(exc).__name__}", file=sys.stderr)
-            THEME_CONTEXT = None
-    if THEME_CONTEXT:
-        print(f"Тема дня предложена: {THEME_CONTEXT['label']}")
+            run.theme = None
+    if run.theme:
+        print(f"Тема дня предложена: {run.theme['label']}")
     if required:
-        PROFILE_CONTEXT = {**PROFILE_CONTEXT, "required_next": required}
-    if PROFILE_CONTEXT:
-        print(f"Профиль: {json.dumps(PROFILE_CONTEXT, ensure_ascii=False)}")
+        run.profile = {**run.profile, "required_next": required}
+    if run.profile:
+        print(f"Профиль: {json.dumps(run.profile, ensure_ascii=False)}")
 
-    RUN_LOG.clear()
     try:
-        candidate, attempts, origin, origin_reason = obtain_candidate(history, target_date, child)
+        candidate, attempts, origin, origin_reason = obtain_candidate(history, target_date, child, run)
     finally:
-        PROFILE_CONTEXT = {}
-        THEME_CONTEXT = None
-        persist_runs(target_date, child_id, dry_run)
+        persist_runs(target_date, child_id, dry_run, run.log)
     print(f"Источник: {fallback.describe(origin, origin_reason)}")
 
     channels = ", ".join(r["channel"] for r in child["recipients"]) if child else "vk"
@@ -1222,6 +1231,7 @@ def prepare_for_child(target_date, child, dry_run=False):
         child["name"] if child else None,
         origin=origin,
         origin_reason=origin_reason,
+        notes=notes,
     )
 
 
@@ -1282,8 +1292,7 @@ def shadow_run():
     print("Production database: NOT MODIFIED")
     print("VK delivery: NOT ATTEMPTED")
 
-    if ALERT_ON_EXHAUSTION:
-        send_failure_alert(last_errors)
+    send_failure_alert(last_errors)
 
     raise RuntimeError(
         f"Подготовка игры не удалась после {MAX_ATTEMPTS} попыток: "
@@ -1322,7 +1331,6 @@ def reserve_top_up(target_date):
     Generates the missing ones with the configured model under the same validator and
     within the daily budget; at most RESERVE_MAX_NEW_PER_RUN per run.
     """
-    global ALERT_ON_EXHAUSTION
     target_date = validate_target_date(target_date)
     with connect_db() as con:
         children = [c for c in active_children(con) if c["recipients"]]
@@ -1340,16 +1348,15 @@ def reserve_top_up(target_date):
                 if budget is not None and spent >= budget:
                     print("budget spent; stopping")
                     return made
-                RUN_LOG.clear()
-                saved, ALERT_ON_EXHAUSTION = ALERT_ON_EXHAUSTION, False
+                # A reserve gap is not an outage: no alert when the attempts run out.
+                run = ChildRun(alert_on_exhaustion=False)
                 try:
-                    candidate, _ = select_candidate(synthetic, target_date, age_months=age)
+                    candidate, _ = select_candidate(synthetic, target_date, age_months=age, run=run)
                 except Exception as exc:  # noqa: BLE001 - a reserve gap is not an outage
                     print(f"could not make a reserve game for {age} months: {str(exc)[:200]}")
                     break
                 finally:
-                    ALERT_ON_EXHAUSTION = saved
-                    persist_runs(target_date, None, False)
+                    persist_runs(target_date, None, False, run.log)
                 with connect_db() as con:
                     if fallback.add_reserve(con, candidate, os.environ.get("PREPARATION_CLAUDE_MODEL", "model")):
                         made += 1

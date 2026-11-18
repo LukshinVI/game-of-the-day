@@ -124,11 +124,9 @@ class Insights(InsightsSetup):
 
     def test_the_selection_prompt_carries_the_profile(self):
         from src.preparation import game_preparation as gp
-        gp.PROFILE_CONTEXT = {"next_difficulty": {"fine_motor": "harder"}}
-        try:
-            context = json.loads(gp.build_prompt([], 14, today="2026-11-09").split("INPUT CONTEXT:\n", 1)[1])
-        finally:
-            gp.PROFILE_CONTEXT = {}
+        profile = {"next_difficulty": {"fine_motor": "harder"}}
+        context = json.loads(gp.build_prompt([], 14, today="2026-11-09", profile=profile)
+                             .split("INPUT CONTEXT:\n", 1)[1])
         self.assertEqual(context["child_profile"]["next_difficulty"], {"fine_motor": "harder"})
         context = json.loads(gp.build_prompt([], 14, today="2026-11-09").split("INPUT CONTEXT:\n", 1)[1])
         self.assertNotIn("child_profile", context)
@@ -294,13 +292,11 @@ class RequiredNext(InsightsSetup):
                     "mechanics": f"{skill} m", "materials": ["Кубики"], "steps": ["Раз.", "Два."],
                     "safety": "Под присмотром.", "source_name": "CDC", "source_url": "https://www.cdc.gov/x"}
         answers = [cand("speech"), cand("fine_motor")]
-        gp.PROFILE_CONTEXT = {"required_next": {"skill": "fine_motor", "direction": "harder", "after": "Башенка"}}
-        try:
-            with contextlib.redirect_stdout(io.StringIO()), \
-                    mock.patch.object(gp, "run_model", side_effect=lambda p: answers.pop(0)):
-                _, attempts = gp.select_candidate([], "2026-11-09", age_months=14)
-        finally:
-            gp.PROFILE_CONTEXT = {}
+        run = gp.ChildRun(profile={"required_next": {"skill": "fine_motor", "direction": "harder",
+                                                     "after": "Башенка"}})
+        with contextlib.redirect_stdout(io.StringIO()), \
+                mock.patch.object(gp, "run_model", side_effect=lambda p, **_: answers.pop(0)):
+            _, attempts = gp.select_candidate([], "2026-11-09", age_months=14, run=run)
         self.assertEqual(attempts, 2)
 
 

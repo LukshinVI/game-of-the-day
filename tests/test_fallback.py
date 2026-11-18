@@ -55,8 +55,8 @@ class ChainSetup(unittest.TestCase):
         self.summaries = []
         for target in (
             mock.patch.object(gp, "DB_PATH", self.db), mock.patch.object(ch, "DB_PATH", self.db),
-            mock.patch.object(gp, "send_ops_notification", lambda level, title, details: self.alerts.append((level, title, details))),
-            mock.patch.object(gp, "send_failure_alert", lambda errors: self.alerts.append(("critical", "fail", errors))),
+            mock.patch.object(gp, "send_ops_notification", lambda level, title, details, notes=None: self.alerts.append((level, title, details))),
+            mock.patch.object(gp, "send_failure_alert", lambda errors, notes=None: self.alerts.append(("critical", "fail", errors))),
             mock.patch.object(gp, "notify_now", lambda *a, **k: self.summaries.append(a)),
             mock.patch.dict("os.environ", {"PREPARATION_FALLBACK_MODEL": "haiku", "PREPARATION_DAILY_BUDGET_USD": "3"}),
         ):
@@ -80,8 +80,8 @@ class ChainSetup(unittest.TestCase):
         con.close()
 
     def model(self, answers):
-        def run(prompt):
-            self.models.append(gp.MODEL_OVERRIDE or "primary")
+        def run(prompt, model=None, meta=None):
+            self.models.append(model or "primary")
             item = answers.pop(0)
             if isinstance(item, Exception):
                 raise item
@@ -222,7 +222,7 @@ class WarmReserve(ChainSetup):
     def test_top_up_fills_upcoming_ages_within_the_cap(self):
         made = []
 
-        def fake(prompt):
+        def fake(prompt, **_):
             context = json.loads(prompt.split("INPUT CONTEXT:\n", 1)[1])
             age = context["child_age_months"]
             made.append(age)
@@ -290,7 +290,6 @@ class OneMessagePerRun(ChainSetup):
         self.assertEqual((level, title, silent), ("info", "Подготовка: готово 2 из 2", True))
         self.assertIn("Маша", details)
         self.assertIn("Петя", details)
-        self.assertIsNone(gp._run_notes)
 
     def test_a_retry_run_with_everything_prepared_sends_nothing(self):
         sent = []

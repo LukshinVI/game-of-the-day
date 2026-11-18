@@ -30,7 +30,7 @@ class Reviewer(unittest.TestCase):
     def select(self, answers, reviews, env):
         prompts = []
 
-        def fake_model(prompt):
+        def fake_model(prompt, **_):
             prompts.append(prompt)
             return answers.pop(0)
 
@@ -46,8 +46,8 @@ class Reviewer(unittest.TestCase):
                 mock.patch.object(gp, "run_model", side_effect=fake_model), \
                 mock.patch.object(review, "_run", fake_review), \
                 mock.patch.object(gp, "send_failure_alert"):
-            gp.RUN_LOG.clear()
-            result = gp.select_candidate([], "2026-11-09", age_months=9)
+            self.run = gp.ChildRun()
+            result = gp.select_candidate([], "2026-11-09", age_months=9, run=self.run)
         return result, prompts
 
     def test_off_by_default(self):
@@ -61,13 +61,13 @@ class Reviewer(unittest.TestCase):
             {"PREPARATION_REVIEW_MODEL": "haiku"})
         self.assertEqual(attempts, 2)
         self.assertIn("safety review: Уточните", prompts[1])
-        self.assertIn("review:haiku", {r.get("model") for r in gp.RUN_LOG})
+        self.assertIn("review:haiku", {r.get("model") for r in self.run.log})
 
     def test_a_reviewer_outage_does_not_block(self):
         (result, attempts), _ = self.select([candidate()], [RuntimeError("down")],
                                             {"PREPARATION_REVIEW_MODEL": "haiku"})
         self.assertEqual(attempts, 1)
-        self.assertEqual([r["outcome"] for r in gp.RUN_LOG], ["pass", "error"])
+        self.assertEqual([r["outcome"] for r in self.run.log], ["pass", "error"])
 
 
 class Tiers(Reviewer):
@@ -77,7 +77,7 @@ class Tiers(Reviewer):
         prompts = []
         verdicts = iter(verdicts)
 
-        def fake_model(prompt):
+        def fake_model(prompt, **_):
             prompts.append(prompt)
             return answers.pop(0)
 
@@ -90,8 +90,8 @@ class Tiers(Reviewer):
                 mock.patch.object(gp, "run_model", side_effect=fake_model), \
                 mock.patch.object(review, "_run", fake_review), \
                 mock.patch.object(gp, "send_failure_alert"):
-            gp.RUN_LOG.clear()
-            result = gp.select_candidate([], "2026-11-09", age_months=9)
+            self.run = gp.ChildRun()
+            result = gp.select_candidate([], "2026-11-09", age_months=9, run=self.run)
         return result, prompts
 
     def test_a_fix_is_added_to_the_safety_notes_and_the_game_passes(self):
@@ -101,8 +101,8 @@ class Tiers(Reviewer):
         self.assertEqual(attempts, 1)
         self.assertIn("Под присмотром. " + fix + ".", result["safety"])
         self.assertIn(fix, result["message_text"])
-        self.assertEqual([r["outcome"] for r in gp.RUN_LOG], ["pass", "pass"])
-        self.assertIn("safety fix: " + fix, gp.RUN_LOG[-1]["errors"])
+        self.assertEqual([r["outcome"] for r in self.run.log], ["pass", "pass"])
+        self.assertIn("safety fix: " + fix, self.run.log[-1]["errors"])
 
     def test_a_block_repairs_the_same_game(self):
         (result, attempts), prompts = self.select_tiered(
@@ -122,7 +122,7 @@ class Tiers(Reviewer):
         self.assertEqual(attempts, 3)
         self.assertIn("safety review: " + fix, prompts[1])
         self.assertNotIn("(rule)", prompts[1])
-        reviews = [r for r in gp.RUN_LOG if r["model"] == "review:haiku"]
+        reviews = [r for r in self.run.log if r.get("model") == "review:haiku"]
         self.assertEqual(reviews[0]["errors"], ["safety review (rule): " + fix])
         self.assertEqual(reviews[1]["errors"], ["safety review: " + model_block])
 

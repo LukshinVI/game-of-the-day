@@ -201,7 +201,7 @@ class TwoChildren(TempDb):
                 except RuntimeError as exc:
                     return exc
 
-    def by_age(self, history, target_date, birth_date):
+    def by_age(self, history, target_date, birth_date, run=None):
         age = gp.child_age_months(target_date, birth_date)
         return candidate(age, title=f"Игра для {birth_date}"), 1
 
@@ -232,7 +232,7 @@ class TwoChildren(TempDb):
         con.commit()
         seen = {}
 
-        def capture(history, target_date, birth_date):
+        def capture(history, target_date, birth_date, run=None):
             seen[birth_date] = [g["title"] for g in history]
             return self.by_age(history, target_date, birth_date)
 
@@ -242,7 +242,7 @@ class TwoChildren(TempDb):
     def test_a_manual_run_can_be_limited_to_one_child(self):
         calls = []
 
-        def counting(history, target_date, birth_date):
+        def counting(history, target_date, birth_date, run=None):
             calls.append(birth_date)
             return self.by_age(history, target_date, birth_date)
 
@@ -254,7 +254,7 @@ class TwoChildren(TempDb):
         self.assertEqual(calls, [YOUNGER])
 
     def test_a_rerun_is_free_and_one_failing_child_does_not_block_the_other(self):
-        def younger_fails(history, target_date, birth_date):
+        def younger_fails(history, target_date, birth_date, run=None):
             if birth_date == YOUNGER:
                 raise RuntimeError("model down")
             return self.by_age(history, target_date, birth_date)
@@ -265,7 +265,7 @@ class TwoChildren(TempDb):
 
         calls = []
 
-        def counting(history, target_date, birth_date):
+        def counting(history, target_date, birth_date, run=None):
             calls.append(birth_date)
             return self.by_age(history, target_date, birth_date)
 
@@ -365,7 +365,7 @@ class SingleChildMode(TempDb):
     """No children configured: behaviour is exactly the pre-#20 one."""
 
     def test_preparation_uses_the_environment_and_the_legacy_vk_delivery(self):
-        def select(history, target_date, birth_date):
+        def select(history, target_date, birth_date, run=None):
             self.assertIsNone(birth_date)
             return candidate(12), 1
 
@@ -503,7 +503,7 @@ class TestChild(TempDb):
         ch.add_recipient(con, test, "vk", "2")
         seen = []
 
-        def select(history, target_date, birth_date):
+        def select(history, target_date, birth_date, run=None):
             seen.append(len(seen))
             return candidate(gp.child_age_months(target_date, birth_date), title=f"Игра {len(seen)}"), 1
 

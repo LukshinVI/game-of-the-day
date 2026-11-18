@@ -162,7 +162,7 @@ class AttemptLoop(unittest.TestCase):
     def test_a_retry_prompt_carries_the_rejection_reasons(self):
         prompts = []
 
-        def fake(prompt):
+        def fake(prompt, **_):
             prompts.append(prompt)
             return candidate(duration_minutes=30) if len(prompts) == 1 else candidate()
 

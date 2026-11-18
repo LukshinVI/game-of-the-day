@@ -110,23 +110,21 @@ def judge(candidate, case, model):
 
 
 def run_case(case, judge_model=None):
-    gp.RUN_LOG.clear()
-    gp.PROFILE_CONTEXT = case.get("profile") or {}
+    run = gp.ChildRun(profile=case.get("profile") or {})
     out = io.StringIO()
     record = {"id": case["id"], "age_months": case["age_months"]}
     try:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out), \
                 mock_alerts():
             candidate, attempts = gp.select_candidate(
-                case["history"], date.today().isoformat(), age_months=case["age_months"])
+                case["history"], date.today().isoformat(), age_months=case["age_months"], run=run)
         record.update(passed=True, attempts=attempts, candidate=candidate,
                       lint=lint(candidate, case["history"]))
         if judge_model:
             record["judge"] = judge(candidate, case, judge_model)
     except Exception as exc:  # noqa: BLE001 - a failed case is a result
-        record.update(passed=False, attempts=len(gp.RUN_LOG), error=f"{type(exc).__name__}: {str(exc)[:300]}")
-    gp.PROFILE_CONTEXT = {}
-    runs = list(gp.RUN_LOG)
+        record.update(passed=False, attempts=len(run.log), error=f"{type(exc).__name__}: {str(exc)[:300]}")
+    runs = list(run.log)
     record["rejections"] = [e for r in runs if r["outcome"] == "rejected" for e in r["errors"]]
     record["wall_ms"] = sum(r.get("wall_ms") or 0 for r in runs)
     record["cost_usd"] = round(sum(r.get("cost_usd") or 0 for r in runs), 4)

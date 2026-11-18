@@ -61,8 +61,8 @@ class Capture(unittest.TestCase):
             con.close()
 
     def fake_claude(self, candidates):
-        def run(prompt):
-            gp.LAST_RUN_META.update(gp.claude_meta(ENVELOPE))
+        def run(prompt, model=None, meta=None):
+            meta.update(gp.claude_meta(ENVELOPE))
             item = candidates.pop(0)
             if isinstance(item, Exception):
                 raise item

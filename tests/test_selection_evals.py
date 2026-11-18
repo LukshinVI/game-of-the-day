@@ -40,8 +40,8 @@ class Harness(unittest.TestCase):
             {"title": f"G{i}", "skill": "fine_motor", "mechanics": f"m{i}"} for i in range(3)]}
         answers = [candidate(6, duration_minutes=30), candidate(6, skill="fine_motor"), candidate(6, goal="Слушать и повторять")]
 
-        def fake(prompt):
-            gp.LAST_RUN_META.update({"model": "m", "cost_usd": 0.5})
+        def fake(prompt, model=None, meta=None):
+            meta.update({"model": "m", "cost_usd": 0.5})
             return answers.pop(0)
 
         with mock.patch.object(gp, "run_claude", fake):
@@ -56,7 +56,7 @@ class Harness(unittest.TestCase):
         self.assertIn("passed the production gate: 1/1; on the first attempt: 0/1", text)
 
     def test_a_failing_case_is_a_result_not_a_crash(self):
-        def broken(prompt):
+        def broken(prompt, **_):
             raise RuntimeError("Claude failed")
         with mock.patch.object(gp, "run_claude", broken):
             record = ev.run_case({"id": "y", "age_months": 9, "why": "w", "history": []})
