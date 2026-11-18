@@ -15,7 +15,7 @@ Deterministic code only.
 import hashlib
 import json
 import re
-from datetime import date, timedelta
+from datetime import timedelta
 
 THEME_EVERY = 3
 MAX_PER_WEEK = 2

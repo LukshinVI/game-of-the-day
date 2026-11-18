@@ -38,7 +38,6 @@ import hashlib
 import json
 import os
 import secrets
-import sqlite3
 import sys
 import time
 import urllib.request

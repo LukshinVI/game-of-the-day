@@ -22,7 +22,7 @@ import argparse
 import json
 import sqlite3
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]

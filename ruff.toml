@@ -1,0 +1,8 @@
+# Lint in CI: real mistakes only (pyflakes: unused or undefined names, a function
+# defined twice, f-strings without placeholders; syntax errors). Style stays a review
+# matter, not a gate.
+target-version = "py312"
+extend-exclude = ["legacy", "worker"]
+
+[lint]
+select = ["F", "E9"]

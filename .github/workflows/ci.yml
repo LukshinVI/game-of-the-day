@@ -27,8 +27,14 @@ jobs:
       # The album picture (src/ops/monthly_album.py); the host has python3-pil.
       - name: Install Pillow
         run: python -m pip install --quiet pillow==11.3.0
-      - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+      - name: Lint (ruff, pyflakes rules)
+        run: python -m pip install --quiet ruff==0.17.5 && ruff check .
+      - name: Run unit tests with coverage
+        run: |
+          python -m pip install --quiet coverage==7.17.3
+          python -m coverage run --source=src -m unittest discover -s tests -v
+          python -m coverage report --sort=cover | tee coverage.txt
+          echo "### Coverage: $(tail -n 1 coverage.txt | awk '{print $NF}') of src/" >> "$GITHUB_STEP_SUMMARY"
 
   # The same suite on a shifted clock: a test that silently depends on today's date (a
   # fixed date in a fixture next to the wall clock) fails here, in the pull request,

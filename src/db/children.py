@@ -458,7 +458,7 @@ def widen_observation_kinds(con):
     con.commit()
     con.execute("PRAGMA foreign_keys = OFF")
     try:
-        con.executescript(f"""
+        con.executescript("""
             BEGIN;
             ALTER TABLE observations RENAME TO observations_old;
             CREATE TABLE observations (

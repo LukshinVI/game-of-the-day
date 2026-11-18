@@ -17,7 +17,6 @@ from src.bot import product_bot as pb  # noqa: E402
 from src.bot import vk_dialog  # noqa: E402
 from src.db import children as ch  # noqa: E402
 from src.feedback import month_theme as mt  # noqa: E402
-from src.ops import weekly_digest as wd  # noqa: E402
 
 SCHEMA = PROJECT_ROOT / "src" / "db" / "schema.sql"
 TODAY = date(2026, 12, 2)
