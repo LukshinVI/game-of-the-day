@@ -141,11 +141,15 @@ def review_tiered(candidate, age_months, runner=None):
         envelope = (runner or _run)(prompt, name, TIERED_SCHEMA)
         output = envelope.get("structured_output") or {}
         clean = lambda key: [str(p).strip() for p in output.get(key, []) if str(p).strip()][:3]  # noqa: E731
-        blocks, fixes = split(clean("block"), clean("fix"))
+        said = clean("block")
+        blocks, fixes = split(said, clean("fix"))
         error = None
     except Exception as exc:  # noqa: BLE001 - the gate already passed; never block the day
-        envelope, blocks, fixes, error = {}, [], [], f"{type(exc).__name__}: {str(exc)[:200]}"
+        envelope, said, blocks, fixes, error = {}, [], [], [], f"{type(exc).__name__}: {str(exc)[:200]}"
     meta = {
+        # Blocks the reviewer itself called fixes, made blocks by split(): kept apart so the
+        # reports show how often the code's rules overrule the model (evals/safety).
+        "by_rules": [b for b in blocks if b not in said],
         "backend": "review",
         "model": f"review:{name}",
         "wall_ms": int((time.monotonic() - started) * 1000),

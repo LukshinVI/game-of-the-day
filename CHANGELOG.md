@@ -24,6 +24,18 @@ on the commit that completed each milestone.
   the next game. Found by the owner in the live VK test.
 
 ### Added
+- Safety evals on labelled cases (`evals/safety/`): 27 hand-written activities with the
+  right answer known (15 unsafe, 12 safe) through the word gate and the reviewer, three
+  times each. First run: both lines together stopped 15/15 unsafe; the word gate alone 4/15;
+  the model blocked no safe game, the code's escalation rule and the word gate blocked
+  three. Each block records whether the model or the rule decided it.
+- Selection evals grew from 7 to 20 cases (age edges, profile signals, play settings,
+  a prompt injection through a parent's quote) with `--repeat` for reproducibility.
+- A block the reviewer called a caution and the escalation rule made a block is recorded
+  as `safety review (rule)`; the morning summary counts them. The rule stays: a false block
+  costs one attempt, a missed hazard costs more; the count shows over time whether it helps.
+- `ops/deploy.sh` rolls the code and changed units back when a service does not come back
+  after the restart, and alerts the owner; a failed integrity check stops with an alert.
 - The watcher outside the host (`worker/src/watch.js`, `src/ops/heartbeat.py`): the host
   beats every 5 minutes and the Worker writes «🔴 сервер молчит» to the ops bot after 15
   minutes of silence (a reminder every 6 hours, 🟢 on return); an hourly canary through

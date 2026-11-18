@@ -112,6 +112,20 @@ class Tiers(Reviewer):
         self.assertIn("Keep the same activity", prompts[1])
         self.assertIn("safety review: Игрушка", prompts[1])
 
+    def test_a_block_made_by_the_rules_is_marked_as_such(self):
+        # The model said fix; the escalation word made it a block. The retry prompt reads
+        # the same as for the model's own block, only the record says who decided.
+        fix = "Проверьте, что крышка батарейного отсека плотно закрыта"
+        model_block = "Мелкие бусины в бутылке"
+        (_, attempts), prompts = self.select_tiered(
+            [candidate(), candidate(), candidate()], [([], [fix]), ([model_block], []), ([], [])])
+        self.assertEqual(attempts, 3)
+        self.assertIn("safety review: " + fix, prompts[1])
+        self.assertNotIn("(rule)", prompts[1])
+        reviews = [r for r in gp.RUN_LOG if r["model"] == "review:haiku"]
+        self.assertEqual(reviews[0]["errors"], ["safety review (rule): " + fix])
+        self.assertEqual(reviews[1]["errors"], ["safety review: " + model_block])
+
     def test_a_fix_that_names_a_real_hazard_is_a_block(self):
         blocks, fixes = review.split([], ["Не давайте фонарик с батарейкой-таблеткой",
                                           "Тёплую воду проверьте, чтобы она не была горячей"])
@@ -158,6 +172,9 @@ class Summary(unittest.TestCase):
             con.execute("INSERT INTO model_runs(at, target_date, child_id, attempt, outcome, model, errors_json, dry_run) "
                         "VALUES ('2026-11-11 04:05:15', '2026-11-11', ?, 2, 'pass', 'review:haiku', ?, 0)",
                         (child, '["safety fix: Снимите ленту после игры"]'))
+            con.execute("INSERT INTO model_runs(at, target_date, child_id, attempt, outcome, model, errors_json, dry_run) "
+                        "VALUES ('2026-11-11 04:05:15', '2026-11-11', ?, 3, 'rejected', 'review:haiku', ?, 0)",
+                        (child, '["safety review (rule): Проверьте крышку батарейного отсека"]'))
             con.execute("INSERT INTO games(legacy_id, game_date, title, skill, child_id, origin) "
                         "VALUES ('x', '2026-11-11', 'T', 'sensory', ?, 'library')", (child,))
             con.commit()
@@ -165,7 +182,8 @@ class Summary(unittest.TestCase):
             with mock.patch.object(gp, "DB_PATH", db):
                 text = gp.review_summary("2026-11-11", "2026-11-11 04:00:00")
                 self.assertIsNone(gp.review_summary("2026-11-11", "2026-11-11 05:00:00"))
-        self.assertIn("Проверок: 2, отклонено: 1 (50%)", text)
+        self.assertIn("Проверок: 3, отклонено: 2 (67%), из них правилом кода: 1.", text)
+        self.assertIn("⛔ Тимофей (правило кода, модель считала это оговоркой): Проверьте крышку", text)
         self.assertIn("⛔ Тимофей: Батарейки в фонарике", text)
         self.assertIn("✏️ Тимофей: Снимите ленту после игры", text)
         self.assertIn("📚 Из библиотеки: Тимофей", text)

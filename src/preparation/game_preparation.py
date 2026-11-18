@@ -865,7 +865,8 @@ def select_candidate(history, target_date, birth_date=None, age_months=None):
             if meta is not None:
                 RUN_LOG.append({**meta, "attempt": attempt, "outcome": "rejected" if problems else
                                 ("error" if meta["error"] else "pass"),
-                                "errors": [f"safety review: {p}" for p in problems]
+                                "errors": [f"safety review{' (rule)' if p in meta.get('by_rules', ()) else ''}: {p}"
+                                           for p in problems]
                                 + [f"safety fix: {f}" for f in fixes if not problems]
                                 or ([meta["error"]] if meta["error"] else [])})
             errors = [f"safety review: {p}" for p in problems]
@@ -1098,11 +1099,16 @@ def review_summary(target_date, since):
     if not rows:
         return None
     rejected = sum(1 for r in rows if r[2] == "rejected")
-    lines = [f"Проверок: {len(rows)}, отклонено: {rejected} ({round(100 * rejected / len(rows))}%)."]
+    by_rules = sum(1 for r in rows if r[2] == "rejected" and "safety review (rule): " in (r[3] or ""))
+    lines = [f"Проверок: {len(rows)}, отклонено: {rejected} ({round(100 * rejected / len(rows))}%)"
+             + (f", из них правилом кода: {by_rules}." if by_rules else ".")]
     for child_id, name, outcome, errors_json in rows:
         for item in json.loads(errors_json or "[]"):
             if item.startswith("safety review: "):
                 lines.append(f"⛔ {name or child_id}: {item[len('safety review: '):][:200]}")
+            elif item.startswith("safety review (rule): "):
+                lines.append(f"⛔ {name or child_id} (правило кода, модель считала это оговоркой): "
+                             f"{item[len('safety review (rule): '):][:200]}")
             elif item.startswith("safety fix: "):
                 lines.append(f"✏️ {name or child_id}: {item[len('safety fix: '):][:200]}")
     if library:
