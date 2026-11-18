@@ -58,3 +58,13 @@ Trial on 2026-11-18 (30 activities):
   blocked, all of them got a caution. Doubled rows agreed 5/5.
 - Cost: about $0.006 per generated and $0.012 per labelled activity, so roughly $27 of
   quota for 1500 rows.
+
+First portions on 2026-11-18: 390 labelled rows (block 201, fix 173, ok 16), ages spread
+evenly over 1-36 months; about 5% of the weekly Pro quota for 400 rows.
+
+- The teacher agreed with itself on 68 of 78 doubled rows (87%): the ceiling for a student
+  trained on its labels.
+- Age problems looked "missed" (subtle -> fix in about half the rows), but the generator
+  was wrong, not the teacher: problems were drawn for any age ("missing head support" for
+  a 12-month-old is no problem). The intended mode is not ground truth. Age problems are
+  now drawn only for the ages where they are real (`SUBTLE` ranges).

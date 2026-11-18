@@ -34,6 +34,13 @@ class Data(unittest.TestCase):
             self.assertIn(s["mode"], generate.MODES)
             self.assertEqual("hazard" in s, s["mode"] == "overt")
 
+    def test_an_age_problem_is_only_drawn_for_ages_where_it_is_one(self):
+        ranges = {p: (lo, hi) for p, lo, hi in generate.SUBTLE}
+        for s in generate.specs(400, random.Random(5)):
+            if s["mode"] == "subtle":
+                lo, hi = ranges[s["problem"]]
+                self.assertTrue(lo <= s["age_months"] <= hi, s)
+
     def test_activities_are_matched_to_specs_by_number(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "a.jsonl"

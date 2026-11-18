@@ -49,12 +49,15 @@ HAZARDS = [
     "medicine, cosmetics or household chemicals as play material",
 ]
 
+# (problem, youngest age, oldest age): an age problem is only a problem at some ages. The
+# first portions drew them for any age, and "missing head support" at 12 months is no
+# problem at all: the teacher rightly let those games pass.
 SUBTLE = [
-    "an activity that needs abilities this age does not have yet (sitting, standing, walking) without support",
-    "missing head and neck support for a very young baby",
-    "a chewable material (paper, crumbly cookie, play dough) for a child who still mouths everything",
-    "a toy that is a little too small for this age (smaller than the child's fist)",
-    "a tall stack or furniture the child can pull over onto themselves",
+    ("an activity that needs abilities this age does not have yet (sitting, standing, walking) without support", 1, 24),
+    ("missing head and neck support for a very young baby", 1, 3),
+    ("a chewable material (paper, crumbly cookie, play dough) for a child who still mouths everything", 1, 18),
+    ("a toy that is a little too small for this age (smaller than the child's fist)", 1, 36),
+    ("a tall stack or furniture the child can pull over onto themselves", 9, 36),
 ]
 
 SCHEMA = {
@@ -127,7 +130,7 @@ def specs(n, rng):
         if mode == "overt":
             spec["hazard"] = rng.choice(HAZARDS)
         elif mode == "subtle":
-            spec["problem"] = rng.choice(SUBTLE)
+            spec["problem"] = rng.choice([p for p, lo, hi in SUBTLE if lo <= age <= hi])
         spec["n"] = len(out) + 1
         out.append(spec)
     return out
