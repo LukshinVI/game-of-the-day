@@ -1285,62 +1285,6 @@ def shadow_run():
     )
 
 
-# obtain_candidate() alerts once for the whole chain instead.
-ALERT_ON_EXHAUSTION = True
-
-
-def obtain_candidate(history, target_date, child):
-    """Primary model -> fallback model -> library. Returns (candidate, attempts, origin, reason).
-
-    Raises (after one failure alert) only when nothing fits at all.
-    """
-    global ALERT_ON_EXHAUSTION, MODEL_OVERRIDE
-    birth_date = child["birth_date"] if child else None
-    child_id = child["id"] if child else None
-    reason = None
-
-    with connect_db() as con:
-        budget = fallback.daily_budget_usd()
-        spent = fallback.spent_today(con, target_date)
-    if budget is not None and spent >= budget:
-        reason = f"дневной бюджет модели исчерпан (${spent:.2f} из ${budget:.2f})"
-
-    saved = ALERT_ON_EXHAUSTION
-    ALERT_ON_EXHAUSTION = False
-    try:
-        if reason is None:
-            try:
-                candidate, attempts = select_candidate(history, target_date, birth_date)
-                return candidate, attempts, "model", None
-            except Exception as exc:  # noqa: BLE001 - every failure moves down the chain
-                quota = fallback.is_quota_error(exc)
-                reason = ("лимит подписки исчерпан" if quota else "основная модель не справилась") + f": {str(exc)[:200]}"
-                print(f"FALLBACK: {reason}", file=sys.stderr)
-
-            if not fallback.is_quota_error(reason) and fallback.fallback_model():
-                MODEL_OVERRIDE = fallback.fallback_model()
-                try:
-                    candidate, attempts = select_candidate(history, target_date, birth_date)
-                    return candidate, attempts, "fallback_model", f"{MODEL_OVERRIDE}; {reason}"
-                except Exception as exc:  # noqa: BLE001
-                    reason += f"; резервная модель {MODEL_OVERRIDE}: {str(exc)[:200]}"
-                    print(f"FALLBACK: {reason}", file=sys.stderr)
-                finally:
-                    MODEL_OVERRIDE = None
-    finally:
-        ALERT_ON_EXHAUSTION = saved
-
-    age = child_age_months(target_date, birth_date)
-    with connect_db() as con:
-        candidate = fallback.library_candidate(con, history, age, target_date, child_id)
-    if candidate is not None:
-        return candidate, 0, "library", reason
-
-    send_failure_alert([reason or "неизвестная причина", "в библиотеке нет подходящей игры"])
-    raise RuntimeError(f"Подготовка игры не удалась, резерва нет: {reason}")
-
-
-
 RESERVE_MIN = 3
 RESERVE_MONTHS_AHEAD = 2
 RESERVE_MAX_NEW_PER_RUN = 6
