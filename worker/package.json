@@ -8,7 +8,7 @@
   "license": "MIT",
   "type": "module",
   "devDependencies": {
-    "wrangler": "^4.128.0"
+    "wrangler": "^4.160.1"
   },
   "private": true
 }
