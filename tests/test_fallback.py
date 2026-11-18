@@ -7,7 +7,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -19,6 +19,17 @@ from src.preparation import fallback  # noqa: E402
 from src.preparation import game_preparation as gp  # noqa: E402
 
 TODAY = datetime.now(gp.MOSCOW).date().isoformat()
+
+
+def born(months):
+    """A birth date that many months before today (Moscow): children in the fixtures keep
+    their age whatever the date, so the tests do not expire (the shifted-clock CI run)."""
+    today = datetime.now(gp.MOSCOW).date()
+    year, month = divmod(today.year * 12 + today.month - 1 - months, 12)
+    return today.replace(year=year, month=month + 1, day=min(today.day, 28)).isoformat()
+
+
+BORN = born(14)
 
 
 def good(age, title="Башенка", skill="fine_motor"):
@@ -52,10 +63,10 @@ class ChainSetup(unittest.TestCase):
             target.start()
             self.addCleanup(target.stop)
         con = ch.connect_db(self.db)
-        self.child = ch.add_child(con, "Маша", "2025-09-07")
+        self.child = ch.add_child(con, "Маша", BORN)
         ch.add_recipient(con, self.child, "telegram", "555")
         con.close()
-        self.age = gp.child_age_months(TODAY, "2025-09-07")
+        self.age = gp.child_age_months(TODAY, BORN)
         self.models = []
 
     def library_game(self, title, age, skill, origin="model", child=None, mechanics=None):
@@ -196,7 +207,9 @@ class WarmReserve(ChainSetup):
 
     def test_a_baby_with_no_history_gets_a_reserve_game(self):
         con = ch.connect_db(self.db)
-        con.execute("UPDATE children SET birth_date = '2026-07-01'")  # a 4-month-old
+        # A 4-month-old today, whatever today is: a fixed birth date grows out of the reserve.
+        birth = date.fromisoformat(TODAY) - timedelta(days=4 * 30 + 15)
+        con.execute("UPDATE children SET birth_date = ?", (birth.isoformat(),))
         con.commit()
         fallback.add_reserve(con, gp.with_rendered_message(good(3, "Погремушка", "sensory")), "test")
         con.commit()
@@ -263,7 +276,7 @@ class OneMessagePerRun(ChainSetup):
     def setUp(self):
         super().setUp()
         con = ch.connect_db(self.db)
-        other = ch.add_child(con, "Петя", "2025-09-07")
+        other = ch.add_child(con, "Петя", BORN)
         ch.add_recipient(con, other, "telegram", "556")
         con.close()
 

@@ -19,6 +19,9 @@ SCRIPT = Path(__file__).resolve().parents[1] / "ops" / "backup" / "game-backup.s
 
 
 @unittest.skipUnless(shutil.which("sqlite3"), "sqlite3 CLI is required")
+# The shifted-clock CI run (libfaketime) fakes the clock of processes, not the file times
+# the kernel writes; these tests compare the two, so they only make sense on a real clock.
+@unittest.skipIf(os.environ.get("FAKETIME"), "the script compares file times with the clock")
 class BackupScript(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

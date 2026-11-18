@@ -22,6 +22,18 @@ from src.delivery import game_delivery as gd  # noqa: E402
 from src.ops import day_outcome_check as doc  # noqa: E402
 from src.preparation import game_preparation as gp  # noqa: E402
 
+
+def born(months):
+    """A birth date that many months before today (Moscow): children in the fixtures keep
+    their age whatever the date, so the tests do not expire (the shifted-clock CI run)."""
+    today = datetime.now(gp.MOSCOW).date()
+    year, month = divmod(today.year * 12 + today.month - 1 - months, 12)
+    return today.replace(year=year, month=month + 1, day=min(today.day, 28)).isoformat()
+
+
+OLDER = born(14)
+YOUNGER = born(8)
+
 SCHEMA = PROJECT_ROOT / "src" / "db" / "schema.sql"
 SCHEMA_V1 = PROJECT_ROOT / "tests" / "fixtures" / "schema_v1.sql"
 URL = "https://pathways.org/activities/kickin-back"
@@ -90,7 +102,7 @@ class Migration(TempDb):
         con.execute("INSERT INTO games(id, legacy_id, game_date, title) VALUES (1, '001', '2026-09-01', 'A')")
         con.commit()
         ch.migrate(con)
-        child = ch.add_child(con, "Старший", "2025-09-01", adopt_existing=True)
+        child = ch.add_child(con, "Старший", OLDER, adopt_existing=True)
         self.assertEqual(self.query("SELECT child_id FROM games"), [(child,)])
 
     def test_schema_13_allows_attention_and_keeps_observations(self):
@@ -148,7 +160,7 @@ class Recipients(TempDb):
         con = self.con()
         with self.assertRaises(ValueError):
             ch.add_child(con, "X", "2025-13-01")
-        child = ch.add_child(con, "Младший", "2026-03-15")
+        child = ch.add_child(con, "Младший", YOUNGER)
         with self.assertRaises(ValueError):
             ch.add_recipient(con, child, "whatsapp", "1")
         with self.assertRaises(ValueError):
@@ -164,8 +176,8 @@ class TwoChildren(TempDb):
     def setUp(self):
         super().setUp()
         con = self.con()
-        self.older = ch.add_child(con, "Старший", "2025-09-01")
-        self.younger = ch.add_child(con, "Младший", "2026-03-01")
+        self.older = ch.add_child(con, "Старший", OLDER)
+        self.younger = ch.add_child(con, "Младший", YOUNGER)
         ch.add_recipient(con, self.older, "vk", "3000001")
         ch.add_recipient(con, self.younger, "telegram", "555")
         ch.add_recipient(con, self.younger, "vk", "777")
@@ -197,8 +209,8 @@ class TwoChildren(TempDb):
         self.assertIsNone(self.prepare(self.by_age))
         games = self.query("SELECT child_id, age_months FROM games ORDER BY child_id")
         expected = [
-            (self.older, gp.child_age_months(self.today, "2025-09-01")),
-            (self.younger, gp.child_age_months(self.today, "2026-03-01")),
+            (self.older, gp.child_age_months(self.today, OLDER)),
+            (self.younger, gp.child_age_months(self.today, YOUNGER)),
         ]
         self.assertEqual(games, expected)
         deliveries = self.query(
@@ -225,7 +237,7 @@ class TwoChildren(TempDb):
             return self.by_age(history, target_date, birth_date)
 
         self.prepare(capture)
-        self.assertEqual(seen, {"2025-09-01": ["Старая"], "2026-03-01": []})
+        self.assertEqual(seen, {OLDER: ["Старая"], YOUNGER: []})
 
     def test_a_manual_run_can_be_limited_to_one_child(self):
         calls = []
@@ -239,11 +251,11 @@ class TwoChildren(TempDb):
             gp.prepare_run(self.today, only_child=self.younger)
             with self.assertRaises(RuntimeError):
                 gp.prepare_run(self.today, only_child=999)
-        self.assertEqual(calls, ["2026-03-01"])
+        self.assertEqual(calls, [YOUNGER])
 
     def test_a_rerun_is_free_and_one_failing_child_does_not_block_the_other(self):
         def younger_fails(history, target_date, birth_date):
-            if birth_date == "2026-03-01":
+            if birth_date == YOUNGER:
                 raise RuntimeError("model down")
             return self.by_age(history, target_date, birth_date)
 
@@ -258,7 +270,7 @@ class TwoChildren(TempDb):
             return self.by_age(history, target_date, birth_date)
 
         self.assertIsNone(self.prepare(counting))
-        self.assertEqual(calls, ["2026-03-01"])  # the older child's game already existed
+        self.assertEqual(calls, [YOUNGER])  # the older child's game already existed
 
     def send(self, vk=None, telegram=None, **kwargs):
         vk = vk or mock.Mock(side_effect=[101, 102, 103])
@@ -370,7 +382,7 @@ class SingleChildMode(TempDb):
 class PausedChildren(TempDb):
     def test_a_child_without_active_recipients_costs_no_model_call_and_no_fallback(self):
         con = self.con()
-        child = ch.add_child(con, "Пауза", "2025-09-01")
+        child = ch.add_child(con, "Пауза", OLDER)
         ch.add_recipient(con, child, "telegram", "555")
         con.execute("UPDATE recipients SET active = 0")
         con.commit()
@@ -422,8 +434,8 @@ class TestChild(TempDb):
     def test_unattributed_vk_feedback_skips_the_test_childs_newer_game(self):
         from src.feedback import storage
         con = self.con()
-        family = ch.add_child(con, "Тимофей", "2025-09-07")
-        test = ch.add_child(con, "Тест", "2025-09-07", is_test=True)
+        family = ch.add_child(con, "Тимофей", OLDER)
+        test = ch.add_child(con, "Тест", OLDER, is_test=True)
         for child, peer, title in ((family, "3000001", "Семейная"), (test, "300000002", "Тестовая")):
             ch.add_recipient(con, child, "vk", peer)
             game = con.execute(
@@ -441,7 +453,7 @@ class TestChild(TempDb):
     def test_a_second_message_goes_to_the_dialogs_newest_game(self):
         from src.feedback import storage
         con = self.con()
-        child = ch.add_child(con, "Тест", "2025-09-07", is_test=True)
+        child = ch.add_child(con, "Тест", OLDER, is_test=True)
         ch.add_recipient(con, child, "vk", "300000002")
         ids = []
         for day, title in (("2026-11-08", "Старая"), ("2026-11-15", "Новая")):
@@ -462,7 +474,7 @@ class TestChild(TempDb):
     def test_a_vk_reply_to_a_game_lands_on_that_game(self):
         from src.feedback import storage
         con = self.con()
-        child = ch.add_child(con, "Маша", "2025-09-07")
+        child = ch.add_child(con, "Маша", OLDER)
         ch.add_recipient(con, child, "vk", "3000001")
         ids = []
         for day, title, message in (("2026-11-14", "Мячики", "133"), ("2026-11-15", "Башня", "160")):
@@ -485,8 +497,8 @@ class TestChild(TempDb):
 
     def test_the_daily_run_skips_test_children_a_manual_run_reaches_them(self):
         con = self.con()
-        family = ch.add_child(con, "Тимофей", "2025-09-07")
-        test = ch.add_child(con, "Тест", "2025-09-07", is_test=True)
+        family = ch.add_child(con, "Тимофей", OLDER)
+        test = ch.add_child(con, "Тест", OLDER, is_test=True)
         ch.add_recipient(con, family, "vk", "1")
         ch.add_recipient(con, test, "vk", "2")
         seen = []
