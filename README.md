@@ -173,7 +173,7 @@ The Cloudflare Worker makes no model call: VK and Telegram feedback reach the sa
 
 | Suite | What it covers | Runs |
 |---|---|---|
-| `tests/` (Python, 480+ tests, 82% line coverage of `src/`, ruff) | delivery state machine, feedback storage idempotency, preparation validation and message layout, child age, model backends, backup script, outcome check, ops bot, multi-child, product bot onboarding | every push (CI) |
+| `tests/` (Python, 510+ tests, 82% line coverage of `src/`, ruff) | delivery state machine, feedback storage idempotency, preparation validation and message layout, child age, model backends, backup script, outcome check, ops bot, multi-child, product bot onboarding | every push (CI) |
 | `worker/tests/` | VK callback routing (private dialogs only, sender passed on) and reaction labels | every push (CI) |
 | `tests/` on a shifted clock | the same suite a year ahead and on a leap-day midnight (libfaketime): a test that silently depends on today's date fails in the pull request | every push (CI) |
 | `evals/preparation/` (20 synthetic cases, `--repeat`) | the real selection path (prompt → model → validator → reviewer → retries) scored by the gate, deterministic lint and a model judge, with the spread across repeats; atypical inputs and a prompt injection through a parent's quote; compares models (e.g. Opus vs Sonnet) | manual, on the host (spends quota) |
@@ -207,7 +207,7 @@ src/
   delivery/      delivery state machine, messenger sender, game cards, birthday greetings
   feedback/      queue consumer, idempotent storage, insights and the child profile
   ops/           outcome check, ops bot, alerts, reports, SLOs, digest, album, retention
-  bot/           product Telegram bot: invites, onboarding, feedback
+  bot/           product Telegram bot and VK dialog: invites, onboarding, sharing, feedback, erasure
   db/            schema, additive migrations, children and recipients
 worker/
   src/           Cloudflare Worker: VK callback ingress
@@ -215,6 +215,7 @@ worker/
 assets/          card pictures and the album font (Nunito, SIL OFL)
 ops/             systemd units, timers and runbooks (preparation, delivery, feedback, backup, bot, outcome check)
 evals/           selection and safety evals, model comparison reports
+experiments/     outside production: a LoRA student of the safety reviewer
 docs/            architecture, reliability, AI design, deployment, roadmap, postmortems
 legacy/          the original Google Apps Script sender (reference only)
 ```
@@ -226,6 +227,7 @@ Runbooks: [database backup](ops/backup/README.md) · [manual delivery control](o
 - In daily use since 2026-09-01; several families on VK and Telegram.
 - In October the only host was lost together with its database. The service was rebuilt from this repository in one night, with the history recovered from the messenger and nothing re-sent ([postmortem](docs/postmortems/2026-10-host-loss.md)); backups now leave the host encrypted and are restore-tested weekly.
 - Selection runs on Claude Sonnet in headless Claude Code, chosen over Opus by the [selection evals](evals/preparation/reports/2026-11-08-comparison.md); Haiku and a library of validated games are the fallback.
+- Experiment, not in production: a QLoRA student of the safety reviewer (Qwen2.5-7B, 351 rows labelled by a teacher). Training takes it from 10/15 to 13/15 unsafe caught on its own and from 3/12 to 0/12 safe blocked, but it still misses one case, so the production reviewer stays ([results](experiments/lora-reviewer/README.md#results-2026-11-19)).
 
 ## Status
 

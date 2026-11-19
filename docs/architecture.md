@@ -59,7 +59,7 @@ controls. They share nothing but the database.
 | Feedback ingress (Telegram) | `src/bot/product_bot.py` | always | stores the text with an explicit game id (reply-to message or the chat's latest game) |
 | Feedback insights | `src/feedback/insights.py` | every 2 minutes, a group settles 3 minutes | acknowledged at once on receipt (`src/feedback/reactions.py`); merges messages sent together, extracts observations with verbatim quotes, rebuilds the child's profile, separates wishes about the service, replies once; with `GAME_FEEDBACK_CONTEXT` it sees the child's recent games and recent observations, so it can attach words to an earlier game, note where the family plays (`setting`: bedtime, outdoors, on the go) and how recent games went (`recent`), and drop an observation the parent corrects |
 | Theme of the month | `src/feedback/month_theme.py` | in delivery and preparation | `GAME_MONTH_THEME`: a skill the family would like more of («тема»); about every other game trains it; never a goal or a measure |
-| Product bot | `src/bot` | always | invite-only onboarding, FAQ, `/children`, `/add_child`, `/pause`, `/resume`, `/idea` |
+| Product bot | `src/bot` | always | invite-only onboarding, FAQ, `/children`, `/add_child`, `/pause`, `/resume`, `/idea`; `/share` and `/stop_me` (`src/bot/channel_link.py`: another chat gets the same children after the owner's approval, at most 4 chats per child; one chat stops, never the last) |
 | Ops bot | `src/ops/manual_bot.py` | always | `/status`, `/send`, `/retry` with one-time codes; `/users`, `/llm`, `/ideas`; forwards product events |
 | Reports | `src/ops/llm_report.py`, `users_report.py` | Mondays 10:30; on demand | model quality, latency, tokens, cost, reserve days; families; wishes |
 | Parents' digest | `src/ops/weekly_digest.py` | Sundays 19:00 | the week's games and skills, what went well, one or two home ideas for next week (no age norms), a monthly question; with `GAME_DIGEST_PULSE` a one-tap «полезно ли?» score; optionally (off unless `GAME_DIGEST_STAR_REQUEST=1`) a one-time request to star the project on GitHub |
@@ -107,7 +107,7 @@ quarantine
 channel_links · erasures · erasure_addresses · exit_surveys
 ```
 
-All migrations are additive (`src/db/children.py migrate`, schema version 22): the
+All migrations are additive (`src/db/children.py migrate`, schema version 23): the
 previous code keeps working on a migrated database, which is what makes a code rollback
 safe. A database with no children runs in the original single-child mode from the
 environment.

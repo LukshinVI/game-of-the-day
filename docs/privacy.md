@@ -86,6 +86,10 @@ holding its data rotates out (purge + 14 days, since the archive itself is in th
 backups of those days). The owner is told only that a family left or came back, and
 the survey answer.
 
+A chat that joined through `/share` («поделиться») does not erase the family: there
+«удалить наши данные» only stops that chat's games (like `/stop_me`), and the family's
+data stays until the chat that subscribed the children asks for it.
+
 **What cannot be deleted by us:** the chat history kept by VK or Telegram themselves;
 objects GitHub may keep for a while after a force-push (ciphertext only, the key never
 leaves the host and the owner's offline copy).

@@ -68,12 +68,18 @@ production behind a flag and was tested there; all were switched on together on
 | Theme of the month (`GAME_MONTH_THEME`) | live |
 | «Полезно ли?» score in the digest (`GAME_DIGEST_PULSE`) | live |
 
-After 2.0 (in [Unreleased](../CHANGELOG.md)):
+## Release 2.1.0
+
+Theme: shared with the family. Released 2026-11-19.
 
 | feature | state |
 |---|---|
+| Sharing a child with the second parent or a grandmother (`/share`, «поделиться»), stopping one chat (`/stop_me`) | live |
 | Instant acknowledgement, considered reply in 3–5 minutes; VK «Ответить» attaches to that game | live |
 | Feedback in context: earlier games, where the family plays, recent trend, corrections (`GAME_FEEDBACK_CONTEXT`) | live |
+| «Понравилось» + «Сложно» means hard but enjoyable, not "make it easier" | live |
+| Night preparation and caps for 50 children ([scaling](scaling.md), step 1) | live |
+| Safety evals on labelled cases (`evals/safety/`), the outside watcher, VK quarantine | live |
 | Album of the month (`GAME_ALBUM`) | built, off until the owner decides |
 
 A referral is not needed now.
@@ -87,7 +93,11 @@ A referral is not needed now.
 ## Backlog (agreed, not scheduled)
 
 - **Referral.** A family invites another; needs a limit and the owner's approval like any
-  application, so it never becomes open sign-up.
+  application, so it never becomes open sign-up. Sharing (2.1.0) is not a referral: it
+  adds a chat to the same children, never a new family.
+- **Parents decide what to avoid.** A parent's "not yet" (a game the child is not ready
+  for) is asked about again later; a "never" (health, fear) is not asked again. A
+  parent's idea, collected for the next release.
 
 ## Later
 

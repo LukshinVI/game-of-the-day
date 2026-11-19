@@ -8,6 +8,9 @@ Not part of production: nothing in `src/` imports this folder, and it never writ
 production database. In production the reviewer stays as it is; a student model could at
 most run in shadow next to it after a long comparison.
 
+Status (2026-11-19): steps 1–3 done, step 4 measured with transformers on a rented GPU
+instead of vLLM; see [Results](#results-2026-11-19). The bar is not reached yet.
+
 ## Plan
 
 1. **Data** — synthetic activities (`generate.py`) labelled by a teacher model with the
