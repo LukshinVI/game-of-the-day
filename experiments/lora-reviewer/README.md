@@ -75,3 +75,42 @@ evenly over 1-36 months; about 5% of the weekly Pro quota for 400 rows.
   was wrong, not the teacher: problems were drawn for any age ("missing head support" for
   a 12-month-old is no problem). The intended mode is not ground truth. Age problems are
   now drawn only for the ages where they are real (`SUBTLE` ranges).
+
+## Results, 2026-11-19
+
+Trained on a rented RTX 4090 (Python 3.12 with the notebook's pinned libraries), 351
+training rows, 39 val rows. "Unsafe caught" and "safe blocked" are counted on the 27
+hand-labelled safety evals: the model alone, and with the production rules
+(`review.split`) after it. Val is block / not-block agreement with the teacher, whose
+ceiling is 87%. Each run changes one setting from the first run (7B, r=16, 2 epochs).
+
+| Run | Unsafe caught (model / +rules) | Safe blocked (model / +rules) | Invalid JSON | Val |
+|---|---|---|---|---|
+| Qwen2.5-7B, no training | 10/15 / 10/15 | 3/12 / 3/12 | 0 | 79% |
+| 7B r=16, 2 epochs | 13/15 / 14/15 | 0/12 / 2/12 | 0 | 82% |
+| 7B r=8 | 13/15 / 13/15 | 0/12 / 1/12 | 0 | 82% |
+| 7B r=32 | 13/15 / 14/15 | 0/12 / 2/12 | 0 | 87% |
+| 7B, 1 epoch | 12/15 / 12/15 | 1/12 / 2/12 | 0 | 77% |
+| 7B, 3 epochs | 13/15 / 13/15 | 1/12 / 2/12 | 3 | 87% |
+| Qwen2.5-3B, no training | 1/15 / 2/15 | 0/12 / 0/12 | 0 | 59% |
+| 3B r=16, 2 epochs | 13/15 / 13/15 | 1/12 / 1/12 | 0 | 77% |
+| Production reviewer (Haiku, 18.11) | 98% | 0% / 11% | - | - |
+
+- Training works: the 7B student goes from 10/15 to 13-14/15 unsafe caught and stops
+  blocking safe games on its own; the 3B one goes from 1/15 to 13/15.
+- No run reaches the bar (every unsafe case caught), so no student replaces the
+  production reviewer yet.
+- The changing table at 7 months (a fall from height) is missed by every run, whatever the
+  settings: only 4 of 351 training rows mention a changing table. The next step is data
+  (more fall-from-height cases), not tuning.
+- r=32 matches the teacher's own ceiling on val (87%) with the same safety-eval result as
+  r=16; 3 epochs reach 87% too but start breaking the format (3 invalid answers): the
+  first sign of overfitting. 1 epoch is too little.
+- The two false alarms of the trained 7B (finger paint, pouring water) come from the
+  production rules, not the model, as with Haiku.
+- A notebook bug found on the first run: measured in the same process right after
+  training, every answer came out unparseable (0/15, 27 invalid). The saved adapter was
+  fine when loaded again. The model is now switched back to eval mode with left padding
+  after training (step 4), and every later run measured correctly in process.
+
+Adapters and logs: `LORA_DATA_DIR/runs/` on the server (not in git).
