@@ -7,6 +7,8 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-19 — Shared with the family
+
 ### Changed
 - Preparation code split by responsibility (`chain`, `backend`, `gate`, `layout`, `store`,
   `alerts`; `game_preparation.py` stays the entry point, 1 418 → ~400 lines) and seven
@@ -545,7 +547,8 @@ messenger and nothing re-sent ([postmortem](https://github.com/LukshinVI/game-of
 - Daily delivery to VK from Google Sheets + Apps Script, with a retry window.
 - The first feedback agent and its eval harness.
 
-[Unreleased]: ../../compare/v2.0.0...HEAD
+[Unreleased]: ../../compare/v2.1.0...HEAD
+[2.1.0]: ../../compare/v2.0.0...v2.1.0
 [2.0.0]: ../../compare/v1.9.0...v2.0.0
 [1.9.0]: ../../compare/v1.8.0...v1.9.0
 [1.8.0]: ../../compare/v1.7.1...v1.8.0
