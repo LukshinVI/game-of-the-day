@@ -25,6 +25,8 @@ import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 
+from src.bot import channel_link
+
 ERASURE_GRACE_DAYS = 14
 BACKUP_DAYS = 14  # GAME_OFFSITE_MAX_DAYS and GAME_BACKUP_RETAIN_DAYS (docs/privacy.md)
 CONFIRM_TTL = timedelta(hours=1)
@@ -222,6 +224,11 @@ def handle(con, channel, address, text, now, notify):
     if current is not None:
         return archived_message(con, current, channel, address, words, text, now, notify)
     if words in FORGET:
+        if channel_link.shared_in(con, channel, address) and channel_link.can_leave(con, channel, address):
+            # Someone the family shared its children with (a grandmother) only stops
+            # their own games: erasing the family is for the family to decide.
+            return (channel_link.leave(con, channel, address, "")
+                    + "\n\nУдалить данные семьи может только тот, кто подписывал детей.")
         return request(con, channel, address, now)
     return None
 

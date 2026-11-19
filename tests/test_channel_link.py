@@ -246,6 +246,17 @@ class Share(unittest.TestCase):
         self.assertEqual(self.q("SELECT address FROM recipients WHERE child_id = 2"), [("556",)])
         self.assertEqual(self.q("SELECT count(*) FROM user_events WHERE kind = 'leave'"), [(1,)])
 
+    def test_forget_from_a_shared_chat_only_stops_its_games(self):
+        start = self.share_link().split("start=")[1].split()[0]
+        self.tg("556", f"/start {start}")
+        manual_bot.decide_channel_link(int(self.events()[0][0].split(":")[1]), True, db_path=self.db)
+        reply = self.tg("556", "/forget")
+        self.assertIn("больше не придут", reply)
+        self.assertIn("только тот, кто подписывал детей", reply)
+        self.assertEqual(self.q("SELECT address FROM recipients WHERE child_id = 2"), [(TG,)])
+        self.assertEqual(self.q("SELECT count(*) FROM erasures"), [(0,)])
+        self.assertIn("удалить", self.tg(TG, "/forget").lower())  # the family itself still can
+
     def test_vk_family_shares_and_leaves_by_words(self):
         reply = self.vk(VK, "Поделиться")
         self.assertIn("не приглашение", reply)

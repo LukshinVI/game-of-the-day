@@ -298,15 +298,25 @@ def shared_in(con, channel, address):
     ).fetchone() is not None
 
 
+def only_receiver(con, channel, address, kids):
+    """Names of the children nobody but this chat receives."""
+    return [k["name"] for k in kids
+            if con.execute("SELECT count(*) FROM recipients WHERE child_id = ? AND NOT (channel = ? AND address = ?)",
+                           (k["id"], channel, address)).fetchone()[0] == 0]
+
+
+def can_leave(con, channel, address):
+    kids = children_of(con, channel, address)
+    return bool(kids) and not only_receiver(con, channel, address, kids)
+
+
 def leave(con, channel, address, pause_hint):
     """Stop the games for this chat only. The last chat of a child cannot leave: the
     games would go nowhere; it can pause or erase instead. Returns the reply or None."""
     kids = children_of(con, channel, address)
     if not kids:
         return None
-    alone = [k["name"] for k in kids
-             if con.execute("SELECT count(*) FROM recipients WHERE child_id = ? AND NOT (channel = ? AND address = ?)",
-                            (k["id"], channel, address)).fetchone()[0] == 0]
+    alone = only_receiver(con, channel, address, kids)
     if alone:
         return (f"Игры для {', '.join(alone)} получаете только вы, поэтому отключиться нельзя — "
                 f"игры перестали бы приходить совсем. {pause_hint}")
