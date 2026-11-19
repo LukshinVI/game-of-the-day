@@ -29,6 +29,12 @@ on the commit that completed each milestone.
   the next game. Found by the owner in the live VK test.
 
 ### Added
+- Sharing a child with another person (the second parent, a grandmother): `/share` in
+  Telegram, «поделиться» in VK gives a one-time link and VK code; the other person gets
+  the games of the same children (no new child, no questionnaire) after the owner's
+  approval, at most 4 chats per child. `/stop_me` / «больше не присылать мне» stops the
+  games for one chat, never the last one. A child subscribed by a chat that joined through
+  a share is marked 👥 in the owner's notification. Schema 23: `channel_links.kind`.
 - Safety evals on labelled cases (`evals/safety/`): 27 hand-written activities with the
   right answer known (15 unsafe, 12 safe) through the word gate and the reviewer, three
   times each. First run: both lines together stopped 15/15 unsafe; the word gate alone 4/15;

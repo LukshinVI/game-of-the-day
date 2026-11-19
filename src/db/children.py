@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 
 CHANNELS = ("vk", "telegram")
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 23
 
 MIGRATION_2 = """
 CREATE TABLE IF NOT EXISTS children (
@@ -409,6 +409,10 @@ def migrate(con):
     con.executescript(MIGRATION_18)
     con.executescript(MIGRATION_21)
     con.executescript(MIGRATION_22)
+    # Schema 23: a link code is either the family's other messenger or a share with
+    # another person (src/bot/channel_link.py).
+    if "kind" not in columns(con, "channel_links"):
+        con.execute("ALTER TABLE channel_links ADD COLUMN kind TEXT NOT NULL DEFAULT 'channel'")
     # Schema 16: an erased family still counts in the retention cohorts (src/ops/cohorts.py).
     for column in ("first_game", "last_game"):
         if column not in columns(con, "erasures"):

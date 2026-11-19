@@ -1,4 +1,5 @@
-"""A family already subscribed in one messenger adds the other one.
+"""A family already subscribed in one messenger adds the other one, or shares its
+children with another person (the second parent, a grandmother).
 
     1. In the first channel the parent asks ("подключить телеграм" in VK, /link_vk in
        Telegram) and gets a one-time code, valid CODE_TTL_HOURS.
@@ -7,6 +8,12 @@
        person controls both chats, so nobody can attach to another family's child.
     3. The owner approves or rejects (ops bot buttons). Only then the second channel is
        added as a recipient of the same children: no new child is created.
+
+Sharing (kind 'share') works the same way, with three differences: the code is
+redeemed by another person in either messenger; that person gets the games of the same
+children (no new child, no questionnaire); at most MAX_RECIPIENTS chats per child, so a
+share does not turn into an open invite. «Перестать получать самому» (leave) removes one
+chat from the children it shares, never the last one.
 
 Deterministic code only. Runs in the caller's transaction; the caller commits.
 Messages to families go through the outbox; owner-facing events through user_events.
@@ -18,6 +25,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 CODE_TTL_HOURS = 24
+MAX_RECIPIENTS = 4  # chats per child: two parents, a grandmother, a nanny
 ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # no 0/O, 1/I/L: it is read and retyped
 CODE_LENGTH = 8
 START_PREFIX = "link_"
@@ -83,13 +91,14 @@ def issue(con, from_channel, from_address, to_channel, now=None, code=None):
     if already:
         return f"Игры уже приходят и в {LABEL[to_channel]} 🙂"
     if con.execute(
-        "SELECT 1 FROM channel_links WHERE from_channel = ? AND from_address = ? AND status = 'requested'",
+        "SELECT 1 FROM channel_links WHERE from_channel = ? AND from_address = ? AND status = 'requested' "
+        "AND kind = 'channel'",
         (from_channel, from_address),
     ).fetchone():
         return "Заявка на подключение второго мессенджера уже у нас — скоро подтвердим 🙏"
     con.execute(
         "UPDATE channel_links SET status = 'replaced' WHERE from_channel = ? AND from_address = ? "
-        "AND status = 'issued'",
+        "AND status = 'issued' AND kind = 'channel'",
         (from_channel, from_address),
     )
     code = code or new_code()
@@ -112,6 +121,8 @@ def issue(con, from_channel, from_address, to_channel, now=None, code=None):
 def redeem(con, code, to_channel, to_address, now=None):
     """The second channel presents the code. Returns the reply for the parent."""
     row = con.execute("SELECT * FROM channel_links WHERE code_hash = ?", (hash_code(code.upper()),)).fetchone()
+    if row is not None and row["kind"] == "share":
+        return redeem_share(con, row, to_channel, to_address, now)
     if (row is None or row["status"] != "issued" or row["to_channel"] != to_channel
             or row["expires_at"] < _utc(now)):
         return "Код недействителен или устарел. Попросите новый там, где уже получаете игры."
@@ -141,6 +152,8 @@ def decide(con, link_id, approve):
         return "Заявка не найдена."
     if row["status"] != "requested":
         return f"Заявка #{link_id} уже {'одобрена' if row['status'] == 'approved' else 'закрыта'}."
+    if row["kind"] == "share":
+        return decide_share(con, row, approve)
     to = (row["to_channel"], row["to_address"])
     if not approve:
         con.execute("UPDATE channel_links SET status = 'rejected', decided_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -162,6 +175,146 @@ def decide(con, link_id, approve):
     queue(con, row["from_channel"], row["from_address"],
           f"Готово! Игры для {names} теперь приходят и в {LABEL[row['to_channel']]} 🎉")
     return f"✅ Заявка #{link_id} одобрена: {describe(*to)} получает игры для {names}."
+
+
+# --- sharing with another person ----------------------------------------------------
+
+SHARE_EXPIRED = "Ссылка недействительна или устарела. Попросите новую у того, кто ею поделился."
+
+
+def recipients_of(con, child_id):
+    return con.execute("SELECT count(*) FROM recipients WHERE child_id = ?", (child_id,)).fetchone()[0]
+
+
+def full(con, kids):
+    return [k for k in kids if recipients_of(con, k["id"]) >= MAX_RECIPIENTS]
+
+
+def share(con, channel, address, now=None, code=None):
+    """A share code for a subscribed family (Telegram /share, VK «поделиться»)."""
+    kids = children_of(con, channel, address)
+    if not kids:
+        return None
+    crowded = full(con, kids)
+    if crowded:
+        return (f"Игры для {', '.join(k['name'] for k in crowded)} уже получают {MAX_RECIPIENTS} человека — "
+                "больше подключить нельзя.")
+    if con.execute(
+        "SELECT 1 FROM channel_links WHERE from_channel = ? AND from_address = ? AND status = 'requested' "
+        "AND kind = 'share'",
+        (channel, address),
+    ).fetchone():
+        return "Заявка на подключение ещё одного человека уже у нас — скоро подтвердим 🙏"
+    con.execute(
+        "UPDATE channel_links SET status = 'replaced' WHERE from_channel = ? AND from_address = ? "
+        "AND status = 'issued' AND kind = 'share'",
+        (channel, address),
+    )
+    code = code or new_code()
+    now = now or datetime.now(timezone.utc)
+    con.execute(
+        "INSERT INTO channel_links(code_hash, from_channel, from_address, to_channel, expires_at, kind) "
+        "VALUES (?, ?, ?, ?, ?, 'share')",
+        (hash_code(code), channel, address, channel, _utc(now + timedelta(hours=CODE_TTL_HOURS))),
+    )
+    names = ", ".join(k["name"] for k in kids)
+    username = bot_username(con)
+    telegram = (f"https://t.me/{username}?start={START_PREFIX}{code}" if username
+                else f"команда нашему Telegram-боту: /start {START_PREFIX}{code}")
+    # The invitation goes as its own message right after the reply, so it can be
+    # forwarded as is.
+    queue(con, channel, address,
+          f"Вас пригласили получать «Игру дня» для {names} 💛\n\n"
+          f"В Telegram откройте ссылку и нажмите «Старт»:\n{telegram}\n\n"
+          f"Или во ВКонтакте напишите в сообщения нашего сообщества:\nкод {code}")
+    return (
+        f"Перешлите следующее сообщение тому, с кем хотите делиться играми для {names}. "
+        "Это не приглашение подписать другого ребёнка: человек будет получать игры этих же детей, "
+        "а его отзывы попадут в общую копилку.\n\n"
+        f"Ссылка одноразовая, действует {CODE_TTL_HOURS} часа. Подключение мы подтвердим."
+    )
+
+
+def redeem_share(con, row, to_channel, to_address, now=None):
+    if row["status"] != "issued" or row["expires_at"] < _utc(now):
+        return SHARE_EXPIRED
+    kids = children_of(con, row["from_channel"], row["from_address"])
+    if not kids:
+        return SHARE_EXPIRED
+    names = ", ".join(k["name"] for k in kids)
+    own = children_of(con, to_channel, to_address)
+    if {k["id"] for k in kids} <= {k["id"] for k in own}:
+        return f"Вы уже получаете игры для {names} 🙂"
+    if full(con, kids):
+        return f"Игры для {names} уже получают {MAX_RECIPIENTS} человека — больше подключить нельзя."
+    con.execute(
+        "UPDATE channel_links SET status = 'requested', to_channel = ?, to_address = ?, requested_at = ? "
+        "WHERE id = ?",
+        (to_channel, to_address, _utc(now), row["id"]),
+    )
+    text = (f"👥 Заявка #{row['id']}: «поделиться» — ещё один человек будет получать игры тех же детей, "
+            "новых детей не создаётся.\n"
+            f"Делится: {describe(row['from_channel'], row['from_address'])} (дети: {names})\n"
+            f"Получатель: {describe(to_channel, to_address)}")
+    if own:
+        text += f"\n⚠️ У получателя уже есть свои дети: {', '.join(k['name'] for k in own)}"
+    notify_owner(con, to_address, f"link:{row['id']}", text)
+    return (f"Спасибо! 🙏 Заявка отправлена. Как только подтвердим, вам начнут приходить игры для {names} — "
+            "мы напишем.")
+
+
+def decide_share(con, row, approve):
+    to = (row["to_channel"], row["to_address"])
+    kids = children_of(con, row["from_channel"], row["from_address"])
+    names = ", ".join(k["name"] for k in kids)
+    crowded = full(con, kids)
+    if not approve or crowded or not kids:
+        con.execute("UPDATE channel_links SET status = 'rejected', decided_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (row["id"],))
+        queue(con, *to, "К сожалению, подключить не получилось. Если это ошибка, попросите новую ссылку "
+                        "у того, кто ею поделился 💛")
+        why = f" (у {', '.join(k['name'] for k in crowded)} уже {MAX_RECIPIENTS} получателя)" if crowded else ""
+        return f"❌ Заявка #{row['id']} «поделиться» отклонена{why}."
+    for kid in kids:
+        con.execute("INSERT OR IGNORE INTO recipients(child_id, channel, address) VALUES (?, ?, ?)",
+                    (kid["id"], *to))
+    if row["to_channel"] == "telegram":
+        con.execute("INSERT OR IGNORE INTO members(chat_id) VALUES (?)", (row["to_address"],))
+    con.execute("UPDATE channel_links SET status = 'approved', decided_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (row["id"],))
+    queue(con, *to, f"Готово! 🎉 Теперь игры для {names} будут приходить и вам, каждое утро в "
+                    "10:00 по Москве. Отзыв можно написать в ответ на игру — он попадёт в общую копилку.")
+    queue(con, row["from_channel"], row["from_address"],
+          f"Готово! Игры для {names} теперь получает ещё один человек 🎉")
+    return f"✅ Заявка #{row['id']} «поделиться» одобрена: {describe(*to)} получает игры для {names}."
+
+
+def shared_in(con, channel, address):
+    """True when this chat joined through a share: its new children are worth a look."""
+    return con.execute(
+        "SELECT 1 FROM channel_links WHERE kind = 'share' AND status = 'approved' "
+        "AND to_channel = ? AND to_address = ? LIMIT 1",
+        (channel, address),
+    ).fetchone() is not None
+
+
+def leave(con, channel, address, pause_hint):
+    """Stop the games for this chat only. The last chat of a child cannot leave: the
+    games would go nowhere; it can pause or erase instead. Returns the reply or None."""
+    kids = children_of(con, channel, address)
+    if not kids:
+        return None
+    alone = [k["name"] for k in kids
+             if con.execute("SELECT count(*) FROM recipients WHERE child_id = ? AND NOT (channel = ? AND address = ?)",
+                            (k["id"], channel, address)).fetchone()[0] == 0]
+    if alone:
+        return (f"Игры для {', '.join(alone)} получаете только вы, поэтому отключиться нельзя — "
+                f"игры перестали бы приходить совсем. {pause_hint}")
+    con.execute("DELETE FROM recipients WHERE channel = ? AND address = ?", (channel, address))
+    names = ", ".join(k["name"] for k in kids)
+    notify_owner(con, address, "leave",
+                 f"🚪 {describe(channel, address)} больше не получает игры для {names} (остальные получатели остались)")
+    return f"Готово: сюда игры для {names} больше не придут. Остальные получатели продолжат их получать 💛"
 
 
 def queue(con, channel, address, text):

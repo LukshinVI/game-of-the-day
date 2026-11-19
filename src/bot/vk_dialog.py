@@ -58,6 +58,8 @@ HELP = (
     "«добавить ребёнка» — подписать ещё одного малыша\n"
     "«другую» — другая игра на сегодня, если эта не подходит\n"
     "«подключить телеграм» — получать игры ещё и в Telegram\n"
+    "«поделиться» — чтобы игры получал и второй родитель, бабушка\n"
+    "«больше не присылать мне» — перестать получать игры самому (другим они придут)\n"
     "«удалить наши данные» — отписаться и стереть данные\n"
     "«отмена» — прервать анкету"
 ).format(time=pb.DELIVERY_TIME_MSK)
@@ -71,6 +73,8 @@ COMMANDS = {
     "отмена": "cancel", "/cancel": "cancel",
     "подключить телеграм": "link_telegram", "подключить телеграмм": "link_telegram",
     "подключить telegram": "link_telegram", "подключить тг": "link_telegram",
+    "поделиться": "share", "/share": "share",
+    "больше не присылать мне": "stop_me", "не присылать мне": "stop_me", "/stop_me": "stop_me",
 }
 TELEGRAM_WORDS = ("телеграм", "телеграмм", "telegram", "тг")
 VK_WORDS = ("вконтакте", "вк", "vk")
@@ -149,6 +153,11 @@ class VkDialog:
             return "Отменено." if current else HELP
         if command == "link_telegram":
             return channel_link.issue(con, "vk", peer, "telegram")
+        if command == "share":
+            return channel_link.share(con, "vk", peer)
+        if command == "stop_me":
+            return channel_link.leave(con, "vk", peer,
+                                      "Перерыв — «пауза», удалить данные — «удалить наши данные».")
         if command == "add_child":
             limit = self.child_limit(con, peer, key)
             if limit:
@@ -309,7 +318,8 @@ class VkDialog:
                 return limit
             create_child(con, peer, current["name"], current["birth_date"])
             pb.ProductBot.notify_owner(
-                f"👶 ВК {peer}: подписан ещё один ребёнок — {pb.name_mark(current['name'])}{current['name']}, "
+                f"👶 ВК {peer}: подписан ещё один ребёнок — {pb.name_mark(current['name'])}"
+                f"{pb.share_mark(con, 'vk', peer)}{current['name']}, "
                 f"{pb.describe_age(current['birth_date'], today)}",
                 con, key, "child",
             )

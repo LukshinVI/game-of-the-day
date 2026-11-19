@@ -165,3 +165,88 @@ class Link(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Share(unittest.TestCase):
+    """Another person gets the games of the same children: no new child, owner approves."""
+
+    vk, tg, q, outbox, events = Link.vk, Link.tg, Link.q, Link.outbox, Link.events
+
+    def setUp(self):
+        Link.setUp(self)
+        con = sqlite3.connect(self.db)
+        cl.remember_bot_username(con, "gotd_bot")
+        con.execute("INSERT INTO children (id, name, birth_date) VALUES (2, 'Аня', '2026-08-11')")
+        con.execute("INSERT INTO recipients (child_id, channel, address) VALUES (2, 'telegram', ?)", (TG,))
+        con.execute("INSERT INTO members (chat_id) VALUES (?)", (TG,))
+        con.commit()
+        con.close()
+
+    def share_link(self):
+        reply = self.tg(TG, "/share")
+        self.assertIn("не приглашение подписать другого ребёнка", reply)
+        [(addr, invite)] = self.outbox("telegram")  # the forwardable invitation, its own message
+        self.assertEqual(addr, TG)
+        self.assertIn("для Аня", invite)
+        return invite
+
+    def test_dad_shares_with_mum_in_telegram(self):
+        invite = self.share_link()
+        start = invite.split("start=")[1].split()[0]
+        mum = "556"
+        self.assertIn("Заявка отправлена", self.tg(mum, f"/start {start}"))
+        [(kind, text)] = self.events()
+        self.assertIn("«поделиться»", text)
+        self.assertIn(f"Telegram chat {mum}", text)
+        self.assertIn("одобрена", manual_bot.decide_channel_link(int(kind.split(":")[1]), True, db_path=self.db))
+        self.assertEqual(self.q("SELECT address FROM recipients WHERE child_id = 2 ORDER BY id"), [(TG,), (mum,)])
+        self.assertEqual(self.q("SELECT count(*) FROM children"), [(2,)])
+        self.assertIn("Аня", self.tg(mum, "/children"))
+        sent = dict(self.outbox("telegram"))
+        self.assertIn("приходить и вам", sent[mum])
+        self.assertIn("ещё один человек", sent[TG])
+
+    def test_mum_can_join_from_vk_with_the_code(self):
+        code = self.share_link().split("код ")[1].split()[0]
+        self.assertIn("Заявка отправлена", self.vk("888", f"код {code}"))
+        manual_bot.decide_channel_link(int(self.events()[0][0].split(":")[1]), True, db_path=self.db)
+        self.assertEqual(self.q("SELECT channel, address FROM recipients WHERE child_id = 2 ORDER BY id"),
+                         [("telegram", TG), ("vk", "888")])
+
+    def test_own_chat_and_used_codes_are_refused(self):
+        start = self.share_link().split("start=")[1].split()[0]
+        self.assertIn("уже получаете", self.tg(TG, f"/start {start}"))
+        self.tg("556", f"/start {start}")
+        self.assertIn("недействительна", self.tg("557", f"/start {start}"))
+
+    def test_at_most_four_chats_per_child(self):
+        con = sqlite3.connect(self.db)
+        for address in ("a", "b", "c"):
+            con.execute("INSERT INTO recipients (child_id, channel, address) VALUES (2, 'telegram', ?)", (address,))
+        con.commit()
+        con.close()
+        self.assertIn("больше подключить нельзя", self.tg(TG, "/share"))
+
+    def test_a_child_added_by_a_shared_chat_is_marked_for_the_owner(self):
+        start = self.share_link().split("start=")[1].split()[0]
+        self.tg("556", f"/start {start}")
+        manual_bot.decide_channel_link(int(self.events()[0][0].split(":")[1]), True, db_path=self.db)
+        self.tg("556", "/add_child")
+        self.tg("556", "Петя 01.06.2026")
+        self.tg("556", "да")
+        [(text,)] = self.q("SELECT text FROM user_events WHERE kind = 'child'")
+        self.assertIn("👥 пришёл(ла) по «поделиться»", text)
+
+    def test_stop_me_leaves_only_when_someone_else_gets_the_games(self):
+        self.assertIn("только вы", self.tg(TG, "/stop_me"))
+        start = self.share_link().split("start=")[1].split()[0]
+        self.tg("556", f"/start {start}")
+        manual_bot.decide_channel_link(int(self.events()[0][0].split(":")[1]), True, db_path=self.db)
+        self.assertIn("больше не придут", self.tg(TG, "/stop_me"))
+        self.assertEqual(self.q("SELECT address FROM recipients WHERE child_id = 2"), [("556",)])
+        self.assertEqual(self.q("SELECT count(*) FROM user_events WHERE kind = 'leave'"), [(1,)])
+
+    def test_vk_family_shares_and_leaves_by_words(self):
+        reply = self.vk(VK, "Поделиться")
+        self.assertIn("не приглашение", reply)
+        self.assertIn("только вы", self.vk(VK, "больше не присылать мне"))

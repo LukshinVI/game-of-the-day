@@ -214,7 +214,10 @@ CREATE TABLE channel_links (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at TEXT NOT NULL,
     requested_at TEXT,
-    decided_at TEXT
+    decided_at TEXT,
+    -- 'channel': the same family adds its other messenger; 'share': another person
+    -- (the second parent, a grandmother) gets the games of the same children.
+    kind TEXT NOT NULL DEFAULT 'channel'
 );
 CREATE TABLE swaps (
     id INTEGER PRIMARY KEY,

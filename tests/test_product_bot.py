@@ -363,7 +363,7 @@ class Menu(unittest.TestCase):
         for method, payload in calls:
             self.assertEqual(method, "setMyCommands")
             self.assertEqual([c["command"] for c in payload["commands"]],
-                             ["children", "add_child", "pause", "resume", "another", "link_vk", "idea", "faq", "forget"])
+                             ["children", "add_child", "pause", "resume", "another", "link_vk", "share", "stop_me", "idea", "faq", "forget"])
 
     def test_the_help_lists_the_same_commands(self):
         for name, about in pb.COMMANDS:

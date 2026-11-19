@@ -95,6 +95,8 @@ COMMANDS = [
     ("resume", "возобновить игры"),
     ("another", "другая игра на сегодня"),
     ("link_vk", "получать игры ещё и во ВКонтакте"),
+    ("share", "поделиться играми со вторым родителем, бабушкой"),
+    ("stop_me", "перестать получать игры самому (другим они придут)"),
     ("idea", "предложить, что улучшить в сервисе"),
     ("faq", "частые вопросы"),
     ("forget", "удалить наши данные"),
@@ -198,6 +200,11 @@ def odd_name(name):
 
 def name_mark(name):
     return "⚠️ проверьте имя: " if odd_name(name) else ""
+
+
+def share_mark(con, channel, address):
+    """A chat that came through «поделиться» subscribes a new child: worth a look."""
+    return "👥 пришёл(ла) по «поделиться»: " if channel_link.shared_in(con, channel, address) else ""
 
 
 def confirm_text(name, birth, today):
@@ -448,6 +455,13 @@ class ProductBot:
         if command == "/link_vk":
             return (channel_link.issue(con, "telegram", chat_id, "vk")
                     or "Сначала подпишите ребёнка — /add_child, потом можно подключить ВКонтакте.")
+        if command == "/share":
+            return (channel_link.share(con, "telegram", chat_id)
+                    or "Сначала подпишите ребёнка — /add_child, потом можно поделиться.")
+        if command == "/stop_me":
+            return (channel_link.leave(con, "telegram", chat_id,
+                                       "Перерыв — /pause, удалить данные — /forget.")
+                    or "Сюда игры и так не приходят.")
         if command == "/idea":
             return self.idea(con, chat_id, text.split(maxsplit=1)[1] if len(parts) > 1 else "")
         if command:
@@ -595,7 +609,8 @@ class ProductBot:
         )
         con.execute("DELETE FROM onboarding WHERE chat_id = ?", (chat_id,))
         self.notify_owner(
-            f"👶 Подписан ребёнок: {name_mark(current['name'])}{current['name']}, "
+            f"👶 Подписан ребёнок: {name_mark(current['name'])}{share_mark(con, 'telegram', chat_id)}"
+            f"{current['name']}, "
             f"{describe_age(current['birth_date'], today)} (chat {chat_id})",
             con, chat_id, "child",
         )
