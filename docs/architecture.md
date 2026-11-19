@@ -64,6 +64,7 @@ controls. They share nothing but the database.
 | Reports | `src/ops/llm_report.py`, `users_report.py` | Mondays 10:30; on demand | model quality, latency, tokens, cost, reserve days; families; wishes |
 | Parents' digest | `src/ops/weekly_digest.py` | Sundays 19:00 | the week's games and skills, what went well, one or two home ideas for next week (no age norms), a monthly question; with `GAME_DIGEST_PULSE` a one-tap «полезно ли?» score; optionally (off unless `GAME_DIGEST_STAR_REQUEST=1`) a one-time request to star the project on GitHub |
 | Album of the month | `src/ops/monthly_album.py` | the 1st, 10:15 | `GAME_ALBUM` (off for now): one picture per family of the month's games, skills and a quote of the parent (Pillow); idempotent through `albums` |
+| Independent model trial | `src/preparation/independent_trial.py` | Wednesdays 14:00 | the Workers AI model chooses for two real children in turn (gate, known sources, its reviewer); the owner gets what it chose and what the reviewer said; nothing is written as a game or sent |
 | Warm reserve | `src/preparation/fallback.py` | Sundays 04:30 | keeps at least three validated games for each child's next two months |
 | Watcher | `worker/src/watch.js`, `src/ops/heartbeat.py` | every 5 minutes (Worker cron) | outside the host: the host beats every 5 minutes, silence for 15 → 🔴 to the ops bot; an hourly canary through the storage queue proves VK → host; one Durable Object holds the state |
 | Quarantine | `src/feedback/quarantine.py` | in the consumer | a VK message that fails three times (after 5 s, 1 min, 5 min) is kept, acked and reported; `/quarantine`, `/replay N` |
@@ -122,6 +123,7 @@ environment.
 10:15  outcome check (again 11:15, 13:15, 17:15)
 */2    feedback insights                               */5    host health (infra repository), pulse to the Worker
 17:25  SLO alert (only on a change)                    hourly canary VK queue → host (Worker)
+Wed    independent model trial 14:00 (owner only)
 Mon    LLM report                                     Sun    reserve top-up, restore test, parents' digest 19:00
 1st    album of the month 10:15 (when GAME_ALBUM=1)
 ```

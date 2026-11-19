@@ -46,7 +46,8 @@ def calls_today(con, target_date):
     if con.execute("SELECT 1 FROM sqlite_master WHERE name = 'model_runs'").fetchone() is None:
         return 0
     return con.execute(
-        "SELECT COUNT(*) FROM model_runs WHERE dry_run = 0 AND target_date = ? "
+        # Test runs (dry_run) spend the same allocation: counted too.
+        "SELECT COUNT(*) FROM model_runs WHERE target_date = ? "
         "AND (model LIKE '@cf/%' OR model LIKE 'review:@cf/%')", (str(target_date),)).fetchone()[0]
 
 

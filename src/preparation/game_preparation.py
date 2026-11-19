@@ -134,6 +134,19 @@ def prepare_for_child(target_date, child, dry_run=False, notes=None, down=None):
     print(f"Исторических игр: {len(history)}")
     print(f"Целевая дата: {target_date}")
 
+    run = child_run(target_date, child, history, notes, down)
+
+    try:
+        candidate, attempts, origin, origin_reason = chain.obtain_candidate(history, target_date, child, run)
+    finally:
+        store.persist_runs(target_date, child_id, dry_run, run.log)
+    return finish_child(target_date, child, dry_run, notes, candidate, attempts, origin, origin_reason)
+
+
+def child_run(target_date, child, history, notes=None, down=None):
+    """The child's ChildRun: profile, the required skill (difficulty answer or theme of
+    the month) and today's seasonal theme."""
+    child_id = child["id"] if child else None
     run = chain.ChildRun(notes=notes, down={} if down is None else down)
     with store.connect_db() as con:
         run.profile = child_profile.load(con, child_id)
@@ -156,11 +169,10 @@ def prepare_for_child(target_date, child, dry_run=False, notes=None, down=None):
         run.profile = {**run.profile, "required_next": required}
     if run.profile:
         print(f"Профиль: {json.dumps(run.profile, ensure_ascii=False)}")
+    return run
 
-    try:
-        candidate, attempts, origin, origin_reason = chain.obtain_candidate(history, target_date, child, run)
-    finally:
-        store.persist_runs(target_date, child_id, dry_run, run.log)
+
+def finish_child(target_date, child, dry_run, notes, candidate, attempts, origin, origin_reason):
     print(f"Источник: {fallback.describe(origin, origin_reason)}")
 
     channels = ", ".join(r["channel"] for r in child["recipients"]) if child else "vk"
@@ -356,6 +368,10 @@ def main():
 
     sub.add_parser("shadow")
 
+    trial = sub.add_parser("trial", help="weekly test run of the independent model, owner only")
+    trial.add_argument("--date", default=datetime.now(chain.MOSCOW).date().isoformat())
+    trial.add_argument("--children", type=int, default=2)
+
     prepare = sub.add_parser("prepare")
     prepare.add_argument(
         "--date",
@@ -378,6 +394,9 @@ def main():
             reserve_top_up(args.date)
     elif args.command == "shadow":
         shadow_run()
+    elif args.command == "trial":
+        from src.preparation import independent_trial
+        independent_trial.run_trial(args.date, args.children)
     elif args.command == "prepare":
         prepare_run(
             target_date=args.date,

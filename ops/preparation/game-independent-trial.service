@@ -1,0 +1,31 @@
+[Unit]
+Description=Game of the Day - test selection by the independent model for two children, report to the owner only
+After=network-online.target
+Wants=network-online.target
+OnFailure=game-backup-alert@%n.service
+
+[Service]
+Slice=game-of-the-day.slice
+MemoryHigh=200M
+MemoryMax=300M
+Type=oneshot
+User=gotd
+Group=gotd
+WorkingDirectory=/srv/game-of-the-day
+# game.env: CHILD_BIRTH_DATE. preparation.env: model settings. ops-bot.env: the owner's
+# report. voice.env: the Workers AI token. Nothing is written to games or sent to families.
+EnvironmentFile=/etc/game-of-the-day/game.env
+EnvironmentFile=/etc/game-of-the-day/preparation.env
+EnvironmentFile=-/etc/game-of-the-day/ops-bot.env
+EnvironmentFile=-/etc/game-of-the-day/features.env
+EnvironmentFile=-/etc/game-of-the-day/voice.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /srv/game-of-the-day/src/preparation/game_preparation.py trial
+# Two children, up to three selections and reviews each, about a minute a call.
+TimeoutStartSec=30min
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/srv/game-of-the-day/data

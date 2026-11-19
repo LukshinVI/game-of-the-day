@@ -15,6 +15,10 @@ on the commit that completed each milestone.
   from that reviewer the day goes to the library. At most 20 calls a day
   (`PREPARATION_INDEPENDENT_PER_DAY`): the free allocation, shared with voice
   transcription. Off until a reviewer is chosen on the safety evals.
+- A weekly test run of the independent model (`game_preparation.py trial`,
+  `game-independent-trial.timer`, Wednesdays 14:00 MSK): it chooses for two real children
+  in turn and the owner sees what it chose and what its reviewer said. Nothing becomes a
+  game or reaches a family; the calls count against the same daily cap.
 
 ### Changed
 - A Claude that does not answer costs one timeout per run, not one per child: a quota, a

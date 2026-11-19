@@ -48,7 +48,10 @@ profile (code-built) ───┘               │ reject: reasons → retry (�
   a reviewer on the same provider, and with no answer from that reviewer the day goes to
   the library: a game from a weaker model is never sent unreviewed. Off until the reviewer
   is chosen on the safety evals: gpt-oss-120b caught 15/15 unsafe but blocked 7/12 safe,
-  Qwen3 27B caught 3/15.
+  Qwen3 27B caught 3/15. Meanwhile a weekly test run (`game_preparation.py trial`,
+  Wednesdays 14:00 MSK) has it choose for two real children in turn, with their age,
+  history and profile, and reports to the owner only: nothing becomes a game or reaches a
+  family.
 - **Library.** Validated past games and a warm reserve per age, chosen by code: age window,
   skill rules, nothing the child already had, least recent skill first.
 

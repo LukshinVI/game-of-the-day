@@ -1,0 +1,11 @@
+[Unit]
+Description=Game of the Day - weekly test run of the independent model (Workers AI)
+
+[Timer]
+# Wednesday afternoon: far from the night preparation, after the free Workers AI
+# allocation reset (03:00 MSK), while the owner is around to read the report.
+OnCalendar=Wed *-*-* 14:00:00 Europe/Moscow
+Persistent=true
+
+[Install]
+WantedBy=timers.target

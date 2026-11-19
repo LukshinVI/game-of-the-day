@@ -102,7 +102,9 @@ class ChildRun:
     sources: while the independent model runs, the verified sources it may cite (it has
         no web search), else None;
     down: shared by every child of one run: {"claude": reason} once Claude did not answer
-        (quota, timeout, outage), so the rest of the run goes straight to the next link.
+        (quota, timeout, outage), so the rest of the run goes straight to the next link;
+    review_model: the independent model's reviewer when not the configured one (the
+        weekly test run).
     """
     profile: dict = field(default_factory=dict)
     theme: dict | None = None
@@ -112,6 +114,7 @@ class ChildRun:
     notes: list | None = None
     sources: list | None = None
     down: dict = field(default_factory=dict)
+    review_model: str | None = None
 
 
 class Exhausted(RuntimeError):
@@ -210,7 +213,7 @@ def select_candidate(history, target_date, birth_date=None, age_months=None, run
             if independent:
                 # Another provider's game is reviewed on that provider, and never sent
                 # unreviewed: no answer from the reviewer means the library.
-                name = workers_ai.review_model()
+                name = run.review_model or workers_ai.review_model()
                 problems, fixes, meta = review.review_tiered(
                     candidate, age_months, runner=workers_ai.review_runner(name), name=name)
             else:
