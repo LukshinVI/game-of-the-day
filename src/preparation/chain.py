@@ -12,7 +12,7 @@ from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from src.preparation import alerts, backend, fallback, gate, layout, review, skills, store
+from src.preparation import alerts, backend, fallback, gate, layout, review, skills, store, workers_ai
 from src.preparation import mechanics as mechanic_tags
 
 
@@ -98,7 +98,11 @@ class ChildRun:
         caller (obtain_candidate, the reserve) alerts once for the whole chain;
     log: one record per model or reviewer attempt, persisted to model_runs;
     notes: the run's collector of owner alerts (one message per night run), or None to
-        send each alert at once.
+        send each alert at once;
+    sources: while the independent model runs, the verified sources it may cite (it has
+        no web search), else None;
+    down: shared by every child of one run: {"claude": reason} once Claude did not answer
+        (quota, timeout, outage), so the rest of the run goes straight to the next link.
     """
     profile: dict = field(default_factory=dict)
     theme: dict | None = None
@@ -106,6 +110,13 @@ class ChildRun:
     alert_on_exhaustion: bool = True
     log: list = field(default_factory=list)
     notes: list | None = None
+    sources: list | None = None
+    down: dict = field(default_factory=dict)
+
+
+class Exhausted(RuntimeError):
+    """The model answered every time and the gate or the reviewer rejected every answer:
+    the provider works, so this is never an outage."""
 
 
 def build_retry_prompt(original_prompt, candidate, errors):
@@ -165,6 +176,8 @@ def select_candidate(history, target_date, birth_date=None, age_months=None, run
         age_months = child_age_months(target_date, birth_date)
     original_prompt = build_prompt(history, age_months, today=str(target_date),
                                    profile=run.profile, theme=run.theme)
+    if run.sources is not None:
+        original_prompt += workers_ai.sources_note(run.sources)
     prompt = original_prompt
     last_errors = []
 
@@ -180,6 +193,8 @@ def select_candidate(history, target_date, birth_date=None, age_months=None, run
             record_attempt(run, meta, attempt, "error", [f"{type(exc).__name__}: {str(exc)[:300]}"], started)
             raise
         errors = gate.validate_candidate(candidate, history, age_months)
+        if not errors and run.sources is not None:
+            errors = [e for e in [workers_ai.source_error(candidate, run.sources)] if e]
         record_attempt(run, meta, attempt, "rejected" if errors else "pass", errors, started)
         required = (run.profile or {}).get("required_next")
         if not errors and required and candidate.get("skill") != required["skill"]:
@@ -190,8 +205,21 @@ def select_candidate(history, target_date, birth_date=None, age_months=None, run
                 errors = [f"after the parent's feedback on «{required['after']}» the next game must train "
                           f"{required['skill']} ({required['direction']} than before), not {candidate.get('skill')}"]
             run.log[-1]["outcome"], run.log[-1]["errors"] = "rejected", errors
-        if not errors and review.tiers_enabled():
-            problems, fixes, meta = review.review_tiered(candidate, age_months)
+        independent = run.sources is not None
+        if not errors and (review.tiers_enabled() or independent):
+            if independent:
+                # Another provider's game is reviewed on that provider, and never sent
+                # unreviewed: no answer from the reviewer means the library.
+                name = workers_ai.review_model()
+                problems, fixes, meta = review.review_tiered(
+                    candidate, age_months, runner=workers_ai.review_runner(name), name=name)
+            else:
+                problems, fixes, meta = review.review_tiered(candidate, age_months)
+            if independent and (meta is None or meta["error"]):
+                if meta is not None:
+                    run.log.append({**meta, "attempt": attempt, "outcome": "error", "errors": [meta["error"]]})
+                raise review.ReviewUnavailable(
+                    f"ревьюер {name} не ответил: {meta['error'] if meta else 'выключен'}")
             if meta is not None:
                 run.log.append({**meta, "attempt": attempt, "outcome": "rejected" if problems else
                                 ("error" if meta["error"] else "pass"),
@@ -244,14 +272,15 @@ def select_candidate(history, target_date, birth_date=None, age_months=None, run
     if run.alert_on_exhaustion:
         send_failure_alert(last_errors, run.notes)
 
-    raise RuntimeError(
+    raise Exhausted(
         f"Подготовка игры не удалась после {MAX_ATTEMPTS} попыток: "
         + "; ".join(last_errors)[:300]
     )
 
 
 def obtain_candidate(history, target_date, child, run=None):
-    """Primary model -> fallback model -> library. Returns (candidate, attempts, origin, reason).
+    """Primary model -> fallback model -> independent model (another provider, when
+    configured) -> library. Returns (candidate, attempts, origin, reason).
 
     Raises (after one failure alert) only when nothing fits at all.
     """
@@ -266,29 +295,56 @@ def obtain_candidate(history, target_date, child, run=None):
     if budget is not None and spent >= budget:
         reason = f"дневной бюджет модели исчерпан (${spent:.2f} из ${budget:.2f})"
 
+    if reason is None and run.down.get("claude"):
+        reason = f"Claude не отвечает в этом прогоне ({run.down['claude']})"
+
     # The chain alerts once, at its end, not after each model's attempts.
     saved = run.alert_on_exhaustion
     run.alert_on_exhaustion = False
     try:
         if reason is None:
+            down = False
             try:
                 candidate, attempts = select_candidate(history, target_date, birth_date, run=run)
                 return candidate, attempts, "model", None
             except Exception as exc:  # noqa: BLE001 - every failure moves down the chain
-                quota = fallback.is_quota_error(exc)
-                reason = ("лимит подписки исчерпан" if quota else "основная модель не справилась") + f": {str(exc)[:200]}"
+                quota, down = fallback.is_quota_error(exc), fallback.is_outage(exc)
+                what = "лимит подписки исчерпан" if quota else "Claude не ответил" if down else "основная модель не справилась"
+                reason = f"{what}: {type(exc).__name__}: {str(exc)[:200]}"
+                if down:
+                    run.down["claude"] = what
                 print(f"FALLBACK: {reason}", file=sys.stderr)
 
-            if not fallback.is_quota_error(reason) and fallback.fallback_model():
+            if not down and fallback.fallback_model():
                 run.model = fallback.fallback_model()
                 try:
                     candidate, attempts = select_candidate(history, target_date, birth_date, run=run)
                     return candidate, attempts, "fallback_model", f"{run.model}; {reason}"
                 except Exception as exc:  # noqa: BLE001
                     reason += f"; резервная модель {run.model}: {str(exc)[:200]}"
+                    if fallback.is_outage(exc):
+                        run.down["claude"] = "Claude не ответил"
                     print(f"FALLBACK: {reason}", file=sys.stderr)
                 finally:
                     run.model = None
+
+        if workers_ai.enabled():
+            with store.connect_db() as con:
+                calls, cap = workers_ai.calls_today(con, target_date), workers_ai.daily_calls()
+                run.sources = workers_ai.known_sources(con)
+            if calls >= cap:
+                reason = (reason or "") + f"; независимая модель: дневной лимит вызовов ({calls} из {cap})"
+            elif run.sources:
+                run.model = workers_ai.model()
+                try:
+                    candidate, attempts = select_candidate(history, target_date, birth_date, run=run)
+                    return candidate, attempts, "independent_model", f"{run.model}; {reason}"
+                except Exception as exc:  # noqa: BLE001
+                    reason = (reason or "") + f"; независимая модель {run.model}: {str(exc)[:200]}"
+                    print(f"FALLBACK: {reason}", file=sys.stderr)
+                finally:
+                    run.model, run.sources = None, None
+            run.sources = None
     finally:
         run.alert_on_exhaustion = saved
 

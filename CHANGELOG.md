@@ -7,6 +7,21 @@ on the commit that completed each milestone.
 
 ## [Unreleased]
 
+### Added
+- The independent model: when Claude does not answer, a model on another provider
+  (Cloudflare Workers AI, `PREPARATION_INDEPENDENT_MODEL`, `src/preparation/workers_ai.py`)
+  before the library. It has no web search, so it may cite only a source an earlier game
+  used (the gate checks it); its game is reviewed on the same provider, and with no answer
+  from that reviewer the day goes to the library. At most 20 calls a day
+  (`PREPARATION_INDEPENDENT_PER_DAY`): the free allocation, shared with voice
+  transcription. Off until a reviewer is chosen on the safety evals.
+
+### Changed
+- A Claude that does not answer costs one timeout per run, not one per child: a quota, a
+  timeout, an overloaded or failing API skips Haiku (the same provider) and Claude for the
+  rest of the run. A game the gate rejected three times still goes to Haiku. The selection
+  timeout is 3 minutes instead of 10 (production answers take 15-30 s).
+
 ## [2.1.0] - 2026-11-19 — Shared with the family
 
 ### Changed

@@ -129,9 +129,14 @@ def split(blocks, fixes):
     return blocks, fixes
 
 
-def review_tiered(candidate, age_months, runner=None):
-    """Return (blocks, fixes, meta). Both empty when the activity is fine or review is off."""
-    name = model()
+class ReviewUnavailable(RuntimeError):
+    """No reviewer answered for a game that must be reviewed (the independent model's)."""
+
+
+def review_tiered(candidate, age_months, runner=None, name=None):
+    """Return (blocks, fixes, meta). Both empty when the activity is fine or review is off.
+    name overrides the configured reviewer (the independent model's own reviewer)."""
+    name = name or model()
     if not name:
         return [], [], None
     activity = {k: candidate.get(k) for k in ("title", "materials", "steps", "safety", "duration_minutes")}

@@ -23,7 +23,8 @@ from src.ops import slo  # noqa: E402
 DB_PATH = ROOT / "data" / "game-of-the-day.db"
 MOSCOW = ZoneInfo("Europe/Moscow")
 DAYS = 28
-ORIGIN_LABELS = {"model": "модель", "fallback_model": "резервная модель", "library": "библиотека",
+ORIGIN_LABELS = {"model": "модель", "fallback_model": "резервная модель",
+                 "independent_model": "независимая модель", "library": "библиотека",
                  "reserve": "запас", "swap": "замена по просьбе"}
 
 

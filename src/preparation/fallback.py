@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 from collections import Counter
 
 from src.preparation import mechanics, skills
@@ -36,8 +37,25 @@ def daily_budget_usd():
     return float(value) if value else None
 
 
+# Claude is not answering at all (as opposed to a game the gate rejected): a timeout, an
+# overloaded or failing API, no network. The fallback model is the same provider, so it
+# is skipped like on an exhausted quota.
+OUTAGE_PATTERN = re.compile(
+    r"timed out|timeout|overloaded|\b(429|500|502|503|504|529)\b|api error|connection (error|refused|reset)"
+    r"|network|econnreset|etimedout|enotfound|service unavailable", re.IGNORECASE)
+
+
 def is_quota_error(exc):
     return bool(QUOTA_PATTERN.search(str(exc)))
+
+
+def is_outage(exc):
+    """Quota or no answer from the provider: the same provider will not answer either.
+    Rejected answers (chain.Exhausted) are never an outage, whatever their text says."""
+    if type(exc).__name__ == "Exhausted":
+        return False
+    return (isinstance(exc, subprocess.TimeoutExpired) or is_quota_error(exc)
+            or bool(OUTAGE_PATTERN.search(f"{type(exc).__name__} {exc}")))
 
 
 def spent_today(con, today):
@@ -109,7 +127,8 @@ def library_candidate(con, history, age_months, target_date, child_id=None):
 
 
 def describe(origin, reason):
-    labels = {"model": "подбор моделью", "fallback_model": "резервная модель", "library": "библиотека (резерв)",
+    labels = {"model": "подбор моделью", "fallback_model": "резервная модель",
+              "independent_model": "независимая модель (Workers AI)", "library": "библиотека (резерв)",
               "swap": "замена по просьбе семьи"}
     return labels.get(origin, origin) + (f" — {reason}" if reason else "")
 

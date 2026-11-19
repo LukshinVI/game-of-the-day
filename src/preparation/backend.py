@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from src.preparation import workers_ai
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -15,9 +17,10 @@ SCHEMA_PATH = ROOT / "src" / "preparation" / "schemas" / "game_candidate.json"
 
 SHADOW_DIR = ROOT / "data" / "shadow"
 
-# Web research makes a single model call slow; one attempt must still fit well
-# inside the preparation unit's TimeoutStartSec.
-MODEL_TIMEOUT_SECONDS = int(os.environ.get("PREPARATION_MODEL_TIMEOUT", "600"))
+# A selection with web research takes 15-30 s in production (November 2026); 3 minutes
+# is six times that. A hung provider costs one timeout per run, not one per child: the
+# chain stops calling it for the rest of the run (chain.ChildRun.down).
+MODEL_TIMEOUT_SECONDS = int(os.environ.get("PREPARATION_MODEL_TIMEOUT", "180"))
 
 
 def run_model(prompt, model=None, meta=None):
@@ -25,12 +28,17 @@ def run_model(prompt, model=None, meta=None):
 
     The backend only proposes; validate_candidate() decides. PREPARATION_BACKEND
     selects `claude` (Claude Code headless, the default) or `codex` (Codex CLI).
-    model overrides the configured Claude model (the fallback); meta, when given, is
+    model overrides the configured Claude model (the fallback); a Workers AI model
+    ("@cf/...", the independent model) goes to workers_ai instead; meta, when given, is
     filled with the attempt's backend, latency, tokens and cost (model_runs).
     """
     backend = os.environ.get("PREPARATION_BACKEND", "claude").strip().lower()
     meta = {} if meta is None else meta
     meta.clear()
+    if workers_ai.is_independent(model):
+        candidate, info = workers_ai.run(prompt, model, json.loads(SCHEMA_PATH.read_text(encoding="utf-8")))
+        meta.update(info)
+        return candidate
     meta["backend"] = backend
     if backend == "claude":
         return run_claude(prompt, model=model, meta=meta)

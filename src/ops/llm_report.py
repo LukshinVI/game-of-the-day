@@ -99,8 +99,9 @@ def report(db_path=DB_PATH, days=7, today=None):
     finally:
         con.close()
     reserve = ""
-    if origins.get("fallback_model") or origins.get("library"):
+    if origins.get("fallback_model") or origins.get("independent_model") or origins.get("library"):
         reserve = (f"\n🟠 Из резерва: резервной моделью {origins.get('fallback_model', 0)}, "
+                   f"независимой моделью {origins.get('independent_model', 0)}, "
                    f"из библиотеки {origins.get('library', 0)} (из {sum(origins.values())} игр)")
     if not rows:
         return f"За {days} дн. запусков модели не было." + reserve

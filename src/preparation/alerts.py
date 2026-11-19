@@ -81,6 +81,7 @@ def send_preparation_success_alert(
     titles = {
         "model": ("info", "Игра подготовлена"),
         "fallback_model": ("warning", "Игра подготовлена резервной моделью"),
+        "independent_model": ("warning", "Игра подготовлена независимой моделью (Workers AI)"),
         "library": ("warning", "Игра из резерва (библиотека), а не подобрана"),
     }
     level, title = titles.get(origin, titles["model"])

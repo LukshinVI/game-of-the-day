@@ -90,12 +90,14 @@ def prepare_run(target_date, dry_run=False, only_child=None):
 
     # Per-child alerts are collected and sent as one message at the end of the run.
     notes = []
+    # One provider outage per run: once Claude did not answer, the other children skip it.
+    down = {}
     for child in plan:
         label = f"{child['name']} (id {child['id']})" if child else "single-child mode"
         print()
         print(f"##### {label} #####")
         try:
-            prepare_for_child(target_date, child, dry_run, notes=notes)
+            prepare_for_child(target_date, child, dry_run, notes=notes, down=down)
         except Exception as exc:  # noqa: BLE001 - reported per child, re-raised below
             print(f"ERROR: {exc}", file=sys.stderr)
             failures.append(f"{label}: {exc}")
@@ -109,7 +111,7 @@ def prepare_run(target_date, dry_run=False, only_child=None):
         raise RuntimeError("; ".join(failures))
 
 
-def prepare_for_child(target_date, child, dry_run=False, notes=None):
+def prepare_for_child(target_date, child, dry_run=False, notes=None, down=None):
     child_id = child["id"] if child else None
 
     # Проверяем ДО вызова модели — повторный запуск ничего не тратит.
@@ -132,7 +134,7 @@ def prepare_for_child(target_date, child, dry_run=False, notes=None):
     print(f"Исторических игр: {len(history)}")
     print(f"Целевая дата: {target_date}")
 
-    run = chain.ChildRun(notes=notes)
+    run = chain.ChildRun(notes=notes, down={} if down is None else down)
     with store.connect_db() as con:
         run.profile = child_profile.load(con, child_id)
         required = child_profile.required_next(con, child_id, history)

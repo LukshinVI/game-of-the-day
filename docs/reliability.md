@@ -21,7 +21,8 @@ model serves, and how far it is from them, are in [slo.md](slo.md).
 |---|---|---|
 | the gate passes something unsafe the words cannot catch | safety reviewer after the gate | rejected with the reason, corrective retry |
 | model rejects or fails 3 attempts | preparation | fallback model (Haiku) under the same gate; owner gets 🟡 with the reason |
-| subscription quota exhausted, daily budget spent | preparation | library game chosen by code; owner gets 🟠 "from the reserve" with the reason |
+| Claude does not answer (quota, a 3-minute timeout, an overloaded or failing API) | preparation | Haiku is skipped (same provider) and Claude is not called again for the rest of the run; the independent model on Workers AI (`PREPARATION_INDEPENDENT_MODEL`) cites only known sources and is reviewed on the same provider; owner gets 🟡 |
+| subscription quota exhausted, daily budget spent, independent model off, capped (20 calls a day, the free allocation shared with voice) or its reviewer silent | preparation | library game chosen by code; owner gets 🟠 "from the reserve" with the reason |
 | no library game fits the child | preparation | 🔴 alert; day can be sent manually after a fix (`/send`) |
 | a delivery fails (VK or Telegram error) | delivery, outcome check 10:15 | `failed`, other recipients unaffected; explicit `/retry` from the ops bot |
 | interrupted while sending | 10:12 catch-up | reconciled against VK history by the stable message id; Telegram reported, not guessed |
